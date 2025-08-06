@@ -1,0 +1,46 @@
+<HTML>
+  <script src="{{ url_for('static', filename='js/fhh_build_pedigree.js') }}" type="module"></script>
+  <script src="{{ url_for('static', filename='js/fhh_display_pedigree.js') }}" type="module"></script>
+  <script src="{{ url_for('static', filename='js/fhh_load.js') }}" type="module"></script>
+  <script src="{{ url_for('static', filename='js/fhh_move.js') }}" type="module"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/pedigree.css') }}">
+
+<TITLE> Pedigree Drawing </TITLE>
+<BODY>
+  <DIV class='navbar'>
+    <div class='debug-block'>
+      Special Actions:<br/>
+      <BUTTON id='log-button'>LOG</BUTTON>
+      <BUTTON id='clear-alert-button'>Clear Alerts</BUTTON>
+    </div>
+    <div class="file-block">
+      Family:<br/>
+      <SELECT id="file_select">
+        <OPTION> </OPTION>
+        <OPTION> This is where we list the pedigrees </OPTION>
+      </SELECT>
+      <br/><button id="save-button"> Save </button>
+    </div>
+    <div class="radio-block"> Action Mode: <br />
+      <input type="radio" id="details" name="action_choice" value="details" checked="checked">
+      <label for="details">Details</label>
+
+      <input type="radio" id="slide" name="action_choice" value="slide">
+      <label for="slide">Slide</label>
+
+      <input type="radio" id="free" name="action_choice" value="free">
+      <label for="free">Free</label>
+
+
+      <input type="radio" id="annotate" name="action_choice" value="annotate">
+      <label for="annotate">Annotate</label>
+    </DIV>
+  </DIV>
+  <DIV class='alertbar' id='alert'>
+  </DIV>
+
+  <DIV class="fhh_pedigree" id="main" style='overflow-y: scroll;'>
+    Loading ...
+  </DIV>
+</BODY>
+</HTML>

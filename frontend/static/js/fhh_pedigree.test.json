@@ -1,0 +1,157 @@
+{
+  "comment": "This is a test pedigree that contains fictional people",
+  "proband": "10001-01-004",
+  "people": {
+    "10001-01-004": {
+      "name": "Proband Person",
+      "father": "10001-02-017",
+      "mother": "10001-02-016",
+      "demographics": {
+        "gender": "Male"
+      }
+    },
+
+    "10001-03-001": {
+      "name": "Son",
+      "father": "10001-01-004",
+      "mother": "10001-01-005",
+      "demographics": {
+        "gender": "Male"
+      }
+    },
+    "10001-03-002": {
+      "name": "Daughter 1",
+      "father": "10001-01-004",
+      "mother": "10001-01-005",
+      "demographics": {
+        "gender": "Female"
+      }
+    },
+    "10001-03-003": {
+      "name": "Daughter 2",
+      "father": "10001-01-004",
+      "mother": "10001-01-005",
+      "demographics": {
+        "gender": "Female"
+      }
+    },
+    "10001-01-005": {
+      "name": "Wife",
+      "demographics": {
+        "gender": "Female"
+      }
+    },
+
+    "10001-01-006": {
+      "name": "Brother",
+      "father": "10001-02-017",
+      "mother": "10001-02-016",
+      "demographics": {
+        "gender": "Male"
+      }
+    },
+    "10001-01-007": {
+      "name": "Proband Person",
+      "father": "10001-02-017",
+      "mother": "10001-02-016",
+      "demographics": {
+        "gender": "Female"
+      }
+    },
+    "10001-01-012": {
+      "name": "Sister with kids",
+      "father": "10001-02-017",
+      "mother": "10001-02-016",
+      "demographics": {
+        "gender": "Female"
+      }
+    },
+    "10001-01-015": {
+      "name": "Single Sister",
+      "father": "10001-02-017",
+      "mother": "10001-02-016",
+      "demographics": {
+        "gender": "Female"
+      }
+    },
+
+    "10001-03-008": {
+      "name": "Nephew 1",
+      "father": "10001-01-013",
+      "mother": "10001-01-012",
+      "demographics": {
+        "gender": "Male"
+      }
+    },
+    "10001-03-009": {
+      "name": "Niece 1",
+      "father": "10001-01-013",
+      "mother": "10001-01-012",
+      "demographics": {
+        "gender": "Female"
+      }
+    },
+    "10001-03-010": {
+      "name": "Nephew 2",
+      "father": "10001-01-014",
+      "mother": "10001-01-012",
+      "demographics": {
+        "gender": "Male"
+      }
+    },
+    "10001-03-011": {
+      "name": "Niece 2",
+      "father": "10001-01-014",
+      "mother": "10001-01-012",
+      "demographics": {
+        "gender": "Female"
+      }
+    },
+    "10001-01-013": {
+      "name": "Brother-in-Law 1",
+      "demographics": {
+        "gender": "Male"
+      }
+    },
+    "10001-01-014": {
+      "name": "Brother-in-Law 2",
+      "demographics": {
+        "gender": "Male"
+      }
+    },
+    "10001-02-016": {
+      "name": "Father",
+      "father": "10001-04-021",
+      "demographics": {
+        "gender": "Female"
+      }
+    },
+    "10001-02-017": {
+      "name": "Mother",
+      "demographics": {
+        "gender": "Male"
+      }
+    },
+    "10001-02-018": {
+      "name": "Uncle 1",
+      "father": "10001-04-021",
+      "demographics": {
+        "gender": "Male"
+      }
+    },
+    "10001-02-019": {
+      "name": "Uncle 2",
+      "father": "10001-04-021",
+      "demographics": {
+        "gender": "Male"
+      }
+    },
+    
+    "10001-04-021": {
+      "name": "Gramps",
+      "demographics": {
+        "gender": "Male"
+      }
+    }
+  }
+}

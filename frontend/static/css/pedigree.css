@@ -1,0 +1,90 @@
+.navbar {
+  font-family: sans-serif, Arial;
+
+  position:fixed;
+  top:0;
+  width:100%;
+  height:100px;
+  background-color:#DDD;
+}
+
+.alertbar {
+  font-family: sans-serif, Arial;
+  position:fixed;
+  top:101px;
+  width:100%;
+  padding:2px;
+}
+
+.alert-button {
+    margin:5px;
+    padding:5px;
+    background-color:#FAA;
+    border-radius:5px;
+}
+
+.debug-block {
+  float:left;
+  margin: 5px;
+  border:2px solid black;
+  width:fit-content;
+  padding:5px;
+  height:78px;
+}
+
+.file-block {
+  float:left;
+  margin: 5px;
+  border:2px solid black;
+  width:fit-content;
+  padding:5px;
+  height:78px;
+}
+
+.radio-block {
+  float:left;
+  margin: 5px;
+  border:2px solid black;
+  width:fit-content;
+  padding:5px;
+  height:78px;
+}
+
+.radio-block input[type="radio"] {
+  opacity: 0;
+  position: fixed;
+  width: 0;
+}
+
+.radio-block label {
+    display: inline-block;
+    background-color: #ddd;
+    padding: 10px 20px;
+    font-family: sans-serif, Arial;
+    font-size: 16px;
+    border: 2px solid #444;
+    border-radius: 4px;
+}
+
+.radio-block label:hover {
+  background-color: #dfd;
+}
+
+.radio-block input[type="radio"]:focus + label {
+    border: 2px solid #444;
+}
+
+.radio-block input[type="radio"]:checked + label {
+    background-color: #bfb;
+    border-color: #4c4;
+}
+
+#save-button{
+  padding:5px;
+  margin:5px;
+}
+
+.alert-line {
+  padding:1px;
+  margin:1px;
+}

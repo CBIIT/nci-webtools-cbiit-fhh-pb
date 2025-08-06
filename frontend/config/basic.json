@@ -1,0 +1,13 @@
+{
+  "style": "compact",
+  "margin":100,
+  "size": 50,
+  "h_padding":200,
+  "v_padding":20,
+  "h_spacing":120,
+  "v_spacing":160,
+  "quadrants": [
+    {"type": "disease", "code": "356"}
+  ]
+
+}
