@@ -1,28 +1,29 @@
 name: Deploy Frontend Infrastructure
 on:
-  push:
-    paths:
-      - 'infrastructure-cdk/**'
-      - '.github/workflows/frontend-infrastructure.yml'
+  # push:
+  #   paths:
+  #     - 'infrastructure-cdk/**'
+  #     - '.github/workflows/frontend-infrastructure.yml'
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      
+
       - uses: actions/setup-node@v3
         with:
-          node-version: '18'
-      
+          node-version: "18"
+
       - name: Install CDK
         run: npm install -g aws-cdk
-      
+
       - name: Install dependencies
         run: |
           cd infrastructure-cdk
           npm install
-      
+
       - name: CDK Synth
         run: |
           cd infrastructure-cdk
@@ -33,7 +34,7 @@ jobs:
           AWS_DEFAULT_REGION: us-east-1
           TIER: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
-      
+
       - name: Deploy
         run: |
           cd infrastructure-cdk
