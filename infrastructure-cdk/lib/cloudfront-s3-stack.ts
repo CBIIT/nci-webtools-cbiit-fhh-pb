@@ -25,7 +25,7 @@ export class CloudFrontS3Stack extends cdk.Stack {
 
     // Deploy frontend files to S3
     new s3deploy.BucketDeployment(this, "FrontendDeployment", {
-      sources: [s3deploy.Source.asset(path.join(__dirname, "../../frontend"))],
+      sources: [s3deploy.Source.asset(path.join(__dirname, "../../frontend/build"))],
       destinationBucket: this.bucket,
       destinationKeyPrefix: "",
     });
@@ -38,17 +38,17 @@ export class CloudFrontS3Stack extends cdk.Stack {
         cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
         originRequestPolicy: cloudfront.OriginRequestPolicy.CORS_S3_ORIGIN,
       },
-      defaultRootObject: 'templates/index.html',
+      defaultRootObject: 'index.html',
       errorResponses: [
         {
           httpStatus: 404,
           responseHttpStatus: 200,
-          responsePagePath: '/templates/index.html',
+          responsePagePath: '/index.html',
         },
         {
           httpStatus: 403,
           responseHttpStatus: 200,
-          responsePagePath: '/templates/index.html',
+          responsePagePath: '/index.html',
         },
       ],
       priceClass: cloudfront.PriceClass.PRICE_CLASS_100, // Use only North America and Europe

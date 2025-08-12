@@ -16,7 +16,7 @@ const cloudFrontS3Stack = new CloudFrontS3Stack(app, "CloudFrontS3Stack", {
 });
 
 // Create the Lambda stack for backend processing
-const lambdaJsonProcessorStack = new LambdaJsonProcessorStack(app, "LambdaJsonProcessor", {
-  env: { account: AWS_ACCOUNT_ID, region: "us-east-1" },
-  stackName: `${TIER}-fhh-pb-lambda-json-processor`,
-});
+// const lambdaJsonProcessorStack = new LambdaJsonProcessorStack(app, "LambdaJsonProcessor", {
+//   env: { account: AWS_ACCOUNT_ID, region: "us-east-1" },
+//   stackName: `${TIER}-fhh-pb-lambda-json-processor`,
+// });
