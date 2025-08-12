@@ -17,9 +17,7 @@ export class CloudFrontS3Stack extends cdk.Stack {
 
     // Create S3 bucket for hosting frontend files
     this.bucket = new s3.Bucket(this, "FrontendBucket", {
-      bucketName: `nci-cbiit-fhh-web-site-${tier}`,
-      websiteIndexDocument: "templates/index.html",
-      websiteErrorDocument: "templates/index.html",
+      bucketName: `nci-cbiit-fhh-pb-web-site-${tier}`,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       // removalPolicy: cdk.RemovalPolicy.DESTROY, // For development - change for production
       // autoDeleteObjects: true, // For development - change for production
@@ -35,22 +33,22 @@ export class CloudFrontS3Stack extends cdk.Stack {
     // Create CloudFront distribution
     this.distribution = new cloudfront.Distribution(this, 'FrontendDistribution', {
       defaultBehavior: {
-        origin: new origins.S3StaticWebsiteOrigin(this.bucket),
+        origin: origins.S3BucketOrigin.withOriginAccessControl(this.bucket),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
         originRequestPolicy: cloudfront.OriginRequestPolicy.CORS_S3_ORIGIN,
       },
-      defaultRootObject: '/html/index.html',
+      defaultRootObject: 'templates/index.html',
       errorResponses: [
         {
           httpStatus: 404,
           responseHttpStatus: 200,
-          responsePagePath: '/html/index.html',
+          responsePagePath: '/templates/index.html',
         },
         {
           httpStatus: 403,
           responseHttpStatus: 200,
-          responsePagePath: '/html/index.html',
+          responsePagePath: '/templates/index.html',
         },
       ],
       priceClass: cloudfront.PriceClass.PRICE_CLASS_100, // Use only North America and Europe
@@ -60,11 +58,6 @@ export class CloudFrontS3Stack extends cdk.Stack {
     new cdk.CfnOutput(this, "BucketName", {
       value: this.bucket.bucketName,
       description: "S3 Bucket Name",
-    });
-
-    new cdk.CfnOutput(this, "WebsiteURL", {
-      value: this.bucket.bucketWebsiteUrl,
-      description: "S3 Website URL",
     });
 
     // Output the CloudFront URL
