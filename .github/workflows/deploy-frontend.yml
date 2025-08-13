@@ -1,16 +1,47 @@
 name: Deploy Frontend
 on:
   workflow_dispatch:
+    inputs:
+      tier:
+        description: "Environment to deploy to"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - qa
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      TIER: ${{ inputs.tier }}
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
     steps:
       - uses: actions/checkout@v3
-      
+
+      - name: Build frontend assets
+        run: |
+          cd frontend
+          python3 build.py
+
       - name: Deploy to S3
         run: |
-          aws s3 sync frontend/ s3://your-bucket-name --delete
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws s3 sync frontend/build/ s3://nci-cbiit-fhhpb-website-${{ env.TIER }} --delete
+
+      - name: Get CloudFront Distribution ID
+        id: get-distribution-id
+        run: |
+          DISTRIBUTION_ID=$(aws cloudformation describe-stacks \
+            --stack-name "${{ env.TIER }}-fhhpb-cloudfront" \
+            --query "Stacks[0].Outputs[?OutputKey=='DistributionId'].OutputValue" \
+            --output text)
+          echo "distribution-id=$DISTRIBUTION_ID" >> $GITHUB_OUTPUT
+
+      - name: Invalidate CloudFront Cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ steps.get-distribution-id.outputs.distribution-id }} \
+            --paths "/*"
