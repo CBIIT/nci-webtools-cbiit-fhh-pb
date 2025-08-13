@@ -6,6 +6,7 @@ import * as s3n from "aws-cdk-lib/aws-s3-notifications";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as path from "path";
 import { Construct } from "constructs";
+import { createTags } from "./utils/tags";
 
 export class LambdaJsonProcessorStack extends cdk.Stack {
   public readonly lambdaFunction: lambda.Function;
@@ -28,6 +29,12 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
           noncurrentVersionExpiration: cdk.Duration.days(30),
         },
       ],
+    });
+    
+    // Add tags to S3 bucket
+    const s3Tags = createTags({ tier, resourceName: 's3' });
+    Object.entries(s3Tags).forEach(([key, value]) => {
+      cdk.Tags.of(this.dataBucket).add(key, value);
     });
 
     // Create IAM role for Lambda function
@@ -57,7 +64,7 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
     // Create Lambda function
     this.lambdaFunction = new lambda.Function(this, "JsonProcessorFunction", {
       functionName: `nci-cbiit-fhhpb-jsonprocessor-${tier}`,
-      runtime: lambda.Runtime.PYTHON_3_9,
+      runtime: lambda.Runtime.PYTHON_3_12,
       handler: "lambda_function.lambda_handler",
       code: lambda.Code.fromAsset(path.join(__dirname, "../../backend/lambda/json-processor")),
       role: lambdaRole,
@@ -71,6 +78,12 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
       reservedConcurrentExecutions: 10, // Limit concurrent executions
       maxEventAge: cdk.Duration.minutes(1), // Maximum event age
       retryAttempts: 2, // Number of retry attempts
+    });
+    
+    // Add tags to Lambda function
+    const lambdaTags = createTags({ tier, resourceName: 'lambda' });
+    Object.entries(lambdaTags).forEach(([key, value]) => {
+      cdk.Tags.of(this.lambdaFunction).add(key, value);
     });
 
     // Add S3 event trigger for data bucket

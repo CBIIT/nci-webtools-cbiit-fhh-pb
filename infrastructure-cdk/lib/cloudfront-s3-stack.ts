@@ -5,6 +5,7 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as path from 'path';
 import { Construct } from 'constructs';
+import { createTags } from './utils/tags';
 
 export class CloudFrontS3Stack extends cdk.Stack {
   public readonly bucket: s3.Bucket;
@@ -13,7 +14,7 @@ export class CloudFrontS3Stack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    const tier = process.env.TIER;
+    const tier = process.env.TIER || "dev";
 
     // Create S3 bucket for hosting frontend files
     this.bucket = new s3.Bucket(this, "FrontendBucket", {
@@ -21,6 +22,12 @@ export class CloudFrontS3Stack extends cdk.Stack {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       // removalPolicy: cdk.RemovalPolicy.DESTROY, // For development - change for production
       // autoDeleteObjects: true, // For development - change for production
+    });
+    
+    // Add tags to S3 bucket
+    const s3Tags = createTags({ tier, resourceName: 's3' });
+    Object.entries(s3Tags).forEach(([key, value]) => {
+      cdk.Tags.of(this.bucket).add(key, value);
     });
 
     // Deploy frontend files to S3
@@ -52,6 +59,12 @@ export class CloudFrontS3Stack extends cdk.Stack {
         },
       ],
       priceClass: cloudfront.PriceClass.PRICE_CLASS_100, // Use only North America and Europe
+    });
+    
+    // Add tags to CloudFront distribution
+    const cloudfrontTags = createTags({ tier, resourceName: 'cloudfront' });
+    Object.entries(cloudfrontTags).forEach(([key, value]) => {
+      cdk.Tags.of(this.distribution).add(key, value);
     });
 
     // Output the bucket name and website URL
