@@ -10,13 +10,21 @@ const TIER = process.env.TIER;
 const app = new cdk.App();
 
 // Create the combined CloudFront + S3 stack for frontend hosting
-const cloudFrontS3Stack = new CloudFrontS3Stack(app, "CloudFrontS3Stack", {
-  env: { account: AWS_ACCOUNT_ID, region: "us-east-1" },
-  stackName: `${TIER}-fhh-pb-cloudfront-s3`,
-});
+const cloudFrontS3Stack = new CloudFrontS3Stack(
+  app,
+  `CloudFrontS3Stack-${TIER}`,
+  {
+    env: { account: AWS_ACCOUNT_ID, region: "us-east-1" },
+    stackName: `${TIER}-fhhpb-cloudfront-s3`,
+  }
+);
 
 // Create the Lambda stack for backend processing
-// const lambdaJsonProcessorStack = new LambdaJsonProcessorStack(app, "LambdaJsonProcessor", {
-//   env: { account: AWS_ACCOUNT_ID, region: "us-east-1" },
-//   stackName: `${TIER}-fhh-pb-lambda-json-processor`,
-// });
+// const lambdaJsonProcessorStack = new LambdaJsonProcessorStack(
+//   app,
+//   `LambdaJsonProcessor-${TIER}`,
+//   {
+//     env: { account: AWS_ACCOUNT_ID, region: "us-east-1" },
+//     stackName: `${TIER}-fhhpb-lambda-json-processor`,
+//   }
+// );
