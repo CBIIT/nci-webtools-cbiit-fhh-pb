@@ -14,9 +14,9 @@ Where `{TIER}` is the deployment tier (e.g., `dev`, `staging`, `prod`).
 
 **Data Bucket**: `nci-cbiit-fhhpb-data-{TIER}`
 - Stores both input and output files
-- Input files are placed in the `input/` folder
+- Input files are placed in the `raw/` folder
 - Processed files are saved in the `processed/` folder
-- Files with `.json` extension in the `input/` folder trigger the Lambda function
+- Files with `.json` extension in the `raw/` folder trigger the Lambda function
 
 ### Lambda Function
 
@@ -33,7 +33,7 @@ Where `{TIER}` is the deployment tier (e.g., `dev`, `staging`, `prod`).
 
 ## Usage
 
-1. Upload a JSON file to the `input/` folder in the data bucket
+1. Upload a JSON file to the `raw/` folder in the data bucket
 2. The Lambda function will automatically process the file
 3. Processed results will be saved to the `processed/` folder in the same bucket
 
@@ -116,7 +116,7 @@ The function produces structured JSON with person-centric organization:
 
 - CloudWatch Logs: `/aws/lambda/nci-cbiit-fhhpb-jsonprocessor-{TIER}`
 - CloudWatch Metrics: Function duration, errors, invocations
-- S3 bucket metrics for input/output file processing
+- S3 bucket metrics for raw/output file processing
 
 ## Security
 

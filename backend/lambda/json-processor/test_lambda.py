@@ -82,7 +82,7 @@ def test_lambda_function():
     os.environ['TIER'] = 'test'
     
     # Create test event
-    test_event = create_test_event('test-data-bucket', 'input/test-data.json')
+    test_event = create_test_event('test-data-bucket', 'raw/test-data.json')
     
     # Create test context (empty for testing)
     test_context = {}
