@@ -1,0 +1,92 @@
+name: Deploy JSON Processor Lambda
+on:
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: "Environment to deploy to"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - qa
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      TIER: ${{ inputs.tier }}
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: infrastructure-cdk/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+
+      - name: Install CDK
+        run: npm install -g aws-cdk
+
+      - name: Install CDK dependencies
+        run: |
+          cd infrastructure-cdk
+          npm ci
+
+      - name: Install Lambda dependencies
+        run: |
+          cd backend/lambda/json-processor
+          pip install -r requirements.txt -t .
+
+      - name: Run Lambda tests
+        run: |
+          cd backend/lambda/json-processor
+          python -m pytest test_lambda.py -v
+
+      - name: Build frontend assets (required for CDK synthesis)
+        run: |
+          cd frontend
+          python3 build.py
+
+      - name: CDK Bootstrap (if needed)
+        run: |
+          cd infrastructure-cdk
+          npx cdk bootstrap aws://${{ secrets.AWS_ACCOUNT_ID }}/${{ env.AWS_REGION }}
+        env:
+          TIER: ${{ env.TIER }}
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+
+      - name: CDK Synth
+        run: |
+          cd infrastructure-cdk
+          npx cdk synth
+        env:
+          TIER: ${{ env.TIER }}
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+
+      - name: Deploy Lambda JSON Processor Stack
+        run: |
+          cd infrastructure-cdk
+          npx cdk deploy LambdaJsonProcessor-${{ env.TIER }} --require-approval never
+        env:
+          TIER: ${{ env.TIER }}
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+
+      - name: Get deployment outputs
+        run: |
+          cd infrastructure-cdk
+          echo "=== Lambda Stack Outputs ==="
+          aws cloudformation describe-stacks \
+            --stack-name "${{ env.TIER }}-fhhpb-lambda-json-processor" \
+            --query "Stacks[0].Outputs" \
+            --output table || echo "Lambda stack not found"
