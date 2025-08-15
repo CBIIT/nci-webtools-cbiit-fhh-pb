@@ -29,10 +29,7 @@ def lambda_handler(event, context):
     print(f"Bucket: {s3_bucket_name}")
     print(f"Filename: {s3_file_name}")
 
-    # Use environment variable for bucket name if available
-    data_bucket = os.environ.get('DATA_BUCKET', s3_bucket_name)
-
-    if s3_file_name.startswith('input/'):
+    if s3_file_name.startswith('raw/'):
         # Normalize path separators and remove leading/trailing slashes
         normalized_path = s3_file_name.strip('/').replace('\\', '/')
         # Split the path into components
@@ -45,11 +42,11 @@ def lambda_handler(event, context):
             root_dir = path_parts[0]
 
             if len(path_parts) == 2:
-                # Direct file in root (e.g., 'input/file.txt')
+                # Direct file in root (e.g., 'raw/file.txt')
                 subdirectory = None
                 full_name = "(NO SUBDIRECTORY)"
             else:
-                # File in subdirectory (e.g., 'input/lfs/file.txt')
+                # File in subdirectory (e.g., 'raw/lfs/file.txt')
                 subdirectory = path_parts[1].lower()
                 full_name = lookup_table.get(subdirectory, "(NO LOOKUP)")
         else:
@@ -62,7 +59,7 @@ def lambda_handler(event, context):
         print(f"[INFO]   for study {full_name}")
 
         try:
-            response = s3_client.get_object(Bucket=data_bucket, Key=s3_file_name)
+            response = s3_client.get_object(Bucket=s3_bucket_name, Key=s3_file_name)
             file_content = response['Body'].read().decode('utf-8')
 
             # Initialize processor
@@ -79,53 +76,36 @@ def lambda_handler(event, context):
 
             # Generate and save output
             output_data = processor.get_output_data()
+
+            # 2. Serialize to JSON string
             json_string = json.dumps(output_data)
 
-            # Create output path
+            # 3. Upload to S3
             filename_with_ext = os.path.basename(s3_file_name)
             filename_without_ext = os.path.splitext(filename_with_ext)[0]
             s3_object_key = f"processed/{filename_without_ext}.processed.json"
 
-            # Upload to S3
+            #s3 = boto3.client('s3')
             s3_client.put_object(
-                Bucket=data_bucket,
+                Bucket=s3_bucket_name,
                 Key=s3_object_key,
                 Body=json_string,
-                ContentType='application/json'
+                ContentType='application/json'  # Specify the content type for proper handling
             )
-            print(f"JSON data successfully dumped to s3://{data_bucket}/{s3_object_key}")
-
-            # Print summary
-            print(f"[INFO] Processing complete!")
-            print(f"[INFO] Processed {len(input_data)} records")
-            print(f"[INFO] Generated data for {len(processor.people)} people")
-            print(f"[INFO] Proband: {processor.general['proband']}")
-
-            return {
-                'statusCode': 200,
-                'body': json.dumps({
-                    'message': 'Processing completed successfully',
-                    'input_records': len(input_data),
-                    'output_people': len(processor.people),
-                    'proband': processor.general['proband'],
-                    'output_file': s3_object_key
-                })
-            }
-
+            print(f"JSON data successfully dumped to s3://{s3_bucket_name}/{s3_object_key}")
         except Exception as e:
-            print(f"[ERROR] Processing failed: {e}")
-            return {
-                'statusCode': 500,
-                'body': json.dumps({
-                    'error': str(e),
-                    'message': 'Processing failed'
-                })
-            }
+            print(f"Error dumping JSON data to S3: {e}")
+
+        # Print summary
+        print(f"[INFO] Processing complete!")
+        print(f"[INFO] Processed {len(input_data)} records")
+        print(f"[INFO] Generated data for {len(processor.people)} people")
+        print(f"[INFO] Proband: {processor.general['proband']}")
     else:
-        print(f"[INFO] Skipping file {s3_file_name} - not in input/ directory")
-        return {
-            'statusCode': 200,
-            'body': json.dumps({
-                'message': 'File skipped - not in input/ directory'
-            })
-        }
+        print(f"[INFO] Skipping file {s3_file_name}")
+
+    # TODO implement
+    return {
+        'statusCode': 200,
+        'body': json.dumps('Hello from Lambda!')
+    }
