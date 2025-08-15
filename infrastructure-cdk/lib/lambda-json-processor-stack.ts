@@ -10,68 +10,68 @@ import { createTags } from "./utils/tags";
 
 export class LambdaJsonProcessorStack extends cdk.Stack {
   public readonly lambdaFunction: lambda.Function;
-  public readonly dataBucket: s3.Bucket;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
     const tier = process.env.TIER || "dev";
 
-    // Create single S3 bucket for data storage
-    this.dataBucket = new s3.Bucket(this, "DataBucket", {
-      bucketName: `nci-cbiit-fhhpb-data-${tier}`,
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      encryption: s3.BucketEncryption.S3_MANAGED,
-      versioned: true,
-      lifecycleRules: [
-        {
-          id: "DeleteOldVersions",
-          noncurrentVersionExpiration: cdk.Duration.days(30),
-        },
-      ],
-    });
-    
-    // Add tags to S3 bucket
-    const s3Tags = createTags({ tier, resourceName: 's3' });
-    Object.entries(s3Tags).forEach(([key, value]) => {
-      cdk.Tags.of(this.dataBucket).add(key, value);
-    });
-
     // Create IAM role for Lambda function
     const lambdaRole = new iam.Role(this, "LambdaExecutionRole", {
       assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
       managedPolicies: [
-        iam.ManagedPolicy.fromAwsManagedPolicyName("service-role/AWSLambdaBasicExecutionRole"),
+        iam.ManagedPolicy.fromAwsManagedPolicyName(
+          "service-role/AWSLambdaBasicExecutionRole"
+        ),
       ],
     });
 
     // Add explicit CloudWatch Logs permissions
-    lambdaRole.addToPolicy(new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: [
-        "logs:CreateLogGroup",
-        "logs:CreateLogStream",
-        "logs:PutLogEvents",
-        "logs:DescribeLogGroups",
-        "logs:DescribeLogStreams"
-      ],
-      resources: ["*"]
-    }));
+    lambdaRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "logs:DescribeLogGroups",
+          "logs:DescribeLogStreams",
+        ],
+        resources: ["*"],
+      })
+    );
 
-    // Add S3 permissions to Lambda role - read and write to the same bucket
-    this.dataBucket.grantReadWrite(lambdaRole);
+    // Add S3 permissions to Lambda role - read and write to data bucket
+    const dataBucketName = `nci-cbiit-fhhpb-data-${tier}`;
+    lambdaRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+          "s3:ListBucket",
+        ],
+        resources: [
+          `arn:aws:s3:::${dataBucketName}`,
+          `arn:aws:s3:::${dataBucketName}/*`,
+        ],
+      })
+    );
 
     // Create Lambda function
     this.lambdaFunction = new lambda.Function(this, "JsonProcessorFunction", {
       functionName: `nci-cbiit-fhhpb-jsonprocessor-${tier}`,
       runtime: lambda.Runtime.PYTHON_3_12,
       handler: "lambda_function.lambda_handler",
-      code: lambda.Code.fromAsset(path.join(__dirname, "../../backend/lambda/json-processor")),
+      code: lambda.Code.fromAsset(
+        path.join(__dirname, "../../backend/lambda/json-processor")
+      ),
       role: lambdaRole,
       timeout: cdk.Duration.minutes(5),
       memorySize: 512,
       environment: {
-        DATA_BUCKET: this.dataBucket.bucketName,
+        DATA_BUCKET: dataBucketName,
         TIER: tier,
       },
       // Add retry configuration
@@ -79,19 +79,15 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
       maxEventAge: cdk.Duration.minutes(1), // Maximum event age
       retryAttempts: 2, // Number of retry attempts
     });
-    
+
     // Add tags to Lambda function
-    const lambdaTags = createTags({ tier, resourceName: 'lambda' });
+    const lambdaTags = createTags({ tier, resourceName: "lambda" });
     Object.entries(lambdaTags).forEach(([key, value]) => {
       cdk.Tags.of(this.lambdaFunction).add(key, value);
     });
 
-    // Add S3 event trigger for data bucket
-    this.dataBucket.addEventNotification(
-      s3.EventType.OBJECT_CREATED,
-      new s3n.LambdaDestination(this.lambdaFunction),
-      { prefix: "raw/", suffix: ".json" }
-    );
+    // Note: S3 event notification is configured in the S3DataStack 
+    // to avoid circular dependencies between stacks
 
     // Create CloudWatch alarms for monitoring
     const errorAlarm = new cloudwatch.Alarm(this, "LambdaErrorAlarm", {
@@ -114,14 +110,11 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
       description: "Lambda Function Name",
     });
 
-    new cdk.CfnOutput(this, "DataBucketName", {
-      value: this.dataBucket.bucketName,
-      description: "Data S3 Bucket Name",
-    });
+
 
     new cdk.CfnOutput(this, "LambdaFunctionArn", {
       value: this.lambdaFunction.functionArn,
       description: "Lambda Function ARN",
     });
   }
-} 
+}

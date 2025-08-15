@@ -2,6 +2,8 @@
 import * as cdk from "aws-cdk-lib";
 import { CloudFrontS3Stack } from "../lib/cloudfront-s3-stack";
 import { LambdaJsonProcessorStack } from "../lib/lambda-json-processor-stack";
+import { S3DataStack } from "../lib/s3-data-stack";
+import { S3LambdaIntegrationStack } from "../lib/s3-lambda-integration-stack";
 
 // Get environment variables with fallbacks
 const AWS_ACCOUNT_ID = process.env.AWS_ACCOUNT_ID;
@@ -19,6 +21,16 @@ if (!AWS_ACCOUNT_ID) {
 }
 
 const app = new cdk.App();
+
+// Create the S3 data stack
+const s3DataStack = new S3DataStack(
+  app,
+  `S3DataStack-${TIER}`,
+  {
+    env: { account: AWS_ACCOUNT_ID, region: "us-east-1" },
+    stackName: `${TIER}-fhhpb-s3-data`,
+  }
+);
 
 // Create the combined CloudFront + S3 stack for frontend hosting
 const cloudFrontS3Stack = new CloudFrontS3Stack(
@@ -39,3 +51,19 @@ const lambdaJsonProcessorStack = new LambdaJsonProcessorStack(
     stackName: `${TIER}-fhhpb-lambda-json-processor`,
   }
 );
+
+// Create the S3-Lambda integration stack (depends on both S3 and Lambda stacks)
+const s3LambdaIntegrationStack = new S3LambdaIntegrationStack(
+  app,
+  `S3LambdaIntegration-${TIER}`,
+  {
+    env: { account: AWS_ACCOUNT_ID, region: "us-east-1" },
+    stackName: `${TIER}-fhhpb-s3-lambda-integration`,
+    dataBucket: s3DataStack.dataBucket,
+    lambdaFunction: lambdaJsonProcessorStack.lambdaFunction,
+  }
+);
+
+// Ensure proper stack dependencies
+s3LambdaIntegrationStack.addDependency(s3DataStack);
+s3LambdaIntegrationStack.addDependency(lambdaJsonProcessorStack);
