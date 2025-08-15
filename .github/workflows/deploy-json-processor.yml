@@ -28,7 +28,7 @@ jobs:
         with:
           node-version: "18"
           cache: "npm"
-          cache-dependency-path: infrastructure-cdk/package-lock.json
+          cache-dependency-path: infrastructure/package-lock.json
 
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -40,7 +40,7 @@ jobs:
 
       - name: Install CDK dependencies
         run: |
-          cd infrastructure-cdk
+          cd infrastructure
           npm ci
 
       - name: Install test dependencies
@@ -60,7 +60,7 @@ jobs:
 
       - name: CDK Bootstrap (if needed)
         run: |
-          cd infrastructure-cdk
+          cd infrastructure
           npx cdk bootstrap aws://${{ secrets.AWS_ACCOUNT_ID }}/${{ env.AWS_REGION }}
         env:
           TIER: ${{ env.TIER }}
@@ -68,7 +68,7 @@ jobs:
 
       - name: CDK Synth
         run: |
-          cd infrastructure-cdk
+          cd infrastructure
           npx cdk synth
         env:
           TIER: ${{ env.TIER }}
@@ -76,7 +76,7 @@ jobs:
 
       - name: Deploy Lambda JSON Processor Stack
         run: |
-          cd infrastructure-cdk
+          cd infrastructure
           npx cdk deploy LambdaJsonProcessor-${{ env.TIER }} --require-approval never
         env:
           TIER: ${{ env.TIER }}
@@ -84,7 +84,7 @@ jobs:
 
       - name: Get deployment outputs
         run: |
-          cd infrastructure-cdk
+          cd infrastructure
           echo "=== Lambda Stack Outputs ==="
           aws cloudformation describe-stacks \
             --stack-name "${{ env.TIER }}-fhhpb-lambda-json-processor" \

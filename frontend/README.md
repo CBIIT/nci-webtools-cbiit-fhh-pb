@@ -33,7 +33,7 @@ The deployment process now uses the `build/` directory as the source:
 #### Using CDK
 
 ```bash
-cd infrastructure-cdk
+cd infrastructure
 export TIER=dev  # or prod
 export AWS_ACCOUNT_ID=your-account-id
 ./deploy-lambda.sh

@@ -2,7 +2,7 @@
 # on:
   # push:
   #   paths:
-  #     - 'infrastructure-cdk/**'
+  #     - 'infrastructure/**'
   #     - '.github/workflows/frontend-infrastructure.yml'
 #   workflow_dispatch:
 #     inputs:
@@ -30,29 +30,29 @@
 #         with:
 #           node-version: "18"
 #           cache: "npm"
-#           cache-dependency-path: infrastructure-cdk/package-lock.json
+#           cache-dependency-path: infrastructure/package-lock.json
 
 #       - name: Install CDK
 #         run: npm install -g aws-cdk
 
 #       - name: Install dependencies
 #         run: |
-#           cd infrastructure-cdk
+#           cd infrastructure
 #           npm ci
 
 #       - name: CDK Synth
 #         run: |
-#           cd infrastructure-cdk
+#           cd infrastructure
 #           npx cdk synth
 
 #       - name: Deploy
 #         run: |
-#           cd infrastructure-cdk
+#           cd infrastructure
 #           npx cdk deploy --require-approval never
 
 #       - name: Get deployment outputs
 #         run: |
-#           cd infrastructure-cdk
+#           cd infrastructure
 #           echo "=== Infrastructure Stack Outputs ==="
 #           aws cloudformation describe-stacks \
 #             --stack-name "${{ env.TIER }}-fhhpb-cloudfront" \

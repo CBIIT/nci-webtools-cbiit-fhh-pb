@@ -1,5 +1,5 @@
 ---
-applyTo: "infrastructure-cdk"
+applyTo: "infrastructure"
 ---
 
 # AWS CDK Infrastructure Instructions for NCI FHH Pedigree Builder
@@ -11,7 +11,7 @@ The **Family Health History Pedigree Builder (FHH-PB)** infrastructure is manage
 ## CDK Project Structure
 
 ```
-infrastructure-cdk/
+infrastructure/
 ├── bin/
 │   └── cdk.ts                            # CDK application entry point
 ├── lib/
@@ -175,7 +175,7 @@ export AWS_ACCOUNT_ID=123456789012   # Target AWS account ID
 
 ### Unit Testing
 ```typescript
-// Test file: infrastructure-cdk/test/cdk.test.ts
+// Test file: infrastructure/test/cdk.test.ts
 import { Template } from 'aws-cdk-lib/assertions';
 import { CloudFrontS3Stack } from '../lib/cloudfront-s3-stack';
 
@@ -218,7 +218,7 @@ npm audit
 npm install -g aws-cdk
 
 # Install project dependencies
-cd infrastructure-cdk
+cd infrastructure
 npm install
 
 # Configure AWS credentials
@@ -229,7 +229,7 @@ export AWS_PROFILE=your-profile-name
 
 ### Development Deployment
 ```bash
-cd infrastructure-cdk
+cd infrastructure
 
 # Set required environment variables
 export TIER=dev
