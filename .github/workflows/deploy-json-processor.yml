@@ -43,10 +43,10 @@ jobs:
           cd infrastructure-cdk
           npm ci
 
-      - name: Install Lambda dependencies
+      - name: Install test dependencies
         run: |
           cd backend/lambda/json-processor
-          pip install -r requirements.txt -t .
+          pip install -r requirements.txt
 
       - name: Run Lambda tests
         run: |
