@@ -1,66 +1,66 @@
-name: Deploy Frontend Infrastructure
-on:
+# name: Deploy Frontend Infrastructure
+# on:
   # push:
   #   paths:
   #     - 'infrastructure-cdk/**'
   #     - '.github/workflows/frontend-infrastructure.yml'
-  workflow_dispatch:
-    inputs:
-      tier:
-        description: "Environment to deploy to"
-        required: true
-        default: "dev"
-        type: choice
-        options:
-          - dev
-          - qa
+#   workflow_dispatch:
+#     inputs:
+#       tier:
+#         description: "Environment to deploy to"
+#         required: true
+#         default: "dev"
+#         type: choice
+#         options:
+#           - dev
+#           - qa
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    env:
-      TIER: ${{ inputs.tier }}
-      AWS_REGION: us-east-1
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
-    steps:
-      - uses: actions/checkout@v3
+# jobs:
+#   deploy:
+#     runs-on: ubuntu-latest
+#     env:
+#       TIER: ${{ inputs.tier }}
+#       AWS_REGION: us-east-1
+#       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
+#     steps:
+#       - uses: actions/checkout@v3
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "18"
-          cache: "npm"
-          cache-dependency-path: infrastructure-cdk/package-lock.json
+#       - uses: actions/setup-node@v4
+#         with:
+#           node-version: "18"
+#           cache: "npm"
+#           cache-dependency-path: infrastructure-cdk/package-lock.json
 
-      - name: Install CDK
-        run: npm install -g aws-cdk
+#       - name: Install CDK
+#         run: npm install -g aws-cdk
 
-      - name: Install dependencies
-        run: |
-          cd infrastructure-cdk
-          npm ci
+#       - name: Install dependencies
+#         run: |
+#           cd infrastructure-cdk
+#           npm ci
 
-      - name: CDK Synth
-        run: |
-          cd infrastructure-cdk
-          npx cdk synth
+#       - name: CDK Synth
+#         run: |
+#           cd infrastructure-cdk
+#           npx cdk synth
 
-      - name: Deploy
-        run: |
-          cd infrastructure-cdk
-          npx cdk deploy --require-approval never
+#       - name: Deploy
+#         run: |
+#           cd infrastructure-cdk
+#           npx cdk deploy --require-approval never
 
-      - name: Get deployment outputs
-        run: |
-          cd infrastructure-cdk
-          echo "=== Infrastructure Stack Outputs ==="
-          aws cloudformation describe-stacks \
-            --stack-name "${{ env.TIER }}-fhhpb-cloudfront" \
-            --query "Stacks[0].Outputs" \
-            --output table || echo "CloudFront stack not found"
+#       - name: Get deployment outputs
+#         run: |
+#           cd infrastructure-cdk
+#           echo "=== Infrastructure Stack Outputs ==="
+#           aws cloudformation describe-stacks \
+#             --stack-name "${{ env.TIER }}-fhhpb-cloudfront" \
+#             --query "Stacks[0].Outputs" \
+#             --output table || echo "CloudFront stack not found"
 
-          echo "=== S3 Stack Outputs ==="
-          aws cloudformation describe-stacks \
-            --stack-name "${{ env.TIER }}-fhhpb-s3-data" \
-            --query "Stacks[0].Outputs" \
-            --output table || echo "S3 stack not found"
+#           echo "=== S3 Stack Outputs ==="
+#           aws cloudformation describe-stacks \
+#             --stack-name "${{ env.TIER }}-fhhpb-s3-data" \
+#             --query "Stacks[0].Outputs" \
+#             --output table || echo "S3 stack not found"
