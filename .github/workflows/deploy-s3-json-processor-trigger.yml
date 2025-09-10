@@ -1,0 +1,111 @@
+name: Deploy S3 JSON Processor Trigger
+on:
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: "Environment to deploy to"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - qa
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      TIER: ${{ inputs.tier }}
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: infrastructure/package-lock.json
+
+      - name: Install CDK
+        run: npm install -g aws-cdk
+
+      - name: Install CDK dependencies
+        run: |
+          cd infrastructure
+          npm ci
+
+      - name: Build frontend assets (required for CDK synthesis)
+        run: |
+          cd frontend
+          python3 build.py
+
+      - name: CDK Bootstrap (if needed)
+        run: |
+          cd infrastructure
+          npx cdk bootstrap aws://${{ secrets.AWS_ACCOUNT_ID }}/${{ env.AWS_REGION }}
+        env:
+          TIER: ${{ env.TIER }}
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+
+      - name: CDK Synth
+        run: |
+          cd infrastructure
+          npx cdk synth
+        env:
+          TIER: ${{ env.TIER }}
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+
+      - name: Deploy S3 JSON Processor Trigger Stack
+        run: |
+          cd infrastructure
+          npx cdk deploy S3JsonProcessorTrigger-${{ env.TIER }} --require-approval never
+        env:
+          TIER: ${{ env.TIER }}
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+
+      - name: Get deployment outputs
+        run: |
+          cd infrastructure
+          echo "=== S3 JSON Processor Trigger Stack Outputs ==="
+          aws cloudformation describe-stacks \
+            --stack-name "${{ env.TIER }}-fhhpb-s3-json-processor-trigger" \
+            --query "Stacks[0].Outputs" \
+            --output table || echo "S3 JSON Processor Trigger stack not found"
+
+      - name: Test S3 trigger configuration
+        run: |
+          echo "=== Testing S3 Trigger Configuration ==="
+          
+          # Get bucket name from CloudFormation outputs
+          BUCKET_NAME=$(aws cloudformation describe-stacks \
+            --stack-name "${{ env.TIER }}-fhhpb-s3-json-processor-trigger" \
+            --query "Stacks[0].Outputs[?OutputKey=='DataBucketName'].OutputValue" \
+            --output text 2>/dev/null || echo "")
+          
+          if [ ! -z "$BUCKET_NAME" ]; then
+            echo "Data bucket: $BUCKET_NAME"
+            
+            # Check if bucket exists and is accessible
+            if aws s3 ls "s3://$BUCKET_NAME/" >/dev/null 2>&1; then
+              echo "✅ S3 bucket is accessible"
+              
+              # Check if raw/ prefix exists (create if not)
+              if ! aws s3 ls "s3://$BUCKET_NAME/raw/" >/dev/null 2>&1; then
+                echo "Creating raw/ prefix in bucket..."
+                echo "# This folder is for raw JSON files that trigger automatic processing" | aws s3 cp - "s3://$BUCKET_NAME/raw/README.txt"
+              fi
+              
+              echo "✅ S3 JSON Processor Trigger deployment completed successfully"
+              echo "📁 Upload JSON files to s3://$BUCKET_NAME/raw/ to trigger automatic processing"
+            else
+              echo "❌ Cannot access S3 bucket: $BUCKET_NAME"
+              exit 1
+            fi
+          else
+            echo "❌ Could not retrieve bucket name from stack outputs"
+            exit 1
+          fi

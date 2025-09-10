@@ -1,0 +1,224 @@
+name: Deploy Backend (All Lambda Functions + API Gateway)
+on:
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: "Environment to deploy to"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - qa
+      lambda_functions:
+        description: "Lambda functions to deploy (comma-separated or 'all')"
+        required: false
+        default: "all"
+        type: string
+        # Examples: "all", "get-annotations,write-annotations", "list-families"
+  push:
+    branches: [main, develop]
+    paths:
+      - 'backend/lambda/**'
+      - 'infrastructure/lib/lambda-*-stack.ts'
+      - 'infrastructure/lib/api-gateway-stack.ts'
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      lambda-changes: ${{ steps.changes.outputs.lambda-changes }}
+      api-gateway-changes: ${{ steps.changes.outputs.api-gateway-changes }}
+      deploy-lambdas: ${{ steps.functions.outputs.deploy-lambdas }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+      
+      - name: Detect changed files
+        id: changes
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "lambda-changes=true" >> $GITHUB_OUTPUT
+            echo "api-gateway-changes=true" >> $GITHUB_OUTPUT
+          else
+            # Check for Lambda changes
+            if git diff --name-only HEAD^ HEAD | grep -E "(backend/lambda/|infrastructure/lib/lambda-.*-stack\.ts)"; then
+              echo "lambda-changes=true" >> $GITHUB_OUTPUT
+            else
+              echo "lambda-changes=false" >> $GITHUB_OUTPUT
+            fi
+            
+            # Check for API Gateway changes
+            if git diff --name-only HEAD^ HEAD | grep -E "infrastructure/lib/api-gateway-stack\.ts"; then
+              echo "api-gateway-changes=true" >> $GITHUB_OUTPUT
+            else
+              echo "api-gateway-changes=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Determine Lambda functions to deploy
+        id: functions
+        run: |
+          if [ "${{ inputs.lambda_functions }}" = "all" ] || [ "${{ inputs.lambda_functions }}" = "" ]; then
+            echo "deploy-lambdas=get-annotations,write-annotations,get-family,list-families" >> $GITHUB_OUTPUT
+          else
+            echo "deploy-lambdas=${{ inputs.lambda_functions }}" >> $GITHUB_OUTPUT
+          fi
+
+  test-lambda-functions:
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.lambda-changes == 'true'
+    strategy:
+      matrix:
+        function: [get-annotations, write-annotations, get-family, list-families]
+      fail-fast: false
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+      
+      - name: Test Lambda function
+        run: |
+          cd backend/lambda/${{ matrix.function }}
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+          if [ -f test_lambda.py ]; then
+            python -m pytest test_lambda.py -v
+          else
+            echo "No tests found for ${{ matrix.function }}"
+          fi
+
+  deploy-backend:
+    runs-on: ubuntu-latest
+    needs: [detect-changes, test-lambda-functions]
+    if: always() && (needs.test-lambda-functions.result == 'success' || needs.test-lambda-functions.result == 'skipped')
+    env:
+      TIER: ${{ inputs.tier || 'dev' }}
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: infrastructure/package-lock.json
+
+      - name: Install CDK
+        run: npm install -g aws-cdk
+
+      - name: Install CDK dependencies
+        run: |
+          cd infrastructure
+          npm ci
+
+      - name: Build frontend assets (required for CDK synthesis)
+        run: |
+          cd frontend
+          python3 build.py
+
+      - name: CDK Bootstrap (if needed)
+        run: |
+          cd infrastructure
+          npx cdk bootstrap aws://${{ secrets.AWS_ACCOUNT_ID }}/${{ env.AWS_REGION }}
+        env:
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+
+      - name: CDK Synth
+        run: |
+          cd infrastructure
+          npx cdk synth
+        env:
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+
+      - name: Deploy Lambda Functions
+        if: needs.detect-changes.outputs.lambda-changes == 'true'
+        run: |
+          cd infrastructure
+          
+          # Parse comma-separated function list
+          IFS=',' read -ra FUNCTIONS <<< "${{ needs.detect-changes.outputs.deploy-lambdas }}"
+          
+          for func in "${FUNCTIONS[@]}"; do
+            func=$(echo $func | xargs) # trim whitespace
+            case $func in
+              "get-annotations")
+                echo "Deploying Get Annotations Lambda..."
+                npx cdk deploy LambdaGetAnnotations-${{ env.TIER }} --require-approval never
+                ;;
+              "write-annotations")
+                echo "Deploying Write Annotations Lambda..."
+                npx cdk deploy LambdaWriteAnnotations-${{ env.TIER }} --require-approval never
+                ;;
+              "get-family")
+                echo "Deploying Get Family Lambda..."
+                npx cdk deploy LambdaGetFamily-${{ env.TIER }} --require-approval never
+                ;;
+              "list-families")
+                echo "Deploying List Families Lambda..."
+                npx cdk deploy LambdaListFamilies-${{ env.TIER }} --require-approval never
+                ;;
+              *)
+                echo "Unknown function: $func"
+                ;;
+            esac
+          done
+        env:
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+
+      - name: Deploy API Gateway
+        if: needs.detect-changes.outputs.api-gateway-changes == 'true' || needs.detect-changes.outputs.lambda-changes == 'true'
+        run: |
+          cd infrastructure
+          echo "Deploying API Gateway..."
+          npx cdk deploy ApiGateway-${{ env.TIER }} --require-approval never
+        env:
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+
+      - name: Get deployment outputs
+        run: |
+          cd infrastructure
+          echo "=== Backend Deployment Outputs ==="
+          
+          # API Gateway outputs
+          echo "--- API Gateway ---"
+          aws cloudformation describe-stacks \
+            --stack-name "${{ env.TIER }}-fhhpb-api-gateway" \
+            --query "Stacks[0].Outputs" \
+            --output table || echo "API Gateway stack not found"
+
+      - name: Test API Gateway endpoints
+        run: |
+          echo "=== Testing API Gateway Health ==="
+          API_URL=$(aws cloudformation describe-stacks \
+            --stack-name "${{ env.TIER }}-fhhpb-api-gateway" \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiGatewayUrl'].OutputValue" \
+            --output text 2>/dev/null || echo "")
+          
+          if [ ! -z "$API_URL" ]; then
+            echo "API Gateway URL: $API_URL"
+            
+            # Test CORS preflight
+            echo "Testing CORS preflight..."
+            curl -X OPTIONS "${API_URL}families" \
+              -H "Origin: https://example.com" \
+              -H "Access-Control-Request-Method: GET" \
+              -H "Access-Control-Request-Headers: Content-Type" \
+              -v -f --connect-timeout 10 || echo "CORS preflight test failed"
+            
+            echo "✅ Backend deployment completed successfully"
+          else
+            echo "❌ Could not retrieve API Gateway URL"
+            exit 1
+          fi

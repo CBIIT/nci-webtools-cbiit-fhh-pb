@@ -1,0 +1,103 @@
+name: Deploy API Gateway
+on:
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: "Environment to deploy to"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - qa
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      TIER: ${{ inputs.tier }}
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: infrastructure/package-lock.json
+
+      - name: Install CDK
+        run: npm install -g aws-cdk
+
+      - name: Install CDK dependencies
+        run: |
+          cd infrastructure
+          npm ci
+
+      - name: Build frontend assets (required for CDK synthesis)
+        run: |
+          cd frontend
+          python3 build.py
+
+      - name: CDK Bootstrap (if needed)
+        run: |
+          cd infrastructure
+          npx cdk bootstrap aws://${{ secrets.AWS_ACCOUNT_ID }}/${{ env.AWS_REGION }}
+        env:
+          TIER: ${{ env.TIER }}
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+
+      - name: CDK Synth
+        run: |
+          cd infrastructure
+          npx cdk synth
+        env:
+          TIER: ${{ env.TIER }}
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+
+      - name: Deploy API Gateway Stack
+        run: |
+          cd infrastructure
+          npx cdk deploy ApiGateway-${{ env.TIER }} --require-approval never
+        env:
+          TIER: ${{ env.TIER }}
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+
+      - name: Get deployment outputs
+        run: |
+          cd infrastructure
+          echo "=== API Gateway Stack Outputs ==="
+          aws cloudformation describe-stacks \
+            --stack-name "${{ env.TIER }}-fhhpb-api-gateway" \
+            --query "Stacks[0].Outputs" \
+            --output table || echo "API Gateway stack not found"
+
+      - name: Test API Gateway endpoints
+        run: |
+          echo "=== Testing API Gateway Health ==="
+          # Get API Gateway URL from CloudFormation outputs
+          API_URL=$(aws cloudformation describe-stacks \
+            --stack-name "${{ env.TIER }}-fhhpb-api-gateway" \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiGatewayUrl'].OutputValue" \
+            --output text 2>/dev/null || echo "")
+          
+          if [ ! -z "$API_URL" ]; then
+            echo "API Gateway URL: $API_URL"
+            
+            # Test OPTIONS request (CORS preflight)
+            echo "Testing CORS preflight..."
+            curl -X OPTIONS "${API_URL}families" \
+              -H "Origin: https://example.com" \
+              -H "Access-Control-Request-Method: GET" \
+              -H "Access-Control-Request-Headers: Content-Type" \
+              -v -f --connect-timeout 10 || echo "CORS preflight test failed"
+            
+            echo "✅ API Gateway deployment completed"
+          else
+            echo "❌ Could not retrieve API Gateway URL"
+            exit 1
+          fi

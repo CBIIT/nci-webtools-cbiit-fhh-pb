@@ -1,0 +1,31 @@
+import boto3
+import os
+import logging
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+def get_annotations(family_id, bucket_name=None):
+    """Get annotations data from S3 bucket."""
+    try:
+        bucket_name = bucket_name or os.environ.get('DATA_BUCKET')
+        if not bucket_name:
+            raise ValueError("Bucket name not provided and DATA_BUCKET environment variable not set")
+        
+        s3_key = f"annotations/{family_id}.annotations.json"
+        logger.info(f"Reading from S3: s3://{bucket_name}/{s3_key}")
+        
+        response = boto3.client('s3').get_object(Bucket=bucket_name, Key=s3_key)
+        data = response['Body'].read().decode('utf-8')
+        
+        logger.info(f"Successfully retrieved annotations for family_id: {family_id}")
+        return {"status": "success", "data": data}
+        
+    except boto3.client('s3').exceptions.NoSuchKey:
+        error_msg = f"Annotations not found for family_id: {family_id}"
+        logger.warning(error_msg)
+        return {"status": "not_found", "message": error_msg}
+    except Exception as e:
+        error_msg = f"Error retrieving annotations for family_id {family_id}: {str(e)}"
+        logger.error(error_msg)
+        return {"status": "error", "message": error_msg}
