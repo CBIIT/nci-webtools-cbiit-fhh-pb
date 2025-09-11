@@ -22,6 +22,7 @@ function buildApiUrl(endpoint) {
 export function initializeApiConfig(config) {
   if (config?.api?.baseUrl) {
     apiConfig.baseUrl = config.api.baseUrl;
+    console.log("API base URL configured:", apiConfig.baseUrl);
   } else {
     console.log("No API base URL configured, using relative paths");
   }
