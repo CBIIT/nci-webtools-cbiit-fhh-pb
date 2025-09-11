@@ -60,7 +60,7 @@ jobs:
         id: get-distribution-id
         run: |
           DISTRIBUTION_ID=$(aws cloudformation describe-stacks \
-            --stack-name "${{ env.TIER }}-fhhpb-cloudfront" \
+            --stack-name "${{ env.TIER }}-fhhpb-cloudfront-s3" \
             --query "Stacks[0].Outputs[?OutputKey=='DistributionId'].OutputValue" \
             --output text)
           echo "distribution-id=$DISTRIBUTION_ID" >> $GITHUB_OUTPUT

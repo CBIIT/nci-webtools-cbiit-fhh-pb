@@ -55,7 +55,7 @@ jobs:
           cd infrastructure
           echo "=== Infrastructure Stack Outputs ==="
           aws cloudformation describe-stacks \
-            --stack-name "${{ env.TIER }}-fhhpb-cloudfront" \
+            --stack-name "${{ env.TIER }}-fhhpb-cloudfront-s3" \
             --query "Stacks[0].Outputs" \
             --output table || echo "CloudFront stack not found"
 
