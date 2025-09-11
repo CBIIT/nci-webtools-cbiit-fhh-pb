@@ -29,10 +29,29 @@ export function initializeApiConfig(config) {
 }
 
 /**
- * Loads and displays the list of available family files
+ * Loads configuration first, then displays the list of available family files
  */
 export async function check_for_files() {
+  await loadInitialConfig();
   await getFileList(buildApiUrl("/families"));
+}
+
+async function loadInitialConfig() {
+  try {
+    const response = await fetch("/config/basic");
+    if (response.ok) {
+      const config = await response.json();
+      console.log("Initial config loaded:", config);
+      initializeApiConfig(config);
+    } else {
+      console.log("Could not load initial config, using default settings");
+    }
+  } catch (error) {
+    console.log(
+      "Could not load initial config, using default settings:",
+      error
+    );
+  }
 }
 
 /**
@@ -123,6 +142,7 @@ export async function load_config_and_data(family_id, config_id) {
     const data = await pedigree_response.json();
     const config = await config_response.json();
 
+    // Initialize API config (safe to call multiple times)
     initializeApiConfig(config);
 
     return [data, annotations, config];
