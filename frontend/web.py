@@ -78,6 +78,12 @@ def get_config(config_name):
     filename = config_name + ".json"
     return send_from_directory(CONFIG_FOLDER, filename)
 
+@app.route("/config/<config_name>.json")
+def get_config_with_extension(config_name):
+    """Route with explicit .json extension for consistency with static builds"""
+    filename = config_name + ".json"
+    return send_from_directory(CONFIG_FOLDER, filename)
+
 
 # API Gateway compatible routes
 @app.route("/families")

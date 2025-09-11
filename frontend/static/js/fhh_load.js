@@ -38,7 +38,7 @@ export async function check_for_files() {
 
 async function loadInitialConfig() {
   try {
-    const response = await fetch("/config/basic");
+    const response = await fetch("/config/basic.json");
     if (response.ok) {
       const config = await response.json();
       console.log("Initial config loaded:", config);
@@ -116,7 +116,7 @@ export async function load_config_and_data(family_id, config_id) {
 
   const pedigree_file = buildApiUrl("/families/" + family_id);
   const annotations_file = buildApiUrl("/annotations/" + family_id);
-  const config_file = `/config/${config_id || "basic"}`;
+  const config_file = `/config/${config_id || "basic"}.json`;
 
   try {
     const [pedigree_response, annotations_response, config_response] =
