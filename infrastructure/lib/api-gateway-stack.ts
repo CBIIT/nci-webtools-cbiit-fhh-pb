@@ -31,10 +31,9 @@ export class ApiGatewayStack extends cdk.Stack {
     // Create consolidated PUBLIC API Gateway
     this.api = new apigateway.RestApi(this, "FhhpbApi", {
       restApiName: `nci-cbiit-fhhpb-api-${tier}`,
-      description:
-        "Public API for Family Health History Pedigree Builder",
+      description: "API for Family Health History Pedigree Builder",
       endpointConfiguration: {
-        types: [apigateway.EndpointType.EDGE],
+        types: [apigateway.EndpointType.REGIONAL],
       },
       defaultCorsPreflightOptions: {
         allowOrigins: corsOrigins,
@@ -49,7 +48,7 @@ export class ApiGatewayStack extends cdk.Stack {
         allowCredentials: true, // Important for SAML authentication cookies/tokens
       },
       deployOptions: {
-        stageName: tier,
+        stageName: 'api',
         tracingEnabled: true,
       },
     });

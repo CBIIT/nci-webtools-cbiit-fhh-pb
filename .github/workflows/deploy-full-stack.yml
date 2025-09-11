@@ -1,4 +1,4 @@
-name: Deploy Frontend
+name: Deploy Full Stack (API Gateway + Frontend)
 on:
   workflow_dispatch:
     inputs:
@@ -12,7 +12,14 @@ on:
           - qa
 
 jobs:
-  deploy:
+  deploy-api:
+    uses: ./.github/workflows/deploy-api-gateway.yml
+    with:
+      tier: ${{ inputs.tier }}
+    secrets: inherit
+
+  deploy-frontend:
+    needs: deploy-api
     runs-on: ubuntu-latest
     env:
       TIER: ${{ inputs.tier }}
@@ -22,35 +29,12 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Get API Gateway URL
-        id: get-api-url
-        run: |
-          echo "Auto-detecting API Gateway URL from CloudFormation..."
-          API_URL=$(aws cloudformation describe-stacks \
-            --stack-name "${{ env.TIER }}-fhhpb-api-gateway" \
-            --query "Stacks[0].Outputs[?OutputKey=='ApiGatewayUrl'].OutputValue" \
-            --output text 2>/dev/null || echo "")
-          
-          if [ ! -z "$API_URL" ]; then
-            # Remove trailing slash for consistency
-            API_URL=$(echo "$API_URL" | sed 's/\/$//')
-            echo "✅ Auto-detected API Gateway URL: $API_URL"
-          else
-            echo "⚠️ No API Gateway URL found. Building without API configuration."
-          fi
-          
-          echo "api-url=$API_URL" >> $GITHUB_OUTPUT
-
-      - name: Build frontend assets
+      - name: Build frontend assets with API Gateway URL
         run: |
           cd frontend
-          if [ ! -z "${{ steps.get-api-url.outputs.api-url }}" ]; then
-            echo "Building with configured API Gateway URL"
-            python3 build.py --api-url "${{ steps.get-api-url.outputs.api-url }}" --tier "${{ env.TIER }}"
-          else
-            echo "Building without API Gateway URL (local/relative paths)"
-            python3 build.py --tier "${{ env.TIER }}"
-          fi
+          API_URL="${{ needs.deploy-api.outputs.api-gateway-url }}"
+          echo "Building with API Gateway URL: $API_URL"
+          python3 build.py --api-url "$API_URL" --tier "${{ env.TIER }}"
 
       - name: Deploy to S3
         run: |
@@ -70,3 +54,10 @@ jobs:
           aws cloudfront create-invalidation \
             --distribution-id ${{ steps.get-distribution-id.outputs.distribution-id }} \
             --paths "/*"
+
+      - name: Deployment Summary
+        run: |
+          echo "🚀 Full Stack Deployment Complete!"
+          echo "📍 Environment: ${{ env.TIER }}"
+          echo "🔗 API Gateway: ${{ needs.deploy-api.outputs.api-gateway-url }}"
+          echo "🌐 Frontend deployed and CloudFront cache invalidated"

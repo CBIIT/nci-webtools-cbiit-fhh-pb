@@ -10,6 +10,16 @@ on:
         options:
           - dev
           - qa
+  workflow_call:
+    inputs:
+      tier:
+        description: "Environment to deploy to"
+        required: true
+        type: string
+    outputs:
+      api-gateway-url:
+        description: "The deployed API Gateway URL"
+        value: ${{ jobs.deploy.outputs.api-gateway-url }}
 
 jobs:
   deploy:
@@ -68,36 +78,32 @@ jobs:
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
 
       - name: Get deployment outputs
+        id: get-outputs
         run: |
-          cd infrastructure
-          echo "=== API Gateway Stack Outputs ==="
-          aws cloudformation describe-stacks \
-            --stack-name "${{ env.TIER }}-fhhpb-api-gateway" \
-            --query "Stacks[0].Outputs" \
-            --output table || echo "API Gateway stack not found"
-
-      - name: Test API Gateway endpoints
-        run: |
-          echo "=== Testing API Gateway Health ==="
-          # Get API Gateway URL from CloudFormation outputs
+          # Get API Gateway URL
           API_URL=$(aws cloudformation describe-stacks \
             --stack-name "${{ env.TIER }}-fhhpb-api-gateway" \
             --query "Stacks[0].Outputs[?OutputKey=='ApiGatewayUrl'].OutputValue" \
-            --output text 2>/dev/null || echo "")
+            --output text)
           
-          if [ ! -z "$API_URL" ]; then
-            echo "API Gateway URL: $API_URL"
-            
-            # Test OPTIONS request (CORS preflight)
-            echo "Testing CORS preflight..."
-            curl -X OPTIONS "${API_URL}families" \
-              -H "Origin: https://example.com" \
-              -H "Access-Control-Request-Method: GET" \
-              -H "Access-Control-Request-Headers: Content-Type" \
-              -v -f --connect-timeout 10 || echo "CORS preflight test failed"
-            
-            echo "✅ API Gateway deployment completed"
-          else
-            echo "❌ Could not retrieve API Gateway URL"
-            exit 1
-          fi
+          # Remove trailing slash for consistency
+          API_URL=$(echo "$API_URL" | sed 's/\/$//')
+          echo "api-gateway-url=$API_URL" >> $GITHUB_OUTPUT
+          echo "✅ API Gateway URL: $API_URL"
+
+      - name: Test API Gateway endpoints
+        run: |
+          API_URL="${{ steps.get-outputs.outputs.api-gateway-url }}"
+          echo "Testing API Gateway endpoint: $API_URL"
+          
+          # Test CORS preflight
+          curl -X OPTIONS "${API_URL}/families" \
+            -H "Origin: https://example.com" \
+            -H "Access-Control-Request-Method: GET" \
+            -H "Access-Control-Request-Headers: Content-Type" \
+            --connect-timeout 10 --silent --fail || echo "⚠️ CORS test failed (expected for some configurations)"
+          
+          echo "✅ API Gateway deployment completed"
+
+    outputs:
+      api-gateway-url: ${{ steps.get-outputs.outputs.api-gateway-url }}
