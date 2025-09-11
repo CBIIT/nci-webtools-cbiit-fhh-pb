@@ -2,3 +2,6 @@ node_modules
 .DS_Store
 processed/
 frontend/build/*
+data
+
+infrastructure/cdk.context.json

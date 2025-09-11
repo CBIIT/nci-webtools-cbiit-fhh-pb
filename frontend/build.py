@@ -2,14 +2,22 @@
 """
 Build script to render Flask templates with correct static paths for static deployment.
 This script processes Jinja2 templates and replaces url_for() calls with actual static paths.
+It also supports dynamic API Gateway URL injection via command line arguments.
 """
 
 import os
 import sys
 import shutil
+import json
+import argparse
 from pathlib import Path
 
 def main():
+    parser = argparse.ArgumentParser(description='Build frontend assets with optional API Gateway URL injection')
+    parser.add_argument('--api-url', help='API Gateway base URL to inject into configuration')
+    parser.add_argument('--tier', help='Deployment tier (dev, qa, prod)', default='dev')
+    args = parser.parse_args()
+    
     # Paths
     frontend_dir = Path(__file__).parent
     templates_dir = frontend_dir / 'templates'
@@ -26,17 +34,44 @@ def main():
         shutil.copytree(static_dir, build_dir / 'static')
         print(f"Copied static files to {build_dir / 'static'}")
     
-    # Copy config files if they exist
+    # Copy and process config files
     config_dir = frontend_dir / 'config'
     if config_dir.exists():
         shutil.copytree(config_dir, build_dir / 'config')
         print(f"Copied config files to {build_dir / 'config'}")
+        
+        # Inject API URL into configuration if provided
+        if args.api_url:
+            inject_api_url(build_dir / 'config' / 'basic.json', args.api_url, args.tier)
     
     # Process templates
     for template_file in templates_dir.glob('*.html'):
         process_template(template_file, build_dir, static_dir)
     
     print(f"Build completed. Files ready for deployment in: {build_dir}")
+
+def inject_api_url(config_path, api_url, tier):
+    """Inject API Gateway URL into the configuration file."""
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+        
+        # Ensure API section exists and update baseUrl
+        if 'api' not in config:
+            config['api'] = {}
+        
+        # Remove trailing slash from API URL if present
+        clean_api_url = api_url.rstrip('/')
+        config['api']['baseUrl'] = clean_api_url
+        
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=2)
+        
+        print(f"✅ Injected API URL into {config_path}: {clean_api_url}")
+        
+    except Exception as e:
+        print(f"❌ Failed to inject API URL into {config_path}: {e}")
+        sys.exit(1)
 
 def process_template(template_path, build_dir, static_dir):
     """Process a single template file and replace url_for calls with static paths."""

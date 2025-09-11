@@ -1,4 +1,7 @@
 {
+  "api": {
+    "baseUrl": ""
+  },
   "style": "compact",
   "margin":100,
   "size": 50,
