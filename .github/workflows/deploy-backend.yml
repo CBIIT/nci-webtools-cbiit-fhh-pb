@@ -16,12 +16,12 @@ on:
         default: "all"
         type: string
         # Examples: "all", "get-annotations,write-annotations", "list-families"
-  push:
-    branches: [main, develop]
-    paths:
-      - 'backend/lambda/**'
-      - 'infrastructure/lib/lambda-*-stack.ts'
-      - 'infrastructure/lib/api-gateway-stack.ts'
+  # push:
+  #   branches: [main, develop]
+  #   paths:
+  #     - 'backend/lambda/**'
+  #     - 'infrastructure/lib/lambda-*-stack.ts'
+  #     - 'infrastructure/lib/api-gateway-stack.ts'
 
 jobs:
   detect-changes:
