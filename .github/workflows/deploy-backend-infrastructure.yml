@@ -10,6 +10,12 @@ on:
         options:
           - dev
           - qa
+  workflow_call:
+    inputs:
+      tier:
+        description: "Environment to deploy to"
+        required: true
+        type: string
 
 jobs:
   deploy:
