@@ -497,6 +497,12 @@ function draw_connector(person_id, mother_id, father_id) {
     let mother_loc = get_center(mother);
     let father_loc = get_center(father);
 
+    if ( Number.isNaN(mother_loc.x) || Number.isNaN(mother_loc.y) || Number.isNaN(father_loc.x) || Number.isNaN(father_loc.y) ) {
+      console.log("NaN in connector for " + person_id);
+      return;
+    }
+
+
     draw_line_top_of_child(child_loc, person_id);
     draw_line_between_parents(mother_loc, father_loc, mother_id, father_id);
     draw_line_connecting_parents_down(
