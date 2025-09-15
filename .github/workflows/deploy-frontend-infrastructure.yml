@@ -1,9 +1,5 @@
 name: Deploy Frontend Infrastructure
 on:
-  # push:
-  #   paths:
-  #     - 'infrastructure/**'
-  #     - '.github/workflows/frontend-infrastructure.yml'
   workflow_dispatch:
     inputs:
       tier:

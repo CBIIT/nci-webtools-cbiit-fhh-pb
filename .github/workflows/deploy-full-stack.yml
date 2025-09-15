@@ -21,7 +21,7 @@ jobs:
 
   deploy-frontend-infrastructure:
     name: Deploy Frontend Infrastructure
-    uses: ./.github/workflows/frontend-infrastructure.yml
+    uses: ./.github/workflows/deploy-frontend-infrastructure.yml
     with:
       tier: ${{ inputs.tier }}
     secrets: inherit
