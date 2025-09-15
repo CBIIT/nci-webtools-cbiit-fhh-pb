@@ -34,10 +34,10 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
           "logs:CreateLogGroup",
           "logs:CreateLogStream",
           "logs:PutLogEvents",
-          "logs:DescribeLogGroups",
-          "logs:DescribeLogStreams",
         ],
-        resources: ["*"],
+        resources: [
+          `arn:aws:logs:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:log-group:/aws/lambda/nci-cbiit-fhhpb-*-${tier}:*`
+        ],
       })
     );
 
@@ -113,9 +113,5 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
 
 
 
-    new cdk.CfnOutput(this, "LambdaFunctionArn", {
-      value: this.lambdaFunction.functionArn,
-      description: "Lambda Function ARN",
-    });
   }
 }

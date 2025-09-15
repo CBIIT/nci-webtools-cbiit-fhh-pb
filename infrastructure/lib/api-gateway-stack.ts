@@ -199,15 +199,6 @@ export class ApiGatewayStack extends cdk.Stack {
       description: "CORS Origins configured for this API",
     });
 
-    new cdk.CfnOutput(this, "SecurityConfiguration", {
-      value: JSON.stringify({
-        endpointType: "EDGE",
-        accessRestriction: "PUBLIC",
-        corsOrigins: corsOrigins,
-      }),
-      description: "Security configuration details for the API Gateway",
-    });
-
     new cdk.CfnOutput(this, "AccessInstructions", {
       value:
         "This API is PUBLIC and accessible from the internet with CORS restrictions applied.",

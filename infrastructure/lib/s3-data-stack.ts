@@ -31,9 +31,5 @@ export class S3DataStack extends cdk.Stack {
       description: "Data S3 Bucket Name",
     });
 
-    new cdk.CfnOutput(this, "DataBucketArn", {
-      value: this.dataBucket.bucketArn,
-      description: "Data S3 Bucket ARN",
-    });
   }
 }
