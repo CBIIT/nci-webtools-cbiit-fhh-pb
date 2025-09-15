@@ -1,4 +1,4 @@
-name: Deploy Full Stack (API Gateway + Frontend)
+name: Deploy Full Stack (Complete Backend + Frontend Infrastructure)
 on:
   workflow_dispatch:
     inputs:
@@ -12,14 +12,23 @@ on:
           - qa
 
 jobs:
-  deploy-api:
-    uses: ./.github/workflows/deploy-api-gateway.yml
+  deploy-backend-infrastructure:
+    name: Deploy Backend Infrastructure
+    uses: ./.github/workflows/deploy-backend-infrastructure.yml
     with:
       tier: ${{ inputs.tier }}
     secrets: inherit
 
-  deploy-frontend:
-    needs: deploy-api
+  deploy-frontend-infrastructure:
+    name: Deploy Frontend Infrastructure
+    uses: ./.github/workflows/frontend-infrastructure.yml
+    with:
+      tier: ${{ inputs.tier }}
+    secrets: inherit
+
+  deploy-frontend-assets:
+    name: Deploy Frontend Assets
+    needs: [deploy-backend-infrastructure, deploy-frontend-infrastructure]
     runs-on: ubuntu-latest
     env:
       TIER: ${{ inputs.tier }}
@@ -29,16 +38,31 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Get API Gateway URL
+        id: get-api-url
+        run: |
+          API_URL=$(aws cloudformation describe-stacks \
+            --stack-name "${{ env.TIER }}-fhhpb-api-gateway" \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiGatewayUrl'].OutputValue" \
+            --output text)
+          
+          # Remove trailing slash for consistency
+          API_URL=$(echo "$API_URL" | sed 's/\/$//')
+          echo "api-gateway-url=$API_URL" >> $GITHUB_OUTPUT
+          echo "✅ Retrieved API Gateway URL: $API_URL"
+
       - name: Build frontend assets with API Gateway URL
         run: |
           cd frontend
-          API_URL="${{ needs.deploy-api.outputs.api-gateway-url }}"
-          echo "Building with API Gateway URL: $API_URL"
+          API_URL="${{ steps.get-api-url.outputs.api-gateway-url }}"
+          echo "Building frontend with API Gateway URL: $API_URL"
           python3 build.py --api-url "$API_URL" --tier "${{ env.TIER }}"
 
-      - name: Deploy to S3
+      - name: Deploy frontend assets to S3
         run: |
+          echo "Deploying frontend assets to S3..."
           aws s3 sync frontend/build/ s3://nci-cbiit-fhhpb-website-${{ env.TIER }} --delete
+          echo "✅ Frontend assets deployed to S3"
 
       - name: Get CloudFront Distribution ID
         id: get-distribution-id
@@ -48,16 +72,32 @@ jobs:
             --query "Stacks[0].Outputs[?OutputKey=='DistributionId'].OutputValue" \
             --output text)
           echo "distribution-id=$DISTRIBUTION_ID" >> $GITHUB_OUTPUT
+          echo "✅ Retrieved CloudFront Distribution ID: $DISTRIBUTION_ID"
 
       - name: Invalidate CloudFront Cache
         run: |
+          echo "Invalidating CloudFront cache..."
           aws cloudfront create-invalidation \
             --distribution-id ${{ steps.get-distribution-id.outputs.distribution-id }} \
             --paths "/*"
+          echo "✅ CloudFront cache invalidated"
 
-      - name: Deployment Summary
+      - name: Full Stack Deployment Summary
         run: |
-          echo "🚀 Full Stack Deployment Complete!"
+          echo ""
+          echo "🎉 FULL STACK DEPLOYMENT COMPLETE!"
+          echo "════════════════════════════════════"
           echo "📍 Environment: ${{ env.TIER }}"
-          echo "🔗 API Gateway: ${{ needs.deploy-api.outputs.api-gateway-url }}"
-          echo "🌐 Frontend deployed and CloudFront cache invalidated"
+          echo ""
+          echo "🏗️ BACKEND INFRASTRUCTURE:"
+          echo "  📁 S3 Data Bucket: nci-cbiit-fhhpb-data-${{ env.TIER }}"
+          echo "  🔄 JSON Processing: Upload files to s3://nci-cbiit-fhhpb-data-${{ env.TIER }}/raw/"
+          echo "  🔗 API Gateway: ${{ steps.get-api-url.outputs.api-gateway-url }}"
+          echo "  ⚡ Lambda Functions: All backend APIs deployed"
+          echo ""
+          echo "🌐 FRONTEND INFRASTRUCTURE:"
+          echo "  🖥️ Website: https://$(aws cloudformation describe-stacks --stack-name '${{ env.TIER }}-fhhpb-cloudfront-s3' --query 'Stacks[0].Outputs[?OutputKey==\`DomainName\`].OutputValue' --output text 2>/dev/null || echo 'CloudFront domain')"
+          echo "  ☁️ CloudFront: ${{ steps.get-distribution-id.outputs.distribution-id }}"
+          echo "  📦 S3 Website: nci-cbiit-fhhpb-website-${{ env.TIER }}"
+          echo ""
+          echo "✅ All infrastructure and assets deployed successfully!"
