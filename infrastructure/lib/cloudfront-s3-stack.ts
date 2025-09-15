@@ -39,6 +39,7 @@ export class CloudFrontS3Stack extends cdk.Stack {
 
     // Create CloudFront distribution
     this.distribution = new cloudfront.Distribution(this, 'FrontendDistribution', {
+      comment: `CF distribution for pedigree-${tier}.cancer.gov`,
       defaultBehavior: {
         origin: origins.S3BucketOrigin.withOriginAccessControl(this.bucket),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
