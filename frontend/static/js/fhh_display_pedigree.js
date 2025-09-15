@@ -10,6 +10,7 @@ import {
   check_for_overlaps,
   check_for_unplaced_people,
   reset_furthest_locations,
+  find_all_children
 } from "./fhh_build_pedigree.js";
 
 import {
@@ -173,7 +174,7 @@ function add_unplaced_people_alerts(alert_elem) {
     p.append("Missing People: ");
     for (const index in missing_people) {
       const person_id = missing_people[index];
-      const children = find_children(person_id);
+      const children = find_all_children(person_id);
       const text = person_id + " [" + children.length + "]";
       const button = create_button(text);
       p.append(button);
