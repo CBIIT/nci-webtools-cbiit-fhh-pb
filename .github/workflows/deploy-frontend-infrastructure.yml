@@ -1,4 +1,4 @@
-name: Deploy Frontend Infrastructure (CloudFront + S3 Website)
+name: Deploy Frontend Infrastructure
 on:
   # push:
   #   paths:

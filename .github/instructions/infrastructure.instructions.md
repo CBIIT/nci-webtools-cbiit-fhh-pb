@@ -189,91 +189,118 @@ this.dataBucket = new s3.Bucket(this, "DataBucket", {
 
 ## GitHub Actions Workflows
 
-## GitHub Actions Workflows
+The project uses a comprehensive set of GitHub Actions workflows for deploying different components of the infrastructure. All workflows support tier-based deployment (dev/qa) via manual dispatch.
 
-### Deploy API Gateway (`.github/workflows/deploy-api-gateway.yml`)
+### Deploy Full Stack (`.github/workflows/deploy-full-stack.yml`)
 
-- **Purpose**: Deploy the consolidated API Gateway with all Lambda integrations
-- **Triggers**:
-  - Manual dispatch with tier selection (dev/qa)
-  - Push to main/develop branches with API Gateway changes
+- **Purpose**: Complete end-to-end deployment of the entire application
+- **Triggers**: Manual dispatch with tier selection (dev/qa)
 - **Components Deployed**:
-  - API Gateway Stack (`ApiGateway-{tier}`)
+  - Backend Infrastructure (S3 Data + All Lambda Functions + API Gateway)
+  - Frontend Infrastructure (CloudFront + S3 Website)
+  - Frontend Assets (Built and deployed to S3)
+- **Features**:
+  - Parallel deployment of backend and frontend infrastructure
+  - Automatic API Gateway URL integration with frontend build
+  - CloudFront cache invalidation
+  - Comprehensive deployment summary
+- **Usage**: Ideal for initial deployments or major releases
+
+### Deploy Backend Infrastructure (`.github/workflows/deploy-backend-infrastructure.yml`)
+
+- **Purpose**: Deploy complete backend infrastructure foundation
+- **Triggers**: Manual dispatch with tier selection (dev/qa)
+- **Components Deployed** (in dependency order):
+  1. S3 Data Stack (`S3DataStack-{tier}`)
+  2. Lambda JSON Processor Stack (`LambdaJsonProcessor-{tier}`)
+  3. Lambda Write Annotations Stack (`LambdaWriteAnnotations-{tier}`)
+  4. Lambda Get Annotations Stack (`LambdaGetAnnotations-{tier}`)
+  5. Lambda Get Family Stack (`LambdaGetFamily-{tier}`)
+  6. Lambda List Families Stack (`LambdaListFamilies-{tier}`)
+  7. API Gateway Stack (`ApiGateway-{tier}`)
+  8. S3 JSON Processor Trigger Stack (`S3JsonProcessorTrigger-{tier}`)
+- **Features**:
+  - Proper dependency management and deployment order
+  - Comprehensive testing of S3 buckets, Lambda functions, and API Gateway
+  - S3 trigger configuration with automatic raw/ folder creation
+  - Complete backend infrastructure validation
+- **Usage**: Backend-only deployments or infrastructure updates
+
+### Deploy API (`.github/workflows/deploy-api.yml`)
+
+- **Purpose**: Deploy API Gateway and all associated Lambda functions
+- **Triggers**: Manual dispatch with tier selection (dev/qa)
+- **Components Deployed** (in dependency order):
+  1. Lambda Write Annotations Stack (`LambdaWriteAnnotations-{tier}`)
+  2. Lambda Get Annotations Stack (`LambdaGetAnnotations-{tier}`)
+  3. Lambda Get Family Stack (`LambdaGetFamily-{tier}`)
+  4. Lambda List Families Stack (`LambdaListFamilies-{tier}`)
+  5. API Gateway Stack (`ApiGateway-{tier}`)
 - **Features**:
   - SAML authentication-ready CORS configuration
-  - Integration with all Lambda functions
-  - Stage-based deployment
-  - CloudWatch monitoring setup
-- **Usage**:
-  ```bash
-  # Manual trigger via GitHub UI
-  # Select tier: dev or qa
-  ```
-
-### Deploy Individual Lambda Functions
-
-Each Lambda function has its own deployment workflow for independent updates:
-
-#### Deploy JSON Processor Lambda (`.github/workflows/deploy-json-processor.yml`)
-
-- **Components**: Lambda JSON Processor Stack (`LambdaJsonProcessor-{tier}`)
-- **Purpose**: S3 event-driven file processing
-
-#### Deploy Get Annotations Lambda (`.github/workflows/deploy-get-annotations.yml`)
-
-- **Components**: Lambda Get Annotations Stack (`LambdaGetAnnotations-{tier}`)
-- **Purpose**: API endpoint for retrieving family member annotations
-
-#### Deploy Write Annotations Lambda (`.github/workflows/deploy-write-annotations.yml`)
-
-- **Components**: Lambda Write Annotations Stack (`LambdaWriteAnnotations-{tier}`)
-- **Purpose**: API endpoint for saving family member annotations
-
-#### Deploy Get Family Lambda (`.github/workflows/deploy-get-family.yml`)
-
-- **Components**: Lambda Get Family Stack (`LambdaGetFamily-{tier}`)
-- **Purpose**: API endpoint for retrieving specific family data
-
-#### Deploy List Families Lambda (`.github/workflows/deploy-list-families.yml`)
-
-- **Components**: Lambda List Families Stack (`LambdaListFamilies-{tier}`)
-- **Purpose**: API endpoint for listing all available families
-
-### Deploy S3-Lambda Integration (`.github/workflows/deploy-s3-json-processor-trigger.yml`)
-
-- **Purpose**: Deploy S3 event notification configuration for JSON processor
-- **Triggers**: Manual dispatch only
-- **Components Deployed**:
-  - S3-Lambda Integration Stack (`S3JsonProcessorTrigger-{tier}`)
-- **When to Use**:
-  - Initial setup
-  - S3 event configuration changes
-  - Lambda function ARN changes
+  - Comprehensive Lambda function and API Gateway testing
+  - CloudFormation outputs for all deployed stacks
+  - API endpoint validation
+- **Usage**: API-focused deployments when backend infrastructure already exists
 
 ### Deploy Backend (`.github/workflows/deploy-backend.yml`)
 
-- **Purpose**: Deploy all backend Lambda functions and API Gateway in sequence
-- **Triggers**: Manual dispatch with tier selection
-- **Components Deployed**: All Lambda stacks + API Gateway stack
-- **Usage**: Comprehensive backend deployment for major updates
+- **Purpose**: Deploy individual Lambda functions with optional API Gateway
+- **Triggers**: Manual dispatch with tier selection and Lambda function selection
+- **Components Deployed**: Configurable Lambda stacks + API Gateway stack
+- **Features**:
+  - Selective Lambda function deployment
+  - Lambda function testing before deployment
+  - Change detection for optimized deployments
+  - Individual stack deployment for faster updates
+- **Usage**: Targeted Lambda function updates or API Gateway changes
 
-### Independent Stack Deployment Benefits
+### Deploy JSON Processor (`.github/workflows/deploy-json-processor.yml`)
 
-- **Individual Lambda Stacks**: Can be deployed independently for code changes
-- **API Gateway Stack**: Can be deployed separately for routing/CORS changes
-- **Integration Stack**: Optional deployment for event configuration changes
-- **Faster Deployments**: Skip unnecessary stack updates
-- **Reduced Risk**: Isolated changes to specific components
+- **Purpose**: Deploy complete JSON processing pipeline
+- **Triggers**: Manual dispatch with tier selection (dev/qa)
+- **Components Deployed**:
+  1. Lambda JSON Processor Stack (`LambdaJsonProcessor-{tier}`)
+  2. S3 JSON Processor Trigger Stack (`S3JsonProcessorTrigger-{tier}`)
+- **Features**:
+  - Lambda function testing before deployment
+  - S3 trigger configuration and validation
+  - Automatic raw/ folder creation for file uploads
+  - End-to-end JSON processing pipeline testing
+- **Usage**: JSON processing feature deployments or updates
 
-### Deploy Frontend Infrastructure (`.github/workflows/frontend-infrastructure.yml`)
+### Deploy Frontend Infrastructure (`.github/workflows/deploy-frontend-infrastructure.yml`)
 
-- **Purpose**: Deploy CloudFront and S3 hosting infrastructure
-- **Triggers**: Manual dispatch or infrastructure changes
+- **Purpose**: Deploy CloudFront and S3 website hosting infrastructure
+- **Triggers**: Manual dispatch with tier selection (dev/qa)
+- **Components Deployed**:
+  - CloudFront S3 Stack (`CloudFrontS3Stack-{tier}`)
+- **Features**:
+  - CloudFront distribution with Origin Access Control
+  - S3 website bucket configuration
+  - HTTPS enforcement and security headers
+- **Usage**: Frontend infrastructure-only deployments
 
 ### Deploy Frontend (`.github/workflows/deploy-frontend.yml`)
 
-- **Purpose**: Build and deploy frontend assets to S3
-- **Triggers**: Manual dispatch with tier selection
+- **Purpose**: Build and deploy frontend assets to existing infrastructure
+- **Triggers**: Manual dispatch with tier selection (dev/qa)
+- **Components Deployed**: Frontend assets to S3 website bucket
+- **Features**:
+  - Frontend build with configurable API URL
+  - S3 asset synchronization
+  - CloudFront cache invalidation
+  - Build artifact optimization
+- **Usage**: Frontend code updates without infrastructure changes
+
+### Workflow Organization Benefits
+
+- **Modular Deployment**: Choose the right workflow for your deployment needs
+- **Dependency Management**: Workflows handle CDK stack dependencies automatically
+- **Parallel Execution**: Infrastructure deployment workflows run compatible stacks in parallel
+- **Comprehensive Testing**: Each workflow includes validation and testing
+- **Tier Support**: All workflows support dev/qa environment deployment
+- **Rollback Ready**: Individual component deployment enables easier rollbacks
 
 ## Environment Variables and Configuration
 

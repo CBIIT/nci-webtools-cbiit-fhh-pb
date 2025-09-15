@@ -1,4 +1,4 @@
-name: Deploy Full Stack (Complete Backend + Frontend Infrastructure)
+name: Deploy Full Stack
 on:
   workflow_dispatch:
     inputs:
@@ -45,7 +45,7 @@ jobs:
             --stack-name "${{ env.TIER }}-fhhpb-api-gateway" \
             --query "Stacks[0].Outputs[?OutputKey=='ApiGatewayUrl'].OutputValue" \
             --output text)
-          
+
           # Remove trailing slash for consistency
           API_URL=$(echo "$API_URL" | sed 's/\/$//')
           echo "api-gateway-url=$API_URL" >> $GITHUB_OUTPUT
