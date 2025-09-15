@@ -1,4 +1,4 @@
-name: Deploy Frontend Infrastructure
+name: Deploy Frontend Infrastructure (CloudFront + S3 Website)
 on:
   # push:
   #   paths:
@@ -45,22 +45,16 @@ jobs:
           cd infrastructure
           npx cdk synth
 
-      - name: Deploy
+      - name: Deploy CloudFront S3 Stack
         run: |
           cd infrastructure
-          npx cdk deploy --require-approval never
+          npx cdk deploy CloudFrontS3Stack-${{ env.TIER }} --require-approval never
 
       - name: Get deployment outputs
         run: |
           cd infrastructure
-          echo "=== Infrastructure Stack Outputs ==="
+          echo "=== CloudFront S3 Stack Outputs ==="
           aws cloudformation describe-stacks \
             --stack-name "${{ env.TIER }}-fhhpb-cloudfront-s3" \
             --query "Stacks[0].Outputs" \
             --output table || echo "CloudFront stack not found"
-
-          echo "=== S3 Stack Outputs ==="
-          aws cloudformation describe-stacks \
-            --stack-name "${{ env.TIER }}-fhhpb-s3-data" \
-            --query "Stacks[0].Outputs" \
-            --output table || echo "S3 stack not found"
