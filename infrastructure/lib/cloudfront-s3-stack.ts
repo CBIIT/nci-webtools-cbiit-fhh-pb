@@ -1,11 +1,9 @@
-import * as cdk from 'aws-cdk-lib';
-import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
-import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
-import * as s3 from 'aws-cdk-lib/aws-s3';
-import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
-import * as path from 'path';
-import { Construct } from 'constructs';
-import { createTags } from './utils/tags';
+import * as cdk from "aws-cdk-lib";
+import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
+import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
+import * as s3 from "aws-cdk-lib/aws-s3";
+import { Construct } from "constructs";
+import { createTags } from "./utils/tags";
 
 export class CloudFrontS3Stack extends cdk.Stack {
   public readonly bucket: s3.Bucket;
@@ -23,47 +21,45 @@ export class CloudFrontS3Stack extends cdk.Stack {
       // removalPolicy: cdk.RemovalPolicy.DESTROY, // For development - change for production
       // autoDeleteObjects: true, // For development - change for production
     });
-    
+
     // Add tags to S3 bucket
-    const s3Tags = createTags({ tier, resourceName: 's3' });
+    const s3Tags = createTags({ tier, resourceName: "s3" });
     Object.entries(s3Tags).forEach(([key, value]) => {
       cdk.Tags.of(this.bucket).add(key, value);
     });
 
-    // Deploy frontend files to S3
-    new s3deploy.BucketDeployment(this, "FrontendDeployment", {
-      sources: [s3deploy.Source.asset(path.join(__dirname, "../../frontend/build"))],
-      destinationBucket: this.bucket,
-      destinationKeyPrefix: "",
-    });
-
     // Create CloudFront distribution
-    this.distribution = new cloudfront.Distribution(this, 'FrontendDistribution', {
-      comment: `CF distribution for pedigree-${tier}.cancer.gov`,
-      defaultBehavior: {
-        origin: origins.S3BucketOrigin.withOriginAccessControl(this.bucket),
-        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-        cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
-        originRequestPolicy: cloudfront.OriginRequestPolicy.CORS_S3_ORIGIN,
-      },
-      defaultRootObject: 'index.html',
-      errorResponses: [
-        {
-          httpStatus: 404,
-          responseHttpStatus: 200,
-          responsePagePath: '/index.html',
+    this.distribution = new cloudfront.Distribution(
+      this,
+      "FrontendDistribution",
+      {
+        comment: `CF distribution for pedigree-${tier}.cancer.gov`,
+        defaultBehavior: {
+          origin: origins.S3BucketOrigin.withOriginAccessControl(this.bucket),
+          viewerProtocolPolicy:
+            cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+          originRequestPolicy: cloudfront.OriginRequestPolicy.CORS_S3_ORIGIN,
         },
-        {
-          httpStatus: 403,
-          responseHttpStatus: 200,
-          responsePagePath: '/index.html',
-        },
-      ],
-      priceClass: cloudfront.PriceClass.PRICE_CLASS_100, // Use only North America and Europe
-    });
-    
+        defaultRootObject: "index.html",
+        errorResponses: [
+          {
+            httpStatus: 404,
+            responseHttpStatus: 200,
+            responsePagePath: "/index.html",
+          },
+          {
+            httpStatus: 403,
+            responseHttpStatus: 200,
+            responsePagePath: "/index.html",
+          },
+        ],
+        priceClass: cloudfront.PriceClass.PRICE_CLASS_100, // Use only North America and Europe
+      }
+    );
+
     // Add tags to CloudFront distribution
-    const cloudfrontTags = createTags({ tier, resourceName: 'cloudfront' });
+    const cloudfrontTags = createTags({ tier, resourceName: "cloudfront" });
     Object.entries(cloudfrontTags).forEach(([key, value]) => {
       cdk.Tags.of(this.distribution).add(key, value);
     });
@@ -75,14 +71,14 @@ export class CloudFrontS3Stack extends cdk.Stack {
     });
 
     // Output the CloudFront URL
-    new cdk.CfnOutput(this, 'DistributionURL', {
+    new cdk.CfnOutput(this, "DistributionURL", {
       value: `https://${this.distribution.distributionDomainName}`,
-      description: 'CloudFront Distribution URL',
+      description: "CloudFront Distribution URL",
     });
 
-    new cdk.CfnOutput(this, 'DistributionId', {
+    new cdk.CfnOutput(this, "DistributionId", {
       value: this.distribution.distributionId,
-      description: 'CloudFront Distribution ID',
+      description: "CloudFront Distribution ID",
     });
   }
-} 
+}

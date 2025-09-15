@@ -56,7 +56,7 @@ jobs:
       - name: CDK Bootstrap (if needed)
         run: |
           cd infrastructure
-          npx cdk bootstrap aws://${{ secrets.AWS_ACCOUNT_ID }}/${{ env.AWS_REGION }}
+          npx cdk bootstrap --region ${{ env.AWS_REGION }}
         env:
           TIER: ${{ env.TIER }}
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
