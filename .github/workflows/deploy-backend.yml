@@ -1,4 +1,4 @@
-name: Deploy Backend (All Lambda Functions + API Gateway)
+name: Deploy Backend
 on:
   workflow_dispatch:
     inputs:
