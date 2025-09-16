@@ -20,12 +20,14 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: ${{ (inputs.tier == 'dev' || inputs.tier == 'qa') && 'nonprod' || 'prod' }}
     env:
       TIER: ${{ inputs.tier }}
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
       AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+      SSL_CERTIFICATE_ARN: ${{ secrets.SSL_CERTIFICATE_ARN }}
       
     steps:
       - uses: actions/checkout@v3
