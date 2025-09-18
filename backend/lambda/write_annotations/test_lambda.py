@@ -1,7 +1,7 @@
 import json
 import boto3
 import pytest
-from moto import mock_s3
+from moto import mock_aws
 from unittest.mock import patch, MagicMock
 import sys
 import os
@@ -15,7 +15,7 @@ spec.loader.exec_module(lambda_module)
 from write_annotations import write_annotations
 
 
-@mock_s3
+@mock_aws
 def test_write_annotations_function():
     """Test the write_annotations function with mocked S3."""
     # Create a mock S3 bucket
@@ -70,7 +70,7 @@ def test_lambda_handler_success():
     context = MagicMock()
     
     # Mock the write_annotations function
-    with patch('lambda.write_annotations') as mock_write:
+    with patch.object(lambda_module, 'write_annotations') as mock_write:
         mock_write.return_value = {'status': 'success', 'message': 'Annotations written successfully'}
         
         result = lambda_module.lambda_handler(event, context)
@@ -136,7 +136,7 @@ def test_lambda_handler_base64_encoded():
     
     context = MagicMock()
     
-    with patch('lambda.write_annotations') as mock_write:
+    with patch.object(lambda_module, 'write_annotations') as mock_write:
         mock_write.return_value = {'status': 'success', 'message': 'Success'}
         
         result = lambda_module.lambda_handler(event, context)
@@ -154,7 +154,7 @@ def test_lambda_handler_error_response():
     
     context = MagicMock()
     
-    with patch('lambda.write_annotations') as mock_write:
+    with patch.object(lambda_module, 'write_annotations') as mock_write:
         mock_write.return_value = {'status': 'error', 'message': 'S3 error occurred'}
         
         result = lambda_module.lambda_handler(event, context)

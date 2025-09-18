@@ -8,16 +8,16 @@ logger.setLevel(logging.INFO)
 def lambda_handler(event, context):
     """AWS Lambda handler for API Gateway integration."""
     
-    def response(status_code, body_data, content_type='application/json'):
+    def response(status_code, body_data, is_raw_json=False):
         return {
             'statusCode': status_code,
             'headers': {
-                'Content-Type': content_type,
+                'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*',
                 'Access-Control-Allow-Headers': 'Content-Type',
                 'Access-Control-Allow-Methods': 'GET, OPTIONS'
             },
-            'body': body_data if content_type == 'application/json' else json.dumps(body_data)
+            'body': body_data if is_raw_json else json.dumps(body_data)
         }
     
     try:
@@ -33,7 +33,7 @@ def lambda_handler(event, context):
         
         if result['status'] == 'success':
             # Return the JSON data directly as the response body
-            return response(200, result['data'], 'application/json')
+            return response(200, result['data'], is_raw_json=True)
         elif result['status'] == 'not_found':
             return response(404, {'error': result['message']})
         else:

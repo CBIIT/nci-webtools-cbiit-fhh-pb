@@ -20,7 +20,7 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Get API Gateway URL
         id: get-api-url
@@ -30,7 +30,7 @@ jobs:
             --stack-name "${{ env.TIER }}-fhhpb-api-gateway" \
             --query "Stacks[0].Outputs[?OutputKey=='ApiGatewayUrl'].OutputValue" \
             --output text 2>/dev/null || echo "")
-          
+
           if [ ! -z "$API_URL" ]; then
             # Remove trailing slash for consistency
             API_URL=$(echo "$API_URL" | sed 's/\/$//')
@@ -38,7 +38,7 @@ jobs:
           else
             echo "⚠️ No API Gateway URL found. Building without API configuration."
           fi
-          
+
           echo "api-url=$API_URL" >> $GITHUB_OUTPUT
 
       - name: Build frontend assets

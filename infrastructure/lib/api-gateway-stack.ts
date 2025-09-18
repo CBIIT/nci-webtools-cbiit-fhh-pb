@@ -23,10 +23,10 @@ export class ApiGatewayStack extends cdk.Stack {
 
     const tier = process.env.TIER || "dev";
 
-    // Determine CORS origins based on CloudFront domain availability
-    const corsOrigins = props.cloudFrontDomainName
-      ? [`https://${props.cloudFrontDomainName}`]
-      : ["https://localhost:3000"]; // Restrict even development to specific origins
+    const corsOrigins = [
+      `https://pedigree-${tier}.cancer.gov`,
+      `https://${props.cloudFrontDomainName}`,
+    ];
 
     // Create consolidated PUBLIC API Gateway
     this.api = new apigateway.RestApi(this, "FhhpbApi", {
@@ -48,7 +48,7 @@ export class ApiGatewayStack extends cdk.Stack {
         allowCredentials: true, // Important for SAML authentication cookies/tokens
       },
       deployOptions: {
-        stageName: 'api',
+        stageName: "api",
         tracingEnabled: true,
       },
     });

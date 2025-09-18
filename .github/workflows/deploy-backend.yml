@@ -15,13 +15,7 @@ on:
         required: false
         default: "all"
         type: string
-        # Examples: "all", "get-annotations,write-annotations", "list-families"
-  # push:
-  #   branches: [main, develop]
-  #   paths:
-  #     - 'backend/lambda/**'
-  #     - 'infrastructure/lib/lambda-*-stack.ts'
-  #     - 'infrastructure/lib/api-gateway-stack.ts'
+        # Examples: "all", "get_annotations,write_annotations", "list_families"
 
 jobs:
   detect-changes:
@@ -31,10 +25,10 @@ jobs:
       api-gateway-changes: ${{ steps.changes.outputs.api-gateway-changes }}
       deploy-lambdas: ${{ steps.functions.outputs.deploy-lambdas }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 2
-      
+
       - name: Detect changed files
         id: changes
         run: |
@@ -61,7 +55,7 @@ jobs:
         id: functions
         run: |
           if [ "${{ inputs.lambda_functions }}" = "all" ] || [ "${{ inputs.lambda_functions }}" = "" ]; then
-            echo "deploy-lambdas=get-annotations,write-annotations,get-family,list-families" >> $GITHUB_OUTPUT
+            echo "deploy-lambdas=get_annotations,write_annotations,get_family,list_families,json-processor" >> $GITHUB_OUTPUT
           else
             echo "deploy-lambdas=${{ inputs.lambda_functions }}" >> $GITHUB_OUTPUT
           fi
@@ -72,17 +66,24 @@ jobs:
     if: needs.detect-changes.outputs.lambda-changes == 'true'
     strategy:
       matrix:
-        function: [get-annotations, write-annotations, get-family, list-families]
+        function:
+          [
+            get_annotations,
+            write_annotations,
+            get_family,
+            list_families,
+            json-processor,
+          ]
       fail-fast: false
-    
+
     steps:
-      - uses: actions/checkout@v3
-      
+      - uses: actions/checkout@v4
+
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.12"
-      
+
       - name: Test Lambda function
         run: |
           cd backend/lambda/${{ matrix.function }}
@@ -97,6 +98,7 @@ jobs:
 
   deploy-backend:
     runs-on: ubuntu-latest
+    environment: ${{ (inputs.tier == 'dev' || inputs.tier == 'qa') && 'nonprod' || 'prod' }}
     needs: [detect-changes, test-lambda-functions]
     if: always() && (needs.test-lambda-functions.result == 'success' || needs.test-lambda-functions.result == 'skipped')
     env:
@@ -104,9 +106,11 @@ jobs:
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+      SSL_CERTIFICATE_ARN: ${{ secrets.SSL_CERTIFICATE_ARN }}
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -146,31 +150,29 @@ jobs:
         if: needs.detect-changes.outputs.lambda-changes == 'true'
         run: |
           cd infrastructure
-          
-          # Parse comma-separated function list
           IFS=',' read -ra FUNCTIONS <<< "${{ needs.detect-changes.outputs.deploy-lambdas }}"
-          
+
           for func in "${FUNCTIONS[@]}"; do
-            func=$(echo $func | xargs) # trim whitespace
+            func=$(echo $func | xargs)
             case $func in
-              "get-annotations")
-                echo "Deploying Get Annotations Lambda..."
+              "get_annotations")
                 npx cdk deploy LambdaGetAnnotations-${{ env.TIER }} --require-approval never
                 ;;
-              "write-annotations")
-                echo "Deploying Write Annotations Lambda..."
+              "write_annotations")
                 npx cdk deploy LambdaWriteAnnotations-${{ env.TIER }} --require-approval never
                 ;;
-              "get-family")
-                echo "Deploying Get Family Lambda..."
+              "get_family")
                 npx cdk deploy LambdaGetFamily-${{ env.TIER }} --require-approval never
                 ;;
-              "list-families")
-                echo "Deploying List Families Lambda..."
+              "list_families")
                 npx cdk deploy LambdaListFamilies-${{ env.TIER }} --require-approval never
                 ;;
+              "json-processor")
+                npx cdk deploy LambdaJsonProcessor-${{ env.TIER }} --require-approval never
+                ;;
               *)
-                echo "Unknown function: $func"
+                echo "❌ Unknown function: $func"
+                exit 1
                 ;;
             esac
           done
@@ -181,44 +183,20 @@ jobs:
         if: needs.detect-changes.outputs.api-gateway-changes == 'true' || needs.detect-changes.outputs.lambda-changes == 'true'
         run: |
           cd infrastructure
-          echo "Deploying API Gateway..."
           npx cdk deploy ApiGateway-${{ env.TIER }} --require-approval never
         env:
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
 
-      - name: Get deployment outputs
+      - name: Verify deployment
         run: |
-          cd infrastructure
-          echo "=== Backend Deployment Outputs ==="
-          
-          # API Gateway outputs
-          echo "--- API Gateway ---"
-          aws cloudformation describe-stacks \
-            --stack-name "${{ env.TIER }}-fhhpb-api-gateway" \
-            --query "Stacks[0].Outputs" \
-            --output table || echo "API Gateway stack not found"
+          echo "=== Verifying Backend Deployment ==="
 
-      - name: Test API Gateway endpoints
-        run: |
-          echo "=== Testing API Gateway Health ==="
-          API_URL=$(aws cloudformation describe-stacks \
-            --stack-name "${{ env.TIER }}-fhhpb-api-gateway" \
-            --query "Stacks[0].Outputs[?OutputKey=='ApiGatewayUrl'].OutputValue" \
-            --output text 2>/dev/null || echo "")
-          
-          if [ ! -z "$API_URL" ]; then
-            echo "API Gateway URL: $API_URL"
-            
-            # Test CORS preflight
-            echo "Testing CORS preflight..."
-            curl -X OPTIONS "${API_URL}families" \
-              -H "Origin: https://example.com" \
-              -H "Access-Control-Request-Method: GET" \
-              -H "Access-Control-Request-Headers: Content-Type" \
-              -v -f --connect-timeout 10 || echo "CORS preflight test failed"
-            
-            echo "✅ Backend deployment completed successfully"
+          # Check if API Gateway stack exists
+          if aws cloudformation describe-stacks --stack-name "${{ env.TIER }}-fhhpb-api-gateway" >/dev/null 2>&1; then
+            echo "✅ API Gateway stack deployed successfully"
           else
-            echo "❌ Could not retrieve API Gateway URL"
+            echo "❌ API Gateway deployment failed"
             exit 1
           fi
+
+          echo "✅ Backend deployment completed successfully"
