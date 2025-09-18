@@ -75,9 +75,9 @@ jobs:
       - name: Build frontend assets
         run: |
           cd frontend
-          if [ ! -z "${{ steps.get-api-url.outputs.api-url }}" ]; then
+          if [ ! -z "${{ steps.get-api-url.outputs.api-gateway-url }}" ]; then
             echo "Building with configured API Gateway URL"
-            python3 build.py --api-url "${{ steps.get-api-url.outputs.api-url }}" --tier "${{ env.TIER }}"
+            python3 build.py --api-url "${{ steps.get-api-url.outputs.api-gateway-url }}" --tier "${{ env.TIER }}"
           else
             echo "Building without API Gateway URL (local/relative paths)"
             python3 build.py --tier "${{ env.TIER }}"
