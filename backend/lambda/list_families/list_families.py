@@ -6,18 +6,18 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 def list_families(bucket_name=None):
-    """List family IDs from S3 bucket processed/ prefix."""
+    """List family IDs from S3 bucket public/ prefix."""
     try:
         bucket_name = bucket_name or os.environ.get('DATA_BUCKET')
         if not bucket_name:
             raise ValueError("Bucket name not provided and DATA_BUCKET environment variable not set")
         
-        logger.info(f"Listing families from S3: s3://{bucket_name}/processed/")
+        logger.info(f"Listing families from S3: s3://{bucket_name}/public/")
         
         s3_client = boto3.client('s3')
         response = s3_client.list_objects_v2(
             Bucket=bucket_name,
-            Prefix='processed/',
+            Prefix='public/',
             Delimiter='/'
         )
         

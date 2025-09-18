@@ -26,7 +26,7 @@ def test_get_family_success():
     s3_client.create_bucket(Bucket=bucket_name)
     s3_client.put_object(
         Bucket=bucket_name,
-        Key=f'processed/{family_id}.processed.json',
+        Key=f'public/{family_id}.processed.json',
         Body=test_data,
         ContentType='application/json'
     )

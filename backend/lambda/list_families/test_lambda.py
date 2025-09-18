@@ -27,7 +27,7 @@ def test_list_families_success():
     for family_id in test_families:
         s3_client.put_object(
             Bucket=bucket_name,
-            Key=f'processed/{family_id}.processed.json',
+            Key=f'public/{family_id}.processed.json',
             Body='{"test": "data"}',
             ContentType='application/json'
         )
@@ -35,7 +35,7 @@ def test_list_families_success():
     # Add a non-matching file to ensure filtering works
     s3_client.put_object(
         Bucket=bucket_name,
-        Key='processed/other_file.txt',
+        Key='public/other_file.txt',
         Body='not a json file'
     )
     
