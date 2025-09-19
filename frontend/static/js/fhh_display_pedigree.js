@@ -402,6 +402,8 @@ function draw_male(person_id) {
 
   if (!data["people"][person_id].placeholder) {
     draw_name(center, person_id);
+    draw_pedigree_symbol(center, person_id);
+    draw_born_and_deceased(center, person_id);
   }
 
   if (data["people"][person_id].deceased) {
@@ -429,6 +431,8 @@ function draw_female(person_id) {
 
   if (!data["people"][person_id].placeholder) {
     draw_name(center, person_id);
+    draw_pedigree_symbol(center, person_id);
+    draw_born_and_deceased(center, person_id);
   }
 
   if (data["people"][person_id].deceased) {
@@ -597,8 +601,47 @@ function draw_name(center, person_id) {
 
   let name = data["people"][person_id]["name"];
   if (name && name != "Unknown") {
-    const name_elem = draw_label(name, loc_x, loc_y + 14);
-    name_elem.setAttribute("id", person_id);
+    const elem = draw_label(name, loc_x, loc_y + 14);
+    elem.setAttribute("id", person_id);
+  }
+}
+
+function draw_born_and_deceased(center, person_id) {
+  let born = data["people"][person_id]["born"];
+  if (born == "UN/UN/UNKN" || born == "00/00/0000") born = null;
+  let deceased = data["people"][person_id]["deceased"];
+  if (deceased == "UN/UN/UNKN" || deceased == "00/00/0000") deceased = null;
+
+  let born_deceased = null;
+  if (born && !deceased) {
+    born_deceased = "b. " + born;
+  } else if (born && deceased) {
+    born_deceased = born + "-" + deceased;
+  } else if (!born && deceased) {
+    born_deceased = "d. " + deceased;
+  }
+
+  if (born_deceased) {
+    const loc_x = center.x;
+    const loc_y = center.y + config.size / 2 + 2 * config.v_padding;
+    const elem = draw_label(born_deceased, loc_x , loc_y );
+    if (born_deceased.length > 15) {
+      elem.setAttribute("font-size", 10);
+    }
+    elem.setAttribute("id", person_id);
+
+  }
+
+}
+
+function draw_pedigree_symbol(center, person_id) {
+  const pedigree_symbol = data["people"][person_id]["pedigree_symbol"];
+  if (pedigree_symbol) {
+    const loc_x = center.x + 8;  // just enough to knock it off the centerline
+    const loc_y = center.y - config.size / 2 - 8;
+    const elem = draw_label(pedigree_symbol, loc_x , loc_y );
+    elem.setAttribute("text-anchor", "left");
+    elem.setAttribute("id", person_id);
   }
 }
 
