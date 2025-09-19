@@ -1,7 +1,6 @@
 {
   "api": {
-    "baseUrl": "",
-
+    "baseUrl": ""
   },
   "style": "compact",
   "margin":100,
