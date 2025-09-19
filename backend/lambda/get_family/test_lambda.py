@@ -1,7 +1,7 @@
 import json
 import boto3
 import pytest
-from moto import mock_s3
+from moto import mock_aws
 from unittest.mock import patch, MagicMock
 import sys
 import os
@@ -14,7 +14,7 @@ lambda_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(lambda_module)
 from get_family import get_family
 
-@mock_s3
+@mock_aws
 def test_get_family_success():
     """Test get_family with successful S3 retrieval."""
     # Create mock S3 bucket and object
@@ -26,7 +26,7 @@ def test_get_family_success():
     s3_client.create_bucket(Bucket=bucket_name)
     s3_client.put_object(
         Bucket=bucket_name,
-        Key=f'processed/{family_id}.processed.json',
+        Key=f'public/{family_id}.processed.json',
         Body=test_data,
         ContentType='application/json'
     )
@@ -37,7 +37,7 @@ def test_get_family_success():
     assert result['status'] == 'success'
     assert result['data'] == test_data
 
-@mock_s3
+@mock_aws
 def test_get_family_not_found():
     """Test get_family when file doesn't exist."""
     bucket_name = 'test-bucket'
@@ -66,7 +66,7 @@ def test_lambda_handler_success():
     context = MagicMock()
     
     test_data = '{"family": {"id": "test_family_456", "members": []}}'
-    with patch('lambda.get_family') as mock_get:
+    with patch.object(lambda_module, 'get_family') as mock_get:
         mock_get.return_value = {'status': 'success', 'data': test_data}
         
         result = lambda_module.lambda_handler(event, context)
@@ -83,7 +83,7 @@ def test_lambda_handler_not_found():
     }
     context = MagicMock()
     
-    with patch('lambda.get_family') as mock_get:
+    with patch.object(lambda_module, 'get_family') as mock_get:
         mock_get.return_value = {'status': 'not_found', 'message': 'Family not found'}
         
         result = lambda_module.lambda_handler(event, context)
@@ -110,7 +110,7 @@ def test_lambda_handler_error():
     }
     context = MagicMock()
     
-    with patch('lambda.get_family') as mock_get:
+    with patch.object(lambda_module, 'get_family') as mock_get:
         mock_get.return_value = {'status': 'error', 'message': 'S3 error occurred'}
         
         result = lambda_module.lambda_handler(event, context)

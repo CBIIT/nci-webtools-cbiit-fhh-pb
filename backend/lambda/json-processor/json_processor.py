@@ -152,6 +152,7 @@ class JSONProcessor:
             'deceased': record.get('DEMO[DTHDAT_RAW]', ''),
             'father': record.get('CORE[FPT_ID3]', ''),
             'mother': record.get('CORE[MPT_ID3]', ''),
+            'pedigree_symbol': record.get('Merge2[Pedigree Symbol]', ''),
             'demographics': self._extract_demographics(record),
             'partners': [],
             'diseases': [],

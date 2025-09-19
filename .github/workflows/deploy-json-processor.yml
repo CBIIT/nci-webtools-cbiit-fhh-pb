@@ -1,4 +1,4 @@
-name: Deploy JSON Processor Lambda
+name: Deploy JSON Processor
 on:
   workflow_dispatch:
     inputs:
@@ -21,7 +21,7 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -43,15 +43,15 @@ jobs:
           cd infrastructure
           npm ci
 
-      - name: Install test dependencies
+      - name: Install and test JSON processor Lambda
         run: |
           cd backend/lambda/json-processor
+          echo "Installing test dependencies..."
           pip install -r requirements.txt
-
-      - name: Run Lambda tests
-        run: |
-          cd backend/lambda/json-processor
+          
+          echo "Running Lambda tests..."
           python -m pytest test_lambda.py -v
+          echo "✅ JSON processor Lambda tests passed"
 
       - name: Build frontend assets (required for CDK synthesis)
         run: |
@@ -61,7 +61,7 @@ jobs:
       - name: CDK Bootstrap (if needed)
         run: |
           cd infrastructure
-          npx cdk bootstrap aws://${{ secrets.AWS_ACCOUNT_ID }}/${{ env.AWS_REGION }}
+          npx cdk bootstrap --region ${{ env.AWS_REGION }}
         env:
           TIER: ${{ env.TIER }}
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
@@ -74,10 +74,22 @@ jobs:
           TIER: ${{ env.TIER }}
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
 
-      - name: Deploy Lambda JSON Processor Stack
+      - name: Deploy JSON Processing Infrastructure
         run: |
           cd infrastructure
+          echo "=== Deploying JSON Processing Infrastructure ==="
+          
+          # Step 1: Deploy JSON Processor Lambda
+          echo "1️⃣ Deploying JSON Processor Lambda..."
           npx cdk deploy LambdaJsonProcessor-${{ env.TIER }} --require-approval never
+          echo "✅ JSON Processor Lambda deployed"
+          
+          # Step 2: Deploy S3 Trigger (depends on Lambda)
+          echo "2️⃣ Deploying S3 JSON Processor Trigger..."
+          npx cdk deploy S3JsonProcessorTrigger-${{ env.TIER }} --require-approval never
+          echo "✅ S3 JSON Processor Trigger deployed"
+          
+          echo "🎉 JSON Processing infrastructure deployment complete!"
         env:
           TIER: ${{ env.TIER }}
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
@@ -85,8 +97,83 @@ jobs:
       - name: Get deployment outputs
         run: |
           cd infrastructure
-          echo "=== Lambda Stack Outputs ==="
+          echo "=== JSON Processing Deployment Outputs ==="
+          
+          echo "--- Lambda JSON Processor Stack ---"
           aws cloudformation describe-stacks \
             --stack-name "${{ env.TIER }}-fhhpb-lambda-json-processor" \
             --query "Stacks[0].Outputs" \
-            --output table || echo "Lambda stack not found"
+            --output table || echo "Lambda JSON Processor stack not found"
+          
+          echo "--- S3 JSON Processor Trigger Stack ---"
+          aws cloudformation describe-stacks \
+            --stack-name "${{ env.TIER }}-fhhpb-s3-json-processor-trigger" \
+            --query "Stacks[0].Outputs" \
+            --output table || echo "S3 JSON Processor Trigger stack not found"
+
+      - name: Test JSON processing system
+        run: |
+          echo "=== Testing JSON Processing System ==="
+          
+          # Test Lambda function
+          echo "🔧 Testing Lambda Function..."
+          FUNCTION_NAME=$(aws cloudformation describe-stacks \
+            --stack-name "${{ env.TIER }}-fhhpb-lambda-json-processor" \
+            --query "Stacks[0].Outputs[?OutputKey=='FunctionName'].OutputValue" \
+            --output text 2>/dev/null || echo "")
+          
+          if [ ! -z "$FUNCTION_NAME" ]; then
+            echo "✅ Lambda Function: $FUNCTION_NAME"
+            
+            # Check if function is accessible
+            aws lambda get-function --function-name "$FUNCTION_NAME" >/dev/null 2>&1 && \
+              echo "✅ Lambda function is accessible" || \
+              echo "❌ Lambda function not accessible"
+          else
+            echo "❌ Could not retrieve Lambda function name"
+          fi
+          
+          # Test S3 Trigger configuration
+          echo "🗂️ Testing S3 Trigger Configuration..."
+          BUCKET_NAME=$(aws cloudformation describe-stacks \
+            --stack-name "${{ env.TIER }}-fhhpb-s3-json-processor-trigger" \
+            --query "Stacks[0].Outputs[?OutputKey=='DataBucketName'].OutputValue" \
+            --output text 2>/dev/null || echo "")
+          
+          if [ ! -z "$BUCKET_NAME" ]; then
+            echo "✅ Data bucket: $BUCKET_NAME"
+            
+            # Check if bucket exists and is accessible
+            if aws s3 ls "s3://$BUCKET_NAME/" >/dev/null 2>&1; then
+              echo "✅ S3 bucket is accessible"
+              
+              # Check if raw/ prefix exists (create if not)
+              if ! aws s3 ls "s3://$BUCKET_NAME/raw/" >/dev/null 2>&1; then
+                echo "Creating raw/ prefix in bucket..."
+                echo "# This folder is for raw JSON files that trigger automatic processing" | aws s3 cp - "s3://$BUCKET_NAME/raw/README.txt"
+                echo "✅ Created raw/ folder for JSON processing"
+              else
+                echo "✅ Raw/ folder already exists"
+              fi
+              
+              # Test bucket notification configuration
+              echo "Checking S3 event notifications..."
+              aws s3api get-bucket-notification-configuration --bucket "$BUCKET_NAME" >/dev/null 2>&1 && \
+                echo "✅ S3 event notifications configured" || \
+                echo "⚠️ S3 event notifications may not be configured"
+                
+            else
+              echo "❌ Cannot access S3 bucket: $BUCKET_NAME"
+              exit 1
+            fi
+          else
+            echo "❌ Could not retrieve bucket name from stack outputs"
+            exit 1
+          fi
+          
+          echo ""
+          echo "🎉 JSON Processing System Deployment Summary:"
+          echo "⚡ Lambda Function: $FUNCTION_NAME"
+          echo "📁 S3 Data Bucket: $BUCKET_NAME"
+          echo "🔄 Trigger: Upload JSON files to s3://$BUCKET_NAME/raw/ for automatic processing"
+          echo "✅ Complete JSON processing pipeline is ready!"

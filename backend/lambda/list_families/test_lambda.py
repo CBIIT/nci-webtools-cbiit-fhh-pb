@@ -1,7 +1,7 @@
 import json
 import boto3
 import pytest
-from moto import mock_s3
+from moto import mock_aws
 from unittest.mock import patch, MagicMock
 import sys
 import os
@@ -14,7 +14,7 @@ lambda_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(lambda_module)
 from list_families import list_families
 
-@mock_s3
+@mock_aws
 def test_list_families_success():
     """Test list_families with successful S3 listing."""
     bucket_name = 'test-bucket'
@@ -27,7 +27,7 @@ def test_list_families_success():
     for family_id in test_families:
         s3_client.put_object(
             Bucket=bucket_name,
-            Key=f'processed/{family_id}.processed.json',
+            Key=f'public/{family_id}.processed.json',
             Body='{"test": "data"}',
             ContentType='application/json'
         )
@@ -35,7 +35,7 @@ def test_list_families_success():
     # Add a non-matching file to ensure filtering works
     s3_client.put_object(
         Bucket=bucket_name,
-        Key='processed/other_file.txt',
+        Key='public/other_file.txt',
         Body='not a json file'
     )
     
@@ -45,7 +45,7 @@ def test_list_families_success():
     assert set(result['families']) == set(test_families)
     assert 'other_file' not in result['families']
 
-@mock_s3
+@mock_aws
 def test_list_families_empty_bucket():
     """Test list_families with empty bucket."""
     bucket_name = 'empty-bucket'
@@ -65,7 +65,7 @@ def test_list_families_no_bucket():
     assert result['status'] == 'error'
     assert 'DATA_BUCKET environment variable not set' in result['message']
 
-@mock_s3
+@mock_aws
 def test_list_families_nonexistent_bucket():
     """Test list_families with nonexistent bucket."""
     result = list_families('nonexistent-bucket')
@@ -79,7 +79,7 @@ def test_lambda_handler_success():
     context = MagicMock()
     
     test_families = ['family_001', 'family_002', 'family_123']
-    with patch('lambda.list_families') as mock_list:
+    with patch.object(lambda_module, 'list_families') as mock_list:
         mock_list.return_value = {'status': 'success', 'families': test_families}
         
         result = lambda_module.lambda_handler(event, context)
@@ -95,7 +95,7 @@ def test_lambda_handler_error():
     event = {}
     context = MagicMock()
     
-    with patch('lambda.list_families') as mock_list:
+    with patch.object(lambda_module, 'list_families') as mock_list:
         mock_list.return_value = {'status': 'error', 'message': 'S3 error occurred'}
         
         result = lambda_module.lambda_handler(event, context)
@@ -109,7 +109,7 @@ def test_lambda_handler_exception():
     event = {}
     context = MagicMock()
     
-    with patch('lambda.list_families') as mock_list:
+    with patch.object(lambda_module, 'list_families') as mock_list:
         mock_list.side_effect = Exception('Test exception')
         
         result = lambda_module.lambda_handler(event, context)

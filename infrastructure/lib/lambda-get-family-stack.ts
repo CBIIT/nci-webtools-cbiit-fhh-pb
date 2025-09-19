@@ -37,10 +37,10 @@ export class LambdaGetFamilyStack extends cdk.Stack {
           "logs:CreateLogGroup",
           "logs:CreateLogStream",
           "logs:PutLogEvents",
-          "logs:DescribeLogGroups",
-          "logs:DescribeLogStreams",
         ],
-        resources: ["*"],
+        resources: [
+          `arn:aws:logs:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:log-group:/aws/lambda/nci-cbiit-fhhpb-*-${tier}:*`
+        ],
       })
     );
 
@@ -106,9 +106,5 @@ export class LambdaGetFamilyStack extends cdk.Stack {
       description: "Get Family Lambda Function Name",
     });
 
-    new cdk.CfnOutput(this, "GetFamilyLambdaFunctionArn", {
-      value: this.lambdaFunction.functionArn,
-      description: "Get Family Lambda Function ARN",
-    });
   }
 }

@@ -34,10 +34,10 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
           "logs:CreateLogGroup",
           "logs:CreateLogStream",
           "logs:PutLogEvents",
-          "logs:DescribeLogGroups",
-          "logs:DescribeLogStreams",
         ],
-        resources: ["*"],
+        resources: [
+          `arn:aws:logs:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:log-group:/aws/lambda/nci-cbiit-fhhpb-*-${tier}:*`
+        ],
       })
     );
 
@@ -62,6 +62,7 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
     // Create Lambda function
     this.lambdaFunction = new lambda.Function(this, "JsonProcessorFunction", {
       functionName: `nci-cbiit-fhhpb-jsonprocessor-${tier}`,
+      description: "Transforms FHH pedigree data from raw JSON files into a specific JSON format that can be processed by FHH Pedigree Builder.",
       runtime: lambda.Runtime.PYTHON_3_12,
       handler: "lambda_function.lambda_handler",
       code: lambda.Code.fromAsset(
@@ -112,9 +113,5 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
 
 
 
-    new cdk.CfnOutput(this, "LambdaFunctionArn", {
-      value: this.lambdaFunction.functionArn,
-      description: "Lambda Function ARN",
-    });
   }
 }

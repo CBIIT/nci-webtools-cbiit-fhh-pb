@@ -1,7 +1,7 @@
 import json
 import boto3
 import pytest
-from moto import mock_s3
+from moto import mock_aws
 from unittest.mock import patch, MagicMock
 import sys
 import os
@@ -14,7 +14,7 @@ lambda_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(lambda_module)
 from get_annotations import get_annotations
 
-@mock_s3
+@mock_aws
 def test_get_annotations_success():
     """Test successful retrieval of annotations from S3."""
     # Set up mock S3
@@ -32,7 +32,7 @@ def test_get_annotations_success():
     assert result['status'] == 'success'
     assert result['data'] == test_data
 
-@mock_s3
+@mock_aws
 def test_get_annotations_not_found():
     """Test retrieval when annotations don't exist."""
     bucket_name = 'test-bucket'
@@ -53,7 +53,7 @@ def test_get_annotations_no_bucket():
     assert result['status'] == 'error'
     assert 'Bucket name not provided' in result['message']
 
-@mock_s3
+@mock_aws
 def test_lambda_handler_success():
     """Test the lambda_handler with successful request."""
     # Set up mock S3
@@ -70,7 +70,7 @@ def test_lambda_handler_success():
     }
     context = MagicMock()
     
-    with patch('lambda.get_annotations') as mock_get:
+    with patch.object(lambda_module, 'get_annotations') as mock_get:
         mock_get.return_value = {'status': 'success', 'data': test_data}
         
         result = lambda_module.lambda_handler(event, context)
@@ -95,7 +95,7 @@ def test_lambda_handler_not_found():
     event = {'pathParameters': {'family_id': 'missing_family'}}
     context = MagicMock()
     
-    with patch('lambda.get_annotations') as mock_get:
+    with patch.object(lambda_module, 'get_annotations') as mock_get:
         mock_get.return_value = {'status': 'not_found', 'message': 'Annotations not found'}
         
         result = lambda_module.lambda_handler(event, context)
@@ -109,7 +109,7 @@ def test_lambda_handler_error():
     event = {'pathParameters': {'family_id': 'error_family'}}
     context = MagicMock()
     
-    with patch('lambda.get_annotations') as mock_get:
+    with patch.object(lambda_module, 'get_annotations') as mock_get:
         mock_get.return_value = {'status': 'error', 'message': 'S3 error occurred'}
         
         result = lambda_module.lambda_handler(event, context)

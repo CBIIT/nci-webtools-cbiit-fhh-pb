@@ -1,0 +1,107 @@
+name: Deploy Infrastructure
+on:
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: "Environment to deploy to"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - qa
+
+jobs:
+  deploy-infrastructure:
+    runs-on: ubuntu-latest
+    environment: ${{ (inputs.tier == 'dev' || inputs.tier == 'qa') && 'nonprod' || 'prod' }}
+    env:
+      TIER: ${{ inputs.tier }}
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+      SSL_CERTIFICATE_ARN: ${{ secrets.SSL_CERTIFICATE_ARN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: infrastructure/package-lock.json
+
+      - name: Install CDK and dependencies
+        run: |
+          npm install -g aws-cdk
+          cd infrastructure
+          npm ci
+
+      - name: Build frontend assets (required for CDK synthesis)
+        run: |
+          cd frontend
+          python3 build.py
+
+      - name: CDK Bootstrap
+        run: |
+          cd infrastructure
+          npx cdk bootstrap --region ${{ env.AWS_REGION }}
+
+      - name: Deploy All Infrastructure Stacks
+        run: |
+          cd infrastructure
+          echo "🚀 Deploying all infrastructure stacks for ${{ env.TIER }} environment..."
+
+          # Deploy all stacks in dependency order with single command
+          npx cdk deploy \
+            --all \
+            --require-approval never
+
+          echo "✅ All infrastructure stacks deployed successfully!"
+
+      - name: Get API Gateway URL
+        id: get-api-url
+        run: |
+          API_URL=$(aws cloudformation describe-stacks \
+            --stack-name "${{ env.TIER }}-fhhpb-api-gateway" \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiGatewayUrl'].OutputValue" \
+            --output text)
+          API_URL=$(echo "$API_URL" | sed 's/\/$//')
+          echo "api-gateway-url=$API_URL" >> $GITHUB_OUTPUT
+          echo "✅ API Gateway URL retrieved and configured"
+
+      - name: Build frontend assets
+        run: |
+          cd frontend
+          if [ ! -z "${{ steps.get-api-url.outputs.api-gateway-url }}" ]; then
+            echo "Building with configured API Gateway URL"
+            python3 build.py --api-url "${{ steps.get-api-url.outputs.api-gateway-url }}" --tier "${{ env.TIER }}"
+          else
+            echo "Building without API Gateway URL (local/relative paths)"
+            python3 build.py --tier "${{ env.TIER }}"
+          fi
+
+      - name: Deploy to S3
+        run: |
+          aws s3 sync frontend/build/ s3://nci-cbiit-fhhpb-website-${{ env.TIER }} --delete
+
+      - name: Invalidate CloudFront Cache
+        run: |
+          DISTRIBUTION_ID=$(aws cloudformation describe-stacks \
+            --stack-name "${{ env.TIER }}-fhhpb-cloudfront-s3" \
+            --query "Stacks[0].Outputs[?OutputKey=='DistributionId'].OutputValue" \
+            --output text)
+
+          echo "🔄 Invalidating CloudFront cache..."
+          aws cloudfront create-invalidation \
+            --distribution-id $DISTRIBUTION_ID \
+            --paths "/*"
+          echo "✅ CloudFront cache invalidated"
+
+      - name: Deployment Summary
+        run: |
+          echo "🎉 COMPLETE DEPLOYMENT SUCCESSFUL!"
+          echo "═══════════════════════════════════════"
+          echo "📍 Environment: ${{ env.TIER }}"

@@ -12,7 +12,7 @@ def get_family(family_id, bucket_name=None):
         if not bucket_name:
             raise ValueError("Bucket name not provided and DATA_BUCKET environment variable not set")
         
-        s3_key = f"processed/{family_id}.processed.json"
+        s3_key = f"public/{family_id}.processed.json"
         logger.info(f"Reading from S3: s3://{bucket_name}/{s3_key}")
         
         response = boto3.client('s3').get_object(Bucket=bucket_name, Key=s3_key)
