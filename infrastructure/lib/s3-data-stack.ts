@@ -24,12 +24,5 @@ export class S3DataStack extends cdk.Stack {
     Object.entries(s3Tags).forEach(([key, value]) => {
       cdk.Tags.of(this.dataBucket).add(key, value);
     });
-
-    // Output the bucket name
-    new cdk.CfnOutput(this, "DataBucketName", {
-      value: this.dataBucket.bucketName,
-      description: "Data S3 Bucket Name",
-    });
-
   }
 }

@@ -4,14 +4,23 @@ import * as s3 from "aws-cdk-lib/aws-s3";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as s3n from "aws-cdk-lib/aws-s3-notifications";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
+import * as logs from "aws-cdk-lib/aws-logs";
 import * as path from "path";
 import { Construct } from "constructs";
 import { createTags } from "./utils/tags";
 
+export interface LambdaJsonProcessorStackProps extends cdk.StackProps {
+  dataBucket: s3.Bucket;
+}
+
 export class LambdaJsonProcessorStack extends cdk.Stack {
   public readonly lambdaFunction: lambda.Function;
 
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(
+    scope: Construct,
+    id: string,
+    props: LambdaJsonProcessorStackProps
+  ) {
     super(scope, id, props);
 
     const tier = process.env.TIER || "dev";
@@ -36,7 +45,9 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
           "logs:PutLogEvents",
         ],
         resources: [
-          `arn:aws:logs:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:log-group:/aws/lambda/nci-cbiit-fhhpb-*-${tier}:*`
+          `arn:aws:logs:${cdk.Stack.of(this).region}:${
+            cdk.Stack.of(this).account
+          }:log-group:/aws/lambda/nci-cbiit-fhhpb-*-${tier}:*`,
         ],
       })
     );
@@ -59,10 +70,18 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
       })
     );
 
+    // Create CloudWatch Log Group
+    const logGroup = new logs.LogGroup(this, "JsonProcessorLogGroup", {
+      logGroupName: `/aws/lambda/nci-cbiit-fhhpb-jsonprocessor-${tier}`,
+      retention: logs.RetentionDays.TWO_MONTHS,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
     // Create Lambda function
     this.lambdaFunction = new lambda.Function(this, "JsonProcessorFunction", {
       functionName: `nci-cbiit-fhhpb-jsonprocessor-${tier}`,
-      description: "Transforms FHH pedigree data from raw JSON files into a specific JSON format that can be processed by FHH Pedigree Builder.",
+      description:
+        "Transforms FHH pedigree data from raw JSON files into a specific JSON format that can be processed by FHH Pedigree Builder.",
       runtime: lambda.Runtime.PYTHON_3_12,
       handler: "lambda_function.lambda_handler",
       code: lambda.Code.fromAsset(
@@ -79,16 +98,28 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
       reservedConcurrentExecutions: 10, // Limit concurrent executions
       maxEventAge: cdk.Duration.minutes(1), // Maximum event age
       retryAttempts: 2, // Number of retry attempts
+      logGroup: logGroup,
     });
 
+    // Add S3 event trigger for automatic JSON processing
+    // When a JSON file is uploaded to raw/ folder, automatically trigger the JSON processor Lambda
+    props.dataBucket.addEventNotification(
+      s3.EventType.OBJECT_CREATED,
+      new s3n.LambdaDestination(this.lambdaFunction),
+      {
+        prefix: "raw/",
+        suffix: ".json",
+      }
+    );
+
     // Add tags to Lambda function
-    const lambdaTags = createTags({ tier, resourceName: "lambda" });
+    const lambdaTags = createTags({
+      tier,
+      resourceName: "lambda-json-processor",
+    });
     Object.entries(lambdaTags).forEach(([key, value]) => {
       cdk.Tags.of(this.lambdaFunction).add(key, value);
     });
-
-    // Note: S3 event notification is configured in the S3DataStack 
-    // to avoid circular dependencies between stacks
 
     // Create CloudWatch alarms for monitoring
     const errorAlarm = new cloudwatch.Alarm(this, "LambdaErrorAlarm", {
@@ -104,14 +135,5 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
       evaluationPeriods: 2,
       alarmDescription: "Lambda function duration too high",
     });
-
-    // Outputs
-    new cdk.CfnOutput(this, "LambdaFunctionName", {
-      value: this.lambdaFunction.functionName,
-      description: "Lambda Function Name",
-    });
-
-
-
   }
 }

@@ -8,7 +8,6 @@ import { LambdaGetFamilyStack } from "../lib/lambda-get-family-stack";
 import { LambdaListFamiliesStack } from "../lib/lambda-list-families-stack";
 import { ApiGatewayStack } from "../lib/api-gateway-stack";
 import { S3DataStack } from "../lib/s3-data-stack";
-import { S3JsonProcessorTriggerStack } from "../lib/s3-json-processor-trigger-stack";
 
 // Get environment variables with fallbacks
 const AWS_ACCOUNT_ID = process.env.AWS_ACCOUNT_ID;
@@ -43,13 +42,14 @@ const cloudFrontS3Stack = new CloudFrontS3Stack(
   }
 );
 
-// Create the Lambda stack for backend processing
+// Create the Lambda JSON processor stack
 const lambdaJsonProcessorStack = new LambdaJsonProcessorStack(
   app,
   `LambdaJsonProcessor-${TIER}`,
   {
     env: { account: AWS_ACCOUNT_ID, region: "us-east-1" },
     stackName: `${TIER}-fhhpb-lambda-json-processor`,
+    dataBucket: s3DataStack.dataBucket,
   }
 );
 
@@ -108,21 +108,7 @@ const apiGatewayStack = new ApiGatewayStack(app, `ApiGateway-${TIER}`, {
   cloudFrontDomainName: cloudFrontS3Stack.distribution.distributionDomainName,
 });
 
-// Create the S3-JSON processor trigger stack (automatic file processing)
-const s3JsonProcessorTriggerStack = new S3JsonProcessorTriggerStack(
-  app,
-  `S3JsonProcessorTrigger-${TIER}`,
-  {
-    env: { account: AWS_ACCOUNT_ID, region: "us-east-1" },
-    stackName: `${TIER}-fhhpb-s3-json-processor-trigger`,
-    dataBucket: s3DataStack.dataBucket,
-    jsonProcessorFunction: lambdaJsonProcessorStack.lambdaFunction,
-  }
-);
-
 // Ensure proper stack dependencies
-s3JsonProcessorTriggerStack.addDependency(s3DataStack);
-s3JsonProcessorTriggerStack.addDependency(lambdaJsonProcessorStack);
 lambdaWriteAnnotationsStack.addDependency(s3DataStack);
 lambdaGetAnnotationsStack.addDependency(s3DataStack);
 lambdaGetFamilyStack.addDependency(s3DataStack);

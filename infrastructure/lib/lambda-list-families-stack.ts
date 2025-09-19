@@ -3,6 +3,7 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
+import * as logs from "aws-cdk-lib/aws-logs";
 import * as path from "path";
 import { Construct } from "constructs";
 import { createTags } from "./utils/tags";
@@ -14,7 +15,11 @@ export interface LambdaListFamiliesStackProps extends cdk.StackProps {
 export class LambdaListFamiliesStack extends cdk.Stack {
   public readonly lambdaFunction: lambda.Function;
 
-  constructor(scope: Construct, id: string, props: LambdaListFamiliesStackProps) {
+  constructor(
+    scope: Construct,
+    id: string,
+    props: LambdaListFamiliesStackProps
+  ) {
     super(scope, id, props);
 
     const tier = process.env.TIER || "dev";
@@ -39,7 +44,9 @@ export class LambdaListFamiliesStack extends cdk.Stack {
           "logs:PutLogEvents",
         ],
         resources: [
-          `arn:aws:logs:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:log-group:/aws/lambda/nci-cbiit-fhhpb-*-${tier}:*`
+          `arn:aws:logs:${cdk.Stack.of(this).region}:${
+            cdk.Stack.of(this).account
+          }:log-group:/aws/lambda/nci-cbiit-fhhpb-*-${tier}:*`,
         ],
       })
     );
@@ -48,15 +55,17 @@ export class LambdaListFamiliesStack extends cdk.Stack {
     lambdaRole.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: [
-          "s3:ListBucket",
-          "s3:GetBucketLocation",
-        ],
-        resources: [
-          props.dataBucket.bucketArn,
-        ],
+        actions: ["s3:ListBucket", "s3:GetBucketLocation"],
+        resources: [props.dataBucket.bucketArn],
       })
     );
+
+    // Create CloudWatch Log Group
+    const logGroup = new logs.LogGroup(this, "ListFamiliesLogGroup", {
+      logGroupName: `/aws/lambda/nci-cbiit-fhhpb-listfamilies-${tier}`,
+      retention: logs.RetentionDays.TWO_MONTHS,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
 
     // Create Lambda function
     this.lambdaFunction = new lambda.Function(this, "ListFamiliesFunction", {
@@ -76,10 +85,14 @@ export class LambdaListFamiliesStack extends cdk.Stack {
       reservedConcurrentExecutions: 10,
       maxEventAge: cdk.Duration.minutes(1),
       retryAttempts: 2,
+      logGroup: logGroup,
     });
 
     // Add tags
-    const lambdaTags = createTags({ tier, resourceName: "lambda-list-families" });
+    const lambdaTags = createTags({
+      tier,
+      resourceName: "lambda-list-families",
+    });
     Object.entries(lambdaTags).forEach(([key, value]) => {
       cdk.Tags.of(this.lambdaFunction).add(key, value);
     });
@@ -98,12 +111,5 @@ export class LambdaListFamiliesStack extends cdk.Stack {
       evaluationPeriods: 2,
       alarmDescription: "List Families Lambda function duration too high",
     });
-
-    // Outputs
-    new cdk.CfnOutput(this, "ListFamiliesLambdaFunctionName", {
-      value: this.lambdaFunction.functionName,
-      description: "List Families Lambda Function Name",
-    });
-
   }
 }

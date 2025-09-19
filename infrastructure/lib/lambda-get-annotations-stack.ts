@@ -3,6 +3,7 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
+import * as logs from "aws-cdk-lib/aws-logs";
 import * as path from "path";
 import { Construct } from "constructs";
 import { createTags } from "./utils/tags";
@@ -14,7 +15,11 @@ export interface LambdaGetAnnotationsStackProps extends cdk.StackProps {
 export class LambdaGetAnnotationsStack extends cdk.Stack {
   public readonly lambdaFunction: lambda.Function;
 
-  constructor(scope: Construct, id: string, props: LambdaGetAnnotationsStackProps) {
+  constructor(
+    scope: Construct,
+    id: string,
+    props: LambdaGetAnnotationsStackProps
+  ) {
     super(scope, id, props);
 
     const tier = process.env.TIER || "dev";
@@ -39,7 +44,9 @@ export class LambdaGetAnnotationsStack extends cdk.Stack {
           "logs:PutLogEvents",
         ],
         resources: [
-          `arn:aws:logs:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:log-group:/aws/lambda/nci-cbiit-fhhpb-*-${tier}:*`
+          `arn:aws:logs:${cdk.Stack.of(this).region}:${
+            cdk.Stack.of(this).account
+          }:log-group:/aws/lambda/nci-cbiit-fhhpb-*-${tier}:*`,
         ],
       })
     );
@@ -48,16 +55,20 @@ export class LambdaGetAnnotationsStack extends cdk.Stack {
     lambdaRole.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: [
-          "s3:GetObject",
-          "s3:ListBucket",
-        ],
+        actions: ["s3:GetObject", "s3:ListBucket"],
         resources: [
           props.dataBucket.bucketArn,
           `${props.dataBucket.bucketArn}/*`,
         ],
       })
     );
+
+    // Create CloudWatch Log Group
+    const logGroup = new logs.LogGroup(this, "GetAnnotationsLogGroup", {
+      logGroupName: `/aws/lambda/nci-cbiit-fhhpb-getannotations-${tier}`,
+      retention: logs.RetentionDays.TWO_MONTHS,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
 
     // Create Lambda function
     this.lambdaFunction = new lambda.Function(this, "GetAnnotationsFunction", {
@@ -74,10 +85,14 @@ export class LambdaGetAnnotationsStack extends cdk.Stack {
         DATA_BUCKET: props.dataBucket.bucketName,
         TIER: tier,
       },
+      logGroup: logGroup,
     });
 
     // Add tags
-    const lambdaTags = createTags({ tier, resourceName: "lambda-get-annotations" });
+    const lambdaTags = createTags({
+      tier,
+      resourceName: "lambda-get-annotations",
+    });
     Object.entries(lambdaTags).forEach(([key, value]) => {
       cdk.Tags.of(this.lambdaFunction).add(key, value);
     });
@@ -96,12 +111,5 @@ export class LambdaGetAnnotationsStack extends cdk.Stack {
       evaluationPeriods: 2,
       alarmDescription: "Get Annotations Lambda function duration too high",
     });
-
-    // Outputs
-    new cdk.CfnOutput(this, "GetAnnotationsLambdaFunctionName", {
-      value: this.lambdaFunction.functionName,
-      description: "Get Annotations Lambda Function Name",
-    });
-
   }
 }
