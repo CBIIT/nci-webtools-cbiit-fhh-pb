@@ -85,34 +85,9 @@ export class CloudFrontS3Stack extends cdk.Stack {
       cdk.Tags.of(this.distribution).add(key, value);
     });
 
-    // Output the bucket name and website URL
-    new cdk.CfnOutput(this, "BucketName", {
-      value: this.bucket.bucketName,
-      description: "S3 Bucket Name",
-    });
-
-    // Output the CloudFront URL
-    new cdk.CfnOutput(this, "DistributionURL", {
-      value: `https://${this.distribution.distributionDomainName}`,
-      description: "CloudFront Distribution URL",
-    });
-
     new cdk.CfnOutput(this, "DistributionId", {
       value: this.distribution.distributionId,
       description: "CloudFront Distribution ID",
     });
-
-    // Output custom domain information if certificate is configured
-    if (certificate) {
-      new cdk.CfnOutput(this, "CustomDomainName", {
-        value: domainName,
-        description: "Custom Domain Name",
-      });
-
-      new cdk.CfnOutput(this, "CustomDomainURL", {
-        value: `https://${domainName}`,
-        description: "Custom Domain URL",
-      });
-    }
   }
 }

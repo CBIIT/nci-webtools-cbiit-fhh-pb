@@ -2,8 +2,8 @@ import * as cdk from "aws-cdk-lib";
 import * as apigateway from "aws-cdk-lib/aws-apigateway";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
-import * as ec2 from "aws-cdk-lib/aws-ec2";
-import * as iam from "aws-cdk-lib/aws-iam";
+import * as logs from "aws-cdk-lib/aws-logs";
+import * as certificatemanager from "aws-cdk-lib/aws-certificatemanager";
 import { Construct } from "constructs";
 import { createTags } from "./utils/tags";
 
@@ -17,16 +17,35 @@ export interface ApiGatewayStackProps extends cdk.StackProps {
 
 export class ApiGatewayStack extends cdk.Stack {
   public readonly api: apigateway.RestApi;
+  public readonly customDomain?: apigateway.DomainName;
 
   constructor(scope: Construct, id: string, props: ApiGatewayStackProps) {
     super(scope, id, props);
 
     const tier = process.env.TIER || "dev";
+    const sslCertificateArn = process.env.SSL_CERTIFICATE_ARN;
+
+    // Define custom domain and certificate if SSL certificate ARN is provided
+    const apiDomainName = `api-pedigree-${tier}.cancer.gov`;
+    let certificate: certificatemanager.ICertificate | undefined;
+
+    if (sslCertificateArn) {
+      certificate = certificatemanager.Certificate.fromCertificateArn(
+        this,
+        "SSLCertificate",
+        sslCertificateArn
+      );
+    }
 
     const corsOrigins = [
       `https://pedigree-${tier}.cancer.gov`,
       `https://${props.cloudFrontDomainName}`,
     ];
+
+    // Add custom API domain to CORS origins if certificate is available
+    if (certificate) {
+      corsOrigins.push(`https://${apiDomainName}`);
+    }
 
     // Create consolidated PUBLIC API Gateway
     this.api = new apigateway.RestApi(this, "FhhpbApi", {
@@ -52,6 +71,23 @@ export class ApiGatewayStack extends cdk.Stack {
         tracingEnabled: true,
       },
     });
+
+    // Create custom domain if certificate is available
+    if (certificate) {
+      this.customDomain = new apigateway.DomainName(this, "ApiCustomDomain", {
+        domainName: apiDomainName,
+        certificate: certificate,
+        endpointType: apigateway.EndpointType.REGIONAL,
+        securityPolicy: apigateway.SecurityPolicy.TLS_1_2,
+      });
+
+      // Create base path mapping to connect the custom domain to the API
+      new apigateway.BasePathMapping(this, "ApiBasePathMapping", {
+        domainName: this.customDomain,
+        restApi: this.api,
+        stage: this.api.deploymentStage,
+      });
+    }
 
     // Create Lambda integrations
     const listFamiliesIntegration = new apigateway.LambdaIntegration(
@@ -171,38 +207,11 @@ export class ApiGatewayStack extends cdk.Stack {
       cdk.Tags.of(this.api).add(key, value);
     });
 
-    // Outputs
+    // outputs
     new cdk.CfnOutput(this, "ApiGatewayUrl", {
       value: this.api.url,
-      description: "Consolidated API Gateway URL",
-      exportName: `${tier}-fhhpb-api-url`,
-    });
-
-    new cdk.CfnOutput(this, "ApiGatewayId", {
-      value: this.api.restApiId,
-      description: "API Gateway REST API ID",
-      exportName: `${tier}-fhhpb-api-id`,
-    });
-
-    new cdk.CfnOutput(this, "ApiEndpoints", {
-      value: JSON.stringify({
-        listFamilies: `${this.api.url}families`,
-        getFamily: `${this.api.url}families/{family_id}`,
-        getAnnotations: `${this.api.url}annotations/{family_id}`,
-        writeAnnotations: `${this.api.url}annotations/{family_id}`,
-      }),
-      description: "API Endpoints",
-    });
-
-    new cdk.CfnOutput(this, "CorsOrigins", {
-      value: corsOrigins.join(", "),
-      description: "CORS Origins configured for this API",
-    });
-
-    new cdk.CfnOutput(this, "AccessInstructions", {
-      value:
-        "This API is PUBLIC and accessible from the internet with CORS restrictions applied.",
-      description: "API Access Instructions",
+      description: "API Gateway URL for the FHHPB application",
+      exportName: `${tier}-fhhpb-api-gateway-url`,
     });
   }
 }

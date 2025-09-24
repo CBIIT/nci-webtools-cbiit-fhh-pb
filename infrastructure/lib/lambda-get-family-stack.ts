@@ -3,6 +3,7 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
+import * as logs from "aws-cdk-lib/aws-logs";
 import * as path from "path";
 import { Construct } from "constructs";
 import { createTags } from "./utils/tags";
@@ -39,7 +40,9 @@ export class LambdaGetFamilyStack extends cdk.Stack {
           "logs:PutLogEvents",
         ],
         resources: [
-          `arn:aws:logs:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:log-group:/aws/lambda/nci-cbiit-fhhpb-*-${tier}:*`
+          `arn:aws:logs:${cdk.Stack.of(this).region}:${
+            cdk.Stack.of(this).account
+          }:log-group:/aws/lambda/nci-cbiit-fhhpb-*-${tier}:*`,
         ],
       })
     );
@@ -48,16 +51,20 @@ export class LambdaGetFamilyStack extends cdk.Stack {
     lambdaRole.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: [
-          "s3:GetObject",
-          "s3:ListBucket",
-        ],
+        actions: ["s3:GetObject", "s3:ListBucket"],
         resources: [
           props.dataBucket.bucketArn,
           `${props.dataBucket.bucketArn}/*`,
         ],
       })
     );
+
+    // Create CloudWatch Log Group
+    const logGroup = new logs.LogGroup(this, "GetFamilyLogGroup", {
+      logGroupName: `/aws/lambda/nci-cbiit-fhhpb-getfamily-${tier}`,
+      retention: logs.RetentionDays.TWO_MONTHS,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
 
     // Create Lambda function
     this.lambdaFunction = new lambda.Function(this, "GetFamilyFunction", {
@@ -77,6 +84,7 @@ export class LambdaGetFamilyStack extends cdk.Stack {
       reservedConcurrentExecutions: 10,
       maxEventAge: cdk.Duration.minutes(1),
       retryAttempts: 2,
+      logGroup: logGroup,
     });
 
     // Add tags
@@ -99,12 +107,5 @@ export class LambdaGetFamilyStack extends cdk.Stack {
       evaluationPeriods: 2,
       alarmDescription: "Get Family Lambda function duration too high",
     });
-
-    // Outputs
-    new cdk.CfnOutput(this, "GetFamilyLambdaFunctionName", {
-      value: this.lambdaFunction.functionName,
-      description: "Get Family Lambda Function Name",
-    });
-
   }
 }

@@ -25,48 +25,57 @@ jobs:
       - name: Get API Gateway URL
         id: get-api-url
         run: |
-          echo "Auto-detecting API Gateway URL from CloudFormation..."
           API_URL=$(aws cloudformation describe-stacks \
             --stack-name "${{ env.TIER }}-fhhpb-api-gateway" \
             --query "Stacks[0].Outputs[?OutputKey=='ApiGatewayUrl'].OutputValue" \
-            --output text 2>/dev/null || echo "")
+            --output text)
 
-          if [ ! -z "$API_URL" ]; then
-            # Remove trailing slash for consistency
-            API_URL=$(echo "$API_URL" | sed 's/\/$//')
-            echo "✅ Auto-detected API Gateway URL: $API_URL"
-          else
-            echo "⚠️ No API Gateway URL found. Building without API configuration."
+          if [ -z "$API_URL" ] || [ "$API_URL" = "None" ]; then
+            echo "Error: API Gateway URL not found. The API Gateway stack must be deployed first."
+            exit 1
           fi
-
+          
+          API_URL=$(echo "$API_URL" | sed 's/\/$//')
           echo "api-url=$API_URL" >> $GITHUB_OUTPUT
 
       - name: Build frontend assets
         run: |
           cd frontend
-          if [ ! -z "${{ steps.get-api-url.outputs.api-url }}" ]; then
-            echo "Building with configured API Gateway URL"
-            python3 build.py --api-url "${{ steps.get-api-url.outputs.api-url }}" --tier "${{ env.TIER }}"
-          else
-            echo "Building without API Gateway URL (local/relative paths)"
-            python3 build.py --tier "${{ env.TIER }}"
-          fi
+          echo "Building with API configuration"
+          python3 build.py --api-url "${{ steps.get-api-url.outputs.api-url }}" --tier "${{ env.TIER }}"
 
       - name: Deploy to S3
         run: |
+          echo "Deploying to S3..."
           aws s3 sync frontend/build/ s3://nci-cbiit-fhhpb-website-${{ env.TIER }} --delete
 
-      - name: Get CloudFront Distribution ID
-        id: get-distribution-id
+      - name: Invalidate CloudFront Cache
         run: |
           DISTRIBUTION_ID=$(aws cloudformation describe-stacks \
             --stack-name "${{ env.TIER }}-fhhpb-cloudfront-s3" \
             --query "Stacks[0].Outputs[?OutputKey=='DistributionId'].OutputValue" \
             --output text)
-          echo "distribution-id=$DISTRIBUTION_ID" >> $GITHUB_OUTPUT
 
-      - name: Invalidate CloudFront Cache
-        run: |
+          if [ -z "$DISTRIBUTION_ID" ] || [ "$DISTRIBUTION_ID" = "None" ]; then
+            echo "CloudFront Distribution ID not found. Redeploy CloudFront stack to get the output."
+            exit 1
+          fi
+
+          echo "Invalidating CloudFront cache..."
           aws cloudfront create-invalidation \
-            --distribution-id ${{ steps.get-distribution-id.outputs.distribution-id }} \
-            --paths "/*"
+            --distribution-id "$DISTRIBUTION_ID" \
+            --paths "/*" \
+            --output table \
+            --query "Invalidation.{Status:Status,CreateTime:CreateTime}" 2>/dev/null
+          
+          if [ $? -eq 0 ]; then
+            echo "CloudFront cache invalidation successful"
+          else
+            echo "CloudFront cache invalidation failed"
+            exit 1
+          fi
+
+      - name: Deployment Summary
+        run: |
+          echo "🎉 Frontend deployment complete!"
+          echo "Environment: ${{ env.TIER }}"

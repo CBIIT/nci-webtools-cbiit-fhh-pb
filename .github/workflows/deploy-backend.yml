@@ -171,7 +171,7 @@ jobs:
                 npx cdk deploy LambdaJsonProcessor-${{ env.TIER }} --require-approval never
                 ;;
               *)
-                echo "❌ Unknown function: $func"
+                echo "Unknown function: $func"
                 exit 1
                 ;;
             esac
@@ -189,14 +189,8 @@ jobs:
 
       - name: Verify deployment
         run: |
-          echo "=== Verifying Backend Deployment ==="
-
           # Check if API Gateway stack exists
-          if aws cloudformation describe-stacks --stack-name "${{ env.TIER }}-fhhpb-api-gateway" >/dev/null 2>&1; then
-            echo "✅ API Gateway stack deployed successfully"
-          else
-            echo "❌ API Gateway deployment failed"
+          if ! aws cloudformation describe-stacks --stack-name "${{ env.TIER }}-fhhpb-api-gateway" >/dev/null 2>&1; then
+            echo "API Gateway deployment failed"
             exit 1
           fi
-
-          echo "✅ Backend deployment completed successfully"
