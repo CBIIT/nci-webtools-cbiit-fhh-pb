@@ -1,4 +1,5 @@
 let apiConfig = { baseUrl: "" };
+let loaded_family_id = null;
 
 /**
  * Builds API URL by combining base URL with endpoint
@@ -118,6 +119,7 @@ export async function load_config_and_data(family_id, config_id) {
   const annotations_file = buildApiUrl("/annotations/" + family_id);
   const config_file = `/config/${config_id || "basic"}.json`;
 
+  loaded_family_id = family_id;
   try {
     const [pedigree_response, annotations_response, config_response] =
       await Promise.all([
@@ -157,7 +159,7 @@ export async function load_config_and_data(family_id, config_id) {
  */
 export function save_positions_and_annotations(data) {
   const proband_id = data.general?.proband;
-  const family_id = proband_id.split("-")[0];
+  const family_id = loaded_family_id;
   console.log(family_id);
 
   const people_positions = Object.fromEntries(

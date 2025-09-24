@@ -275,7 +275,6 @@ function set_locations(list) {
 
   for (const i in list) {
     const person_id = list[i];
-    console.log("Placing: " + person_id);
 
     const partners = find_all_partners(person_id);
     if (partners && partners.length > 1) {

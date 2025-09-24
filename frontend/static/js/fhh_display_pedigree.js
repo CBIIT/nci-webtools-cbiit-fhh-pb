@@ -355,7 +355,6 @@ function get_center(person) {
     center.y = center_offset.y + config.margin + person.gen * config.v_spacing;
   }
 
-  console.log("POSITION: " + person.id + ":" + center.x + "," + center.y);
   return center;
 }
 
@@ -382,7 +381,6 @@ function draw_male(person_id) {
   let center = get_center(person);
   person.x = center.x;
   person.y = center.y;
-  console.log(person.id + ":" + person.x + "," + person.y);
 
   //  const el = draw_square(config.size, center.x , center.y );
   const el = draw_square(
