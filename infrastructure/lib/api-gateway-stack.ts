@@ -213,5 +213,13 @@ export class ApiGatewayStack extends cdk.Stack {
       description: "API Gateway URL for the FHHPB application",
       exportName: `${tier}-fhhpb-api-gateway-url`,
     });
+
+    if (this.customDomain) {
+      new cdk.CfnOutput(this, "ApiCustomDomainUrl", {
+        value: `https://${apiDomainName}`,
+        description: "Custom domain URL for the API Gateway",
+        exportName: `${tier}-fhhpb-api-custom-domain-url`,
+      });
+    }
   }
 }
