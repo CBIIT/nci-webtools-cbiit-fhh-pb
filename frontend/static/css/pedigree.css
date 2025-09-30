@@ -1,7 +1,26 @@
-.navbar {
-  font-family: sans-serif, Arial;
 
-  position:fixed;
+.grid-container {
+  display: grid; /* Makes the container a grid container */
+  grid-template-columns: 300px 1fr; /* Creates two columns of equal width */
+  gap: 2px; /* Adds space between grid items */
+}
+
+.grid-item {
+  padding: 1px;
+  border: 1px solid black;
+}
+
+.textblock {
+  font-family: sans-serif, Arial;
+  border:0px solid black;
+  padding:5px;
+  overflow-y: scroll;
+  height:100%
+}
+
+.navbar {
+  grid-column: span 2;
+  font-family: sans-serif, Arial;
   top:0;
   width:100%;
   height:100px;
@@ -9,12 +28,19 @@
 }
 
 .alertbar {
+  grid-column: span 2;
   font-family: sans-serif, Arial;
-  position:fixed;
   top:101px;
   width:100%;
   padding:2px;
 }
+
+.fhh_pedigree {
+  border:0px solid black;
+  overflow:auto;
+  background-color:#FFF;
+}
+
 
 .alert-button {
     margin:5px;

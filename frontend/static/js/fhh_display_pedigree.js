@@ -365,6 +365,14 @@ function add_clicking_to_element(el, person_id) {
     ).value;
 
     if (selectedValue == "details") {
+      const elem = document.getElementById("details_textbox");
+      console.log(elem);
+      elem.innerHTML = "boo";
+      const pre = document.createElement("pre");
+      pre.textContent = JSON.stringify(data["people"][person_id], null, 2);
+      elem.appendChild(pre);
+      // Log the person data to the console
+
       console.log(data["people"][person_id]);
     } else if (selectedValue == "free") {
       start_free_move(e);
