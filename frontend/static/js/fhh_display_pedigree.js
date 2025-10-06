@@ -480,6 +480,7 @@ function draw_unknown(person_id) {
 }
 
 function draw_slash(person_id) {
+  console.log("draw_slash for " + person_id);
   if (!data["people"][person_id]) return;
   let person = data["people"][person_id];
 
@@ -488,10 +489,10 @@ function draw_slash(person_id) {
   person.y = center.y;
   const s = config.size / 2;
   const slash_elem = draw_line(
-    person.x - s,
-    person.y + s,
-    person.x + s,
-    person.y - s
+    person.x - s - 5 ,
+    person.y + s + 5,
+    person.x + s + 5,
+    person.y - s - 5
   );
   slash_elem.setAttributeNS(null, "id", person_id);
 }
