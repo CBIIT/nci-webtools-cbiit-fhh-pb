@@ -98,7 +98,7 @@ jobs:
 
   deploy-backend:
     runs-on: ubuntu-latest
-    environment: ${{ (inputs.tier == 'dev' || inputs.tier == 'qa') && 'nonprod' || 'prod' }}
+    environment: ${{ inputs.tier }}
     needs: [detect-changes, test-lambda-functions]
     if: always() && (needs.test-lambda-functions.result == 'success' || needs.test-lambda-functions.result == 'skipped')
     env:

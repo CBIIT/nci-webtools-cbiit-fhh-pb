@@ -14,7 +14,7 @@ on:
 jobs:
   deploy-infrastructure:
     runs-on: ubuntu-latest
-    environment: ${{ (inputs.tier == 'dev' || inputs.tier == 'qa') && 'nonprod' || 'prod' }}
+    environment: ${{ inputs.tier }}
     env:
       TIER: ${{ inputs.tier }}
       AWS_REGION: us-east-1
