@@ -2,15 +2,23 @@ import * as cdk from "aws-cdk-lib";
 import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
 import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
 import * as s3 from "aws-cdk-lib/aws-s3";
+import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as certificatemanager from "aws-cdk-lib/aws-certificatemanager";
 import { Construct } from "constructs";
 import { createTags } from "./utils/tags";
+
+export interface CloudFrontS3StackProps extends cdk.StackProps {
+  edgeAuthFunction?: lambda.Function;
+  // API origin settings to route /api/* to API Gateway
+  apiDomainName?: string; // e.g., abcdef.execute-api.us-east-1.amazonaws.com or custom domain
+  apiOriginPath?: string; // e.g., "/api" (stage name or base path)
+}
 
 export class CloudFrontS3Stack extends cdk.Stack {
   public readonly bucket: s3.Bucket;
   public readonly distribution: cloudfront.Distribution;
 
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(scope: Construct, id: string, props?: CloudFrontS3StackProps) {
     super(scope, id, props);
 
     const tier = process.env.TIER || "dev";
@@ -42,6 +50,24 @@ export class CloudFrontS3Stack extends cdk.Stack {
       cdk.Tags.of(this.bucket).add(key, value);
     });
 
+    // Configure Lambda@Edge function associations if provided
+    const edgeFunctions: cloudfront.EdgeLambda[] = [];
+    if (props?.edgeAuthFunction) {
+      edgeFunctions.push({
+        functionVersion: props.edgeAuthFunction.currentVersion,
+        eventType: cloudfront.LambdaEdgeEventType.VIEWER_REQUEST,
+      });
+    }
+
+    // Optional API origin for /api/* path
+    let apiOrigin: origins.HttpOrigin | undefined;
+    if (props?.apiDomainName) {
+      apiOrigin = new origins.HttpOrigin(props.apiDomainName, {
+        originPath: props.apiOriginPath || "",
+        protocolPolicy: cloudfront.OriginProtocolPolicy.HTTPS_ONLY,
+      });
+    }
+
     // Create CloudFront distribution configuration
     const distributionConfig: cloudfront.DistributionProps = {
       comment: `CF distribution for pedigree-${tier}.cancer.gov`,
@@ -50,7 +76,21 @@ export class CloudFrontS3Stack extends cdk.Stack {
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
         originRequestPolicy: cloudfront.OriginRequestPolicy.CORS_S3_ORIGIN,
+        ...(edgeFunctions.length > 0 && { edgeLambdas: edgeFunctions }),
       },
+      ...(apiOrigin && {
+        additionalBehaviors: {
+          "api/*": {
+            origin: apiOrigin,
+            viewerProtocolPolicy:
+              cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+            // Disable caching for API
+            cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+            // Forward all headers, cookies, and query strings for auth
+            originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER,
+          },
+        },
+      }),
       defaultRootObject: "index.html",
       errorResponses: [
         {

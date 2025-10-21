@@ -8,6 +8,8 @@ import { LambdaGetFamilyStack } from "../lib/lambda-get-family-stack";
 import { LambdaListFamiliesStack } from "../lib/lambda-list-families-stack";
 import { ApiGatewayStack } from "../lib/api-gateway-stack";
 import { S3DataStack } from "../lib/s3-data-stack";
+import { LambdaOidcCloudFrontStack } from "../lib/lambda-oidc-cloudfront-stack";
+import { DynamoDBSessionStack } from "../lib/dynamodb-session-stack";
 
 // Get environment variables with fallbacks
 const AWS_ACCOUNT_ID = process.env.AWS_ACCOUNT_ID;
@@ -32,6 +34,31 @@ const s3DataStack = new S3DataStack(app, `S3DataStack-${TIER}`, {
   stackName: `${TIER}-fhhpb-s3-data`,
 });
 
+// Create DynamoDB stack for session management
+const dynamoDBSessionStack = new DynamoDBSessionStack(
+  app,
+  `DynamoDBSession-${TIER}`,
+  {
+    env: { account: AWS_ACCOUNT_ID, region: "us-east-1" },
+    stackName: `${TIER}-fhhpb-dynamodb-session`,
+  }
+);
+
+// Create OIDC authentication stacks
+const oidcCloudFrontStack = new LambdaOidcCloudFrontStack(
+  app,
+  `LambdaOidcCloudFront-${TIER}`,
+  {
+    env: { account: AWS_ACCOUNT_ID, region: "us-east-1" },
+    stackName: `${TIER}-fhhpb-lambda-oidc-cloudfront`,
+  }
+);
+
+// Grant DynamoDB read permissions to CloudFront Lambda@Edge
+dynamoDBSessionStack.sessionsTable.grantReadData(
+  oidcCloudFrontStack.edgeFunction
+);
+
 // Create the combined CloudFront + S3 stack for frontend hosting
 const cloudFrontS3Stack = new CloudFrontS3Stack(
   app,
@@ -39,6 +66,10 @@ const cloudFrontS3Stack = new CloudFrontS3Stack(
   {
     env: { account: AWS_ACCOUNT_ID, region: "us-east-1" },
     stackName: `${TIER}-fhhpb-cloudfront-s3`,
+    edgeAuthFunction: oidcCloudFrontStack.edgeFunction,
+    // Route /api/* to API Gateway custom domain when available
+    apiDomainName: `api-pedigree-${TIER}.cancer.gov`,
+    apiOriginPath: "/", // stage already fixed in ApiGatewayStack as custom domain base path
   }
 );
 
@@ -106,13 +137,28 @@ const apiGatewayStack = new ApiGatewayStack(app, `ApiGateway-${TIER}`, {
   getAnnotationsFunction: lambdaGetAnnotationsStack.lambdaFunction,
   writeAnnotationsFunction: lambdaWriteAnnotationsStack.lambdaFunction,
   cloudFrontDomainName: cloudFrontS3Stack.distribution.distributionDomainName,
+  sessionsTable: dynamoDBSessionStack.sessionsTable,
 });
+
+// Grant DynamoDB permissions to OIDC functions
+dynamoDBSessionStack.sessionsTable.grantReadWriteData(
+  apiGatewayStack.authorizerFunction
+);
+dynamoDBSessionStack.sessionsTable.grantReadWriteData(
+  apiGatewayStack.callbackFunction
+);
+dynamoDBSessionStack.sessionsTable.grantReadWriteData(
+  apiGatewayStack.logoutFunction
+);
 
 // Ensure proper stack dependencies
 lambdaWriteAnnotationsStack.addDependency(s3DataStack);
 lambdaGetAnnotationsStack.addDependency(s3DataStack);
 lambdaGetFamilyStack.addDependency(s3DataStack);
 lambdaListFamiliesStack.addDependency(s3DataStack);
+oidcCloudFrontStack.addDependency(dynamoDBSessionStack);
+cloudFrontS3Stack.addDependency(oidcCloudFrontStack);
+apiGatewayStack.addDependency(dynamoDBSessionStack);
 apiGatewayStack.addDependency(lambdaWriteAnnotationsStack);
 apiGatewayStack.addDependency(lambdaGetAnnotationsStack);
 apiGatewayStack.addDependency(lambdaGetFamilyStack);

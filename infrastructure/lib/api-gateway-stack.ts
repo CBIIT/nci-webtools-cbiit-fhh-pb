@@ -4,6 +4,9 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as certificatemanager from "aws-cdk-lib/aws-certificatemanager";
+import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
+import * as iam from "aws-cdk-lib/aws-iam";
 import { Construct } from "constructs";
 import { createTags } from "./utils/tags";
 
@@ -13,17 +16,125 @@ export interface ApiGatewayStackProps extends cdk.StackProps {
   getAnnotationsFunction: lambda.Function;
   writeAnnotationsFunction: lambda.Function;
   cloudFrontDomainName?: string;
+  sessionsTable: dynamodb.ITable;
 }
 
 export class ApiGatewayStack extends cdk.Stack {
   public readonly api: apigateway.RestApi;
   public readonly customDomain?: apigateway.DomainName;
+  public readonly authorizer?: apigateway.RequestAuthorizer;
+  public readonly authorizerFunction: lambda.Function;
+  public readonly callbackFunction: lambda.Function;
+  public readonly logoutFunction: lambda.Function;
 
   constructor(scope: Construct, id: string, props: ApiGatewayStackProps) {
     super(scope, id, props);
 
     const tier = process.env.TIER || "dev";
     const sslCertificateArn = process.env.SSL_CERTIFICATE_ARN;
+    const secretName = `${tier}/fhhpb/oidc-config`;
+    const oidcSecret = secretsmanager.Secret.fromSecretNameV2(
+      this,
+      "OIDCSecret",
+      secretName
+    );
+
+    this.authorizerFunction = new lambda.Function(
+      this,
+      "OidcAuthorizerFunction",
+      {
+        functionName: `${tier}-fhhpb-api-oidc-authorizer`,
+        runtime: lambda.Runtime.PYTHON_3_11,
+        handler: "api_authorizer.lambda_handler",
+        code: lambda.Code.fromAsset("../backend/lambda/oidc-auth", {
+          bundling: {
+            image: lambda.Runtime.PYTHON_3_11.bundlingImage,
+            user: "root",
+            command: [
+              "bash",
+              "-c",
+              [
+                "pip install -r requirements.txt -t /asset-output",
+                "cp -r . /asset-output",
+              ].join(" && "),
+            ],
+          },
+        }),
+        timeout: cdk.Duration.seconds(10),
+        memorySize: 256,
+        logRetention: logs.RetentionDays.ONE_MONTH,
+      }
+    );
+
+    this.authorizerFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["secretsmanager:GetSecretValue"],
+        resources: [oidcSecret.secretArn],
+      })
+    );
+
+    this.callbackFunction = new lambda.Function(this, "OidcCallbackFunction", {
+      functionName: `${tier}-fhhpb-api-oidc-callback`,
+      runtime: lambda.Runtime.PYTHON_3_11,
+      handler: "api_callback.lambda_handler",
+      code: lambda.Code.fromAsset("../backend/lambda/oidc-auth", {
+        bundling: {
+          image: lambda.Runtime.PYTHON_3_11.bundlingImage,
+          user: "root",
+          command: [
+            "bash",
+            "-c",
+            [
+              "pip install -r requirements.txt -t /asset-output",
+              "cp -r . /asset-output",
+            ].join(" && "),
+          ],
+        },
+      }),
+      timeout: cdk.Duration.seconds(10),
+      memorySize: 256,
+      logRetention: logs.RetentionDays.ONE_MONTH,
+    });
+
+    this.callbackFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["secretsmanager:GetSecretValue"],
+        resources: [oidcSecret.secretArn],
+      })
+    );
+
+    this.logoutFunction = new lambda.Function(this, "OidcLogoutFunction", {
+      functionName: `${tier}-fhhpb-api-oidc-logout`,
+      runtime: lambda.Runtime.PYTHON_3_11,
+      handler: "logout.lambda_handler",
+      code: lambda.Code.fromAsset("../backend/lambda/oidc-auth", {
+        bundling: {
+          image: lambda.Runtime.PYTHON_3_11.bundlingImage,
+          user: "root",
+          command: [
+            "bash",
+            "-c",
+            [
+              "pip install -r requirements.txt -t /asset-output",
+              "cp -r . /asset-output",
+            ].join(" && "),
+          ],
+        },
+      }),
+      timeout: cdk.Duration.seconds(10),
+      memorySize: 256,
+      logRetention: logs.RetentionDays.ONE_MONTH,
+    });
+
+    this.logoutFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["secretsmanager:GetSecretValue"],
+        resources: [oidcSecret.secretArn],
+      })
+    );
 
     // Define custom domain and certificate if SSL certificate ARN is provided
     const apiDomainName = `api-pedigree-${tier}.cancer.gov`;
@@ -63,12 +174,15 @@ export class ApiGatewayStack extends cdk.Stack {
           "X-Amz-Date",
           "X-Api-Key",
           "X-Amz-Security-Token",
+          "Cookie",
         ],
         allowCredentials: true, // Important for SAML authentication cookies/tokens
       },
       deployOptions: {
         stageName: "api",
         tracingEnabled: true,
+        throttlingBurstLimit: 500, // Maximum concurrent requests
+        throttlingRateLimit: 100, // Requests per second
       },
     });
 
@@ -89,6 +203,16 @@ export class ApiGatewayStack extends cdk.Stack {
       });
     }
 
+    this.authorizer = new apigateway.RequestAuthorizer(this, "OidcAuthorizer", {
+      handler: this.authorizerFunction,
+      identitySources: [
+        apigateway.IdentitySource.header("Authorization"),
+        apigateway.IdentitySource.header("Cookie"),
+      ],
+      resultsCacheTtl: cdk.Duration.minutes(5),
+      authorizerName: `${tier}-oidc-authorizer`,
+    });
+
     // Create Lambda integrations
     const listFamiliesIntegration = new apigateway.LambdaIntegration(
       props.listFamiliesFunction
@@ -106,12 +230,33 @@ export class ApiGatewayStack extends cdk.Stack {
       }
     );
 
+    // Add OIDC callback endpoint
+    const callbackIntegration = new apigateway.LambdaIntegration(
+      this.callbackFunction
+    );
+    const loginResource = this.api.root.addResource("login");
+    loginResource.addMethod("GET", callbackIntegration, {
+      apiKeyRequired: false,
+      // No authorizer on callback endpoint
+    });
+
+    // Add logout endpoint
+    const logoutIntegration = new apigateway.LambdaIntegration(
+      this.logoutFunction
+    );
+    const logoutResource = this.api.root.addResource("logout");
+    logoutResource.addMethod("GET", logoutIntegration, {
+      apiKeyRequired: false,
+      // No authorizer on logout endpoint (it validates session internally)
+    });
+
     // Create API Gateway resources and methods
 
     // GET /families - List all families
     const familiesResource = this.api.root.addResource("families");
     familiesResource.addMethod("GET", listFamiliesIntegration, {
       apiKeyRequired: false,
+      authorizer: this.authorizer,
       requestValidator: new apigateway.RequestValidator(
         this,
         "ListFamiliesValidator",
@@ -127,6 +272,7 @@ export class ApiGatewayStack extends cdk.Stack {
     const familyIdResource = familiesResource.addResource("{family_id}");
     familyIdResource.addMethod("GET", getFamilyIntegration, {
       apiKeyRequired: false,
+      authorizer: this.authorizer,
       requestValidator: new apigateway.RequestValidator(
         this,
         "GetFamilyValidator",
@@ -147,6 +293,7 @@ export class ApiGatewayStack extends cdk.Stack {
       annotationsResource.addResource("{family_id}");
     annotationsFamilyIdResource.addMethod("GET", getAnnotationsIntegration, {
       apiKeyRequired: false,
+      authorizer: this.authorizer,
       requestValidator: new apigateway.RequestValidator(
         this,
         "GetAnnotationsValidator",
@@ -164,6 +311,7 @@ export class ApiGatewayStack extends cdk.Stack {
     // POST /annotations/{family_id} - Write annotations for a family
     annotationsFamilyIdResource.addMethod("POST", writeAnnotationsIntegration, {
       apiKeyRequired: false,
+      authorizer: this.authorizer,
       requestValidator: new apigateway.RequestValidator(
         this,
         "WriteAnnotationsValidator",

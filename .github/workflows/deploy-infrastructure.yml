@@ -79,6 +79,16 @@ jobs:
           # Deploy backend stacks (excluding CloudFront which needs frontend assets)
           npx cdk deploy \
             S3DataStack-${{ env.TIER }} \
+            DynamoDBSession-${{ env.TIER }} \
+            --require-approval never
+
+      - name: Deploy Backend Lambda Stacks
+        run: |
+          cd infrastructure
+          echo "Deploying backend Lambda stacks for ${{ env.TIER }} environment..."
+
+          # Deploy data Lambda functions
+          npx cdk deploy \
             LambdaJsonProcessor-${{ env.TIER }} \
             LambdaWriteAnnotations-${{ env.TIER }} \
             LambdaGetAnnotations-${{ env.TIER }} \
@@ -86,13 +96,13 @@ jobs:
             LambdaListFamilies-${{ env.TIER }} \
             --require-approval never
 
-      - name: Deploy CloudFront S3 Stack
+      - name: Deploy CloudFront Stack with Lambda@Edge
         run: |
           cd infrastructure
-          echo "Deploying CloudFront S3 stack for ${{ env.TIER }} environment..."
-          
-          # Deploy CloudFront stack to create S3 bucket for frontend
+          echo "Deploying CloudFront and Lambda@Edge stacks for ${{ env.TIER }} environment..."
+
           npx cdk deploy \
+            LambdaOidcCloudFront-${{ env.TIER }} \
             CloudFrontS3Stack-${{ env.TIER }} \
             --require-approval never
 
@@ -100,12 +110,11 @@ jobs:
         run: |
           cd infrastructure
           echo "Deploying API Gateway stack for ${{ env.TIER }} environment..."
-          
-          # Deploy API Gateway stack (depends on Lambda functions and CloudFront)
+
+          # Deploy API Gateway stack
           npx cdk deploy \
             ApiGateway-${{ env.TIER }} \
             --require-approval never
-
 
       - name: Get API Gateway URL
         id: get-api-url
@@ -114,12 +123,12 @@ jobs:
             --stack-name "${{ env.TIER }}-fhhpb-api-gateway" \
             --query "Stacks[0].Outputs[?OutputKey=='ApiGatewayUrl'].OutputValue" \
             --output text)
-          
+
           if [ -z "$API_URL" ] || [ "$API_URL" = "None" ]; then
             echo "Error: API Gateway URL not found. The API Gateway stack must be deployed successfully."
             exit 1
           fi
-          
+
           API_URL=$(echo "$API_URL" | sed 's/\/$//')
           echo "api-gateway-url=$API_URL" >> $GITHUB_OUTPUT
 
@@ -151,7 +160,7 @@ jobs:
             --paths "/*" \
             --output table \
             --query "Invalidation.{Status:Status,CreateTime:CreateTime}" 2>/dev/null
-          
+
           if [ $? -eq 0 ]; then
             echo "CloudFront cache invalidation successful"
           else
@@ -161,5 +170,21 @@ jobs:
 
       - name: Deployment Summary
         run: |
-          echo "Complete deployment successful"
           echo "Environment: ${{ env.TIER }}"
+          echo ""
+          echo "Deployed Stacks:"
+          echo "  • S3DataStack-${{ env.TIER }}"
+          echo "  • DynamoDBSession-${{ env.TIER }} (Session Management)"
+          echo "  • LambdaOidcCloudFront-${{ env.TIER }} (CloudFront Auth)"
+          echo "  • LambdaJsonProcessor-${{ env.TIER }}"
+          echo "  • LambdaWriteAnnotations-${{ env.TIER }}"
+          echo "  • LambdaGetAnnotations-${{ env.TIER }}"
+          echo "  • LambdaGetFamily-${{ env.TIER }}"
+          echo "  • LambdaListFamilies-${{ env.TIER }}"
+          echo "  • CloudFrontS3Stack-${{ env.TIER }}"
+          echo "  • ApiGateway-${{ env.TIER }}"
+          echo ""
+          echo "URLs:"
+          echo "  • Frontend: https://pedigree-${{ env.TIER }}.cancer.gov"
+          echo "  • API: https://api-pedigree-${{ env.TIER }}.cancer.gov"
+          echo "  • Logout: https://pedigree-${{ env.TIER }}.cancer.gov/api/logout"
