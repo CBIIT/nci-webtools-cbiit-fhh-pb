@@ -8,7 +8,6 @@ import { LambdaGetFamilyStack } from "../lib/lambda-get-family-stack";
 import { LambdaListFamiliesStack } from "../lib/lambda-list-families-stack";
 import { ApiGatewayStack } from "../lib/api-gateway-stack";
 import { S3DataStack } from "../lib/s3-data-stack";
-import { LambdaOidcCloudFrontStack } from "../lib/lambda-oidc-cloudfront-stack";
 import { DynamoDBSessionStack } from "../lib/dynamodb-session-stack";
 
 // Get environment variables with fallbacks
@@ -44,21 +43,6 @@ const dynamoDBSessionStack = new DynamoDBSessionStack(
   }
 );
 
-// Create OIDC authentication stacks
-const oidcCloudFrontStack = new LambdaOidcCloudFrontStack(
-  app,
-  `LambdaOidcCloudFront-${TIER}`,
-  {
-    env: { account: AWS_ACCOUNT_ID, region: "us-east-1" },
-    stackName: `${TIER}-fhhpb-lambda-oidc-cloudfront`,
-  }
-);
-
-// Grant DynamoDB read permissions to CloudFront Lambda@Edge
-dynamoDBSessionStack.sessionsTable.grantReadData(
-  oidcCloudFrontStack.edgeFunction
-);
-
 // Create the combined CloudFront + S3 stack for frontend hosting
 const cloudFrontS3Stack = new CloudFrontS3Stack(
   app,
@@ -66,10 +50,12 @@ const cloudFrontS3Stack = new CloudFrontS3Stack(
   {
     env: { account: AWS_ACCOUNT_ID, region: "us-east-1" },
     stackName: `${TIER}-fhhpb-cloudfront-s3`,
-    edgeAuthFunction: oidcCloudFrontStack.edgeFunction,
-    // Route /api/* to API Gateway custom domain when available
-    apiDomainName: `api-pedigree-${TIER}.cancer.gov`,
-    apiOriginPath: "/", // stage already fixed in ApiGatewayStack as custom domain base path
+    enableAuth: true, // Set to true to enable Lambda@Edge authentication
+    sessionsTable: dynamoDBSessionStack.sessionsTable,
+    // Route /api/* to API Gateway execute-api URL
+    // Empty origin path - CloudFront forwards full request path /api/login -> origin/api/login
+    apiDomainName: `tlwlxji4a1.execute-api.us-east-1.amazonaws.com`,
+    apiOriginPath: "", // Empty - full request path is forwarded
   }
 );
 
@@ -147,20 +133,15 @@ dynamoDBSessionStack.sessionsTable.grantReadWriteData(
 dynamoDBSessionStack.sessionsTable.grantReadWriteData(
   apiGatewayStack.callbackFunction
 );
-dynamoDBSessionStack.sessionsTable.grantReadWriteData(
-  apiGatewayStack.logoutFunction
-);
 
 // Ensure proper stack dependencies
 lambdaWriteAnnotationsStack.addDependency(s3DataStack);
 lambdaGetAnnotationsStack.addDependency(s3DataStack);
 lambdaGetFamilyStack.addDependency(s3DataStack);
 lambdaListFamiliesStack.addDependency(s3DataStack);
-oidcCloudFrontStack.addDependency(dynamoDBSessionStack);
-cloudFrontS3Stack.addDependency(oidcCloudFrontStack);
 apiGatewayStack.addDependency(dynamoDBSessionStack);
 apiGatewayStack.addDependency(lambdaWriteAnnotationsStack);
 apiGatewayStack.addDependency(lambdaGetAnnotationsStack);
 apiGatewayStack.addDependency(lambdaGetFamilyStack);
 apiGatewayStack.addDependency(lambdaListFamiliesStack);
-apiGatewayStack.addDependency(cloudFrontS3Stack);
+cloudFrontS3Stack.addDependency(dynamoDBSessionStack);

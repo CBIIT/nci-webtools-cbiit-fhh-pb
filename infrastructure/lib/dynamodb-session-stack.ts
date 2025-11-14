@@ -19,8 +19,7 @@ export class DynamoDBSessionStack extends cdk.Stack {
       },
       billing: dynamodb.Billing.onDemand(),
       timeToLiveAttribute: "ttl",
-      removalPolicy:
-        tier === "dev" ? cdk.RemovalPolicy.DESTROY : cdk.RemovalPolicy.RETAIN,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
     const tableTags = createTags({ tier, resourceName: "sessions-table" });

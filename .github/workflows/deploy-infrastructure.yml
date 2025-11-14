@@ -76,7 +76,7 @@ jobs:
           cd infrastructure
           echo "Deploying backend infrastructure stacks for ${{ env.TIER }} environment..."
 
-          # Deploy backend stacks (excluding CloudFront which needs frontend assets)
+          # Deploy backend stacks
           npx cdk deploy \
             S3DataStack-${{ env.TIER }} \
             DynamoDBSession-${{ env.TIER }} \

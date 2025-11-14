@@ -1,6 +1,7 @@
 """
 Lambda@Edge function for CloudFront OIDC authentication.
 Handles viewer-request to check authentication and redirect to login if needed.
+OAuth callback is handled directly by API Gateway at api-pedigree-dev.cancer.gov/api/login
 """
 
 import base64
@@ -46,23 +47,46 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Lambda@Edge handler for viewer-request.
     Checks for valid authentication token, redirects to login if missing.
+    OAuth callback is handled by API Gateway, not here.
     """
-    request = event["Records"][0]["cf"]["request"]
-    headers = request.get("headers", {})
-    uri = request.get("uri", "")
-    querystring = request.get("querystring", "")
+    try:
+        request = event["Records"][0]["cf"]["request"]
+        headers = request.get("headers", {})
+        uri = request.get("uri", "")
+        querystring = request.get("querystring", "")
+        
+        # Debug logging
+        print(f"URI: {uri}")
 
-    # Get tier and cookie domain
-    tier = get_tier()
-    cookie_domain = ".cancer.gov"
+        # Get tier and cookie domain
+        tier = get_tier()
+        cookie_domain = ".cancer.gov"
 
-    # Skip auth for /api/* paths (handled by API Gateway authorizer)
-    if uri.startswith("/api/"):
-        return request
+        # Skip auth for /api/* paths (handled by API Gateway authorizer)
+        if uri.startswith("/api/"):
+            print(f"Skipping auth for API path: {uri}")
+            return request
+        
+        # Skip auth for static assets (CSS, JS, images, etc.)
+        if uri.startswith("/static/"):
+            print(f"Skipping auth for static path: {uri}")
+            return request
 
-    # Parse cookies
-    cookie_header = headers.get("cookie", [{}])[0].get("value", "")
-    cookies = parse_cookies(cookie_header)
+        # Parse cookies
+        cookie_header = headers.get("cookie", [{}])[0].get("value", "")
+        cookies = parse_cookies(cookie_header)
+    except Exception as e:
+        print(f"Error parsing request: {str(e)}")
+        # Return 503 with details if we can't even parse the request
+        return {
+            "status": "503",
+            "statusDescription": "Service Unavailable",
+            "headers": {
+                "content-type": [{"value": "text/html"}],
+                "cache-control": [{"value": "no-cache, no-store, must-revalidate"}],
+            },
+            "body": f"<html><body><h1>503 Service Unavailable</h1><p>Error: {str(e)}</p></body></html>",
+        }
 
     # Check for session ID (new session-based auth)
     session_id = cookies.get("session_id")
@@ -88,15 +112,16 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         except Exception as e:
             print(f"Session validation error: {str(e)}")
-            # Invalid session - will redirect to login below
+            # On session validation error, redirect to login (fail closed)
+            # Fall through to redirect to login below
 
     # No valid token, redirect to login
     try:
         oidc = OIDCClient()
 
         # Generate PKCE and nonce for secure auth flow
-        state = base64.urlsafe_b64encode(secrets.token_bytes(16)).decode("utf-8")
-        nonce = base64.urlsafe_b64encode(secrets.token_bytes(16)).decode("utf-8")
+        state = base64.urlsafe_b64encode(secrets.token_bytes(16)).decode("utf-8").rstrip("=")
+        nonce = base64.urlsafe_b64encode(secrets.token_bytes(16)).decode("utf-8").rstrip("=")
         code_verifier, code_challenge = oidc.generate_pkce_pair()
 
         # Preserve original URL for redirect after login
@@ -104,27 +129,44 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         if querystring:
             original_url += f"?{querystring}"
 
-        # Encode session data with original URL
-        # Format: state:code_verifier:nonce:original_url
-        session_data = f"{state}:{code_verifier}:{nonce}:{original_url}"
-
-        auth_url = oidc.get_authorization_url(state, code_challenge, nonce)
-
-        # Store session data in cookie with Lax SameSite (required for OAuth callback)
-        session_cookie = create_cookie(
-            "oidc_session",
-            session_data,
-            max_age=600,
-            domain=cookie_domain,
-            same_site="Lax",  # Lax allows OAuth redirects while preventing CSRF
+        # Generate unique state_id for DynamoDB storage
+        state_id = base64.urlsafe_b64encode(secrets.token_bytes(16)).decode("utf-8")
+        
+        # Store OAuth state in DynamoDB instead of cookie (solves cross-domain cookie issue)
+        import boto3
+        from datetime import datetime, timedelta
+        
+        dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+        # Lambda@Edge doesn't support environment variables, so hardcode table name
+        table_name = f"{tier}-fhhpb-sessions"
+        table = dynamodb.Table(table_name)
+        
+        # Store state with 10 minute TTL
+        ttl = int((datetime.utcnow() + timedelta(minutes=10)).timestamp())
+        table.put_item(
+            Item={
+                "session_id": f"oauth_state_{state_id}",
+                "state": state,
+                "code_verifier": code_verifier,
+                "nonce": nonce,
+                "original_url": original_url,
+                "ttl": ttl,
+                "created_at": datetime.utcnow().isoformat(),
+            }
         )
+        
+        print(f"Stored OAuth state in DynamoDB: oauth_state_{state_id}")
+
+        # Include state_id in the OAuth state parameter so callback can retrieve it
+        # Format: state:state_id
+        combined_state = f"{state}:{state_id}"
+        auth_url = oidc.get_authorization_url(combined_state, code_challenge, nonce)
 
         return {
             "status": "302",
             "statusDescription": "Found",
             "headers": {
                 "location": [{"value": auth_url}],
-                "set-cookie": [{"value": session_cookie}],
                 "cache-control": [{"value": "no-cache, no-store, must-revalidate"}],
             },
         }

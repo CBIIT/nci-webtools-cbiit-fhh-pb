@@ -5,7 +5,6 @@ import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as certificatemanager from "aws-cdk-lib/aws-certificatemanager";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
-import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import * as iam from "aws-cdk-lib/aws-iam";
 import { Construct } from "constructs";
 import { createTags } from "./utils/tags";
@@ -25,7 +24,6 @@ export class ApiGatewayStack extends cdk.Stack {
   public readonly authorizer?: apigateway.RequestAuthorizer;
   public readonly authorizerFunction: lambda.Function;
   public readonly callbackFunction: lambda.Function;
-  public readonly logoutFunction: lambda.Function;
 
   constructor(scope: Construct, id: string, props: ApiGatewayStackProps) {
     super(scope, id, props);
@@ -33,10 +31,11 @@ export class ApiGatewayStack extends cdk.Stack {
     const tier = process.env.TIER || "dev";
     const sslCertificateArn = process.env.SSL_CERTIFICATE_ARN;
     const secretName = `${tier}/fhhpb/oidc-config`;
-    const oidcSecret = secretsmanager.Secret.fromSecretNameV2(
+
+    const authorizerLogGroup = logs.LogGroup.fromLogGroupName(
       this,
-      "OIDCSecret",
-      secretName
+      "OidcAuthorizerLogGroup",
+      `/aws/lambda/${tier}-fhhpb-api-oidc-authorizer`
     );
 
     this.authorizerFunction = new lambda.Function(
@@ -49,12 +48,13 @@ export class ApiGatewayStack extends cdk.Stack {
         code: lambda.Code.fromAsset("../backend/lambda/oidc-auth", {
           bundling: {
             image: lambda.Runtime.PYTHON_3_11.bundlingImage,
+            platform: "linux/amd64", // Force x86_64 for Lambda
             user: "root",
             command: [
               "bash",
               "-c",
               [
-                "pip install -r requirements.txt -t /asset-output",
+                "pip install -r requirements.txt -t /asset-output --platform manylinux2014_x86_64 --only-binary=:all:",
                 "cp -r . /asset-output",
               ].join(" && "),
             ],
@@ -62,7 +62,7 @@ export class ApiGatewayStack extends cdk.Stack {
         }),
         timeout: cdk.Duration.seconds(10),
         memorySize: 256,
-        logRetention: logs.RetentionDays.ONE_MONTH,
+        logGroup: authorizerLogGroup,
       }
     );
 
@@ -70,10 +70,21 @@ export class ApiGatewayStack extends cdk.Stack {
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ["secretsmanager:GetSecretValue"],
-        resources: [oidcSecret.secretArn],
+        resources: [
+          `arn:aws:secretsmanager:us-east-1:${
+            cdk.Stack.of(this).account
+          }:secret:${secretName}-*`,
+        ],
       })
     );
 
+    const callbackLogGroup = logs.LogGroup.fromLogGroupName(
+      this,
+      "OidcCallbackLogGroup",
+      `/aws/lambda/${tier}-fhhpb-api-oidc-callback`
+    );
+
+    // OAuth callback function - handles redirect from NIH IdP
     this.callbackFunction = new lambda.Function(this, "OidcCallbackFunction", {
       functionName: `${tier}-fhhpb-api-oidc-callback`,
       runtime: lambda.Runtime.PYTHON_3_11,
@@ -81,12 +92,13 @@ export class ApiGatewayStack extends cdk.Stack {
       code: lambda.Code.fromAsset("../backend/lambda/oidc-auth", {
         bundling: {
           image: lambda.Runtime.PYTHON_3_11.bundlingImage,
+          platform: "linux/amd64", // Force x86_64 for Lambda
           user: "root",
           command: [
             "bash",
             "-c",
             [
-              "pip install -r requirements.txt -t /asset-output",
+              "pip install -r requirements.txt -t /asset-output --platform manylinux2014_x86_64 --only-binary=:all:",
               "cp -r . /asset-output",
             ].join(" && "),
           ],
@@ -94,45 +106,21 @@ export class ApiGatewayStack extends cdk.Stack {
       }),
       timeout: cdk.Duration.seconds(10),
       memorySize: 256,
-      logRetention: logs.RetentionDays.ONE_MONTH,
+      logGroup: callbackLogGroup,
+      environment: {
+        SESSIONS_TABLE_NAME: props.sessionsTable.tableName,
+      },
     });
 
     this.callbackFunction.addToRolePolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ["secretsmanager:GetSecretValue"],
-        resources: [oidcSecret.secretArn],
-      })
-    );
-
-    this.logoutFunction = new lambda.Function(this, "OidcLogoutFunction", {
-      functionName: `${tier}-fhhpb-api-oidc-logout`,
-      runtime: lambda.Runtime.PYTHON_3_11,
-      handler: "logout.lambda_handler",
-      code: lambda.Code.fromAsset("../backend/lambda/oidc-auth", {
-        bundling: {
-          image: lambda.Runtime.PYTHON_3_11.bundlingImage,
-          user: "root",
-          command: [
-            "bash",
-            "-c",
-            [
-              "pip install -r requirements.txt -t /asset-output",
-              "cp -r . /asset-output",
-            ].join(" && "),
-          ],
-        },
-      }),
-      timeout: cdk.Duration.seconds(10),
-      memorySize: 256,
-      logRetention: logs.RetentionDays.ONE_MONTH,
-    });
-
-    this.logoutFunction.addToRolePolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ["secretsmanager:GetSecretValue"],
-        resources: [oidcSecret.secretArn],
+        resources: [
+          `arn:aws:secretsmanager:us-east-1:${
+            cdk.Stack.of(this).account
+          }:secret:${secretName}-*`,
+        ],
       })
     );
 
@@ -158,7 +146,6 @@ export class ApiGatewayStack extends cdk.Stack {
       corsOrigins.push(`https://${apiDomainName}`);
     }
 
-    // Create consolidated PUBLIC API Gateway
     this.api = new apigateway.RestApi(this, "FhhpbApi", {
       restApiName: `nci-cbiit-fhhpb-api-${tier}`,
       description: "API for Family Health History Pedigree Builder",
@@ -170,13 +157,13 @@ export class ApiGatewayStack extends cdk.Stack {
         allowMethods: ["GET", "POST", "OPTIONS"],
         allowHeaders: [
           "Content-Type",
-          "Authorization", // Required for SAML tokens
+          "Authorization",
           "X-Amz-Date",
           "X-Api-Key",
           "X-Amz-Security-Token",
           "Cookie",
         ],
-        allowCredentials: true, // Important for SAML authentication cookies/tokens
+        allowCredentials: true,
       },
       deployOptions: {
         stageName: "api",
@@ -200,15 +187,13 @@ export class ApiGatewayStack extends cdk.Stack {
         domainName: this.customDomain,
         restApi: this.api,
         stage: this.api.deploymentStage,
+        basePath: "api",
       });
     }
 
     this.authorizer = new apigateway.RequestAuthorizer(this, "OidcAuthorizer", {
       handler: this.authorizerFunction,
-      identitySources: [
-        apigateway.IdentitySource.header("Authorization"),
-        apigateway.IdentitySource.header("Cookie"),
-      ],
+      identitySources: [apigateway.IdentitySource.header("Cookie")],
       resultsCacheTtl: cdk.Duration.minutes(5),
       authorizerName: `${tier}-oidc-authorizer`,
     });
@@ -230,24 +215,15 @@ export class ApiGatewayStack extends cdk.Stack {
       }
     );
 
-    // Add OIDC callback endpoint
+    // OAuth callback endpoint - receives redirect from NIH IdP
     const callbackIntegration = new apigateway.LambdaIntegration(
-      this.callbackFunction
+      this.callbackFunction,
+      { proxy: true } // Enable proxy for proper redirect handling
     );
     const loginResource = this.api.root.addResource("login");
     loginResource.addMethod("GET", callbackIntegration, {
       apiKeyRequired: false,
       // No authorizer on callback endpoint
-    });
-
-    // Add logout endpoint
-    const logoutIntegration = new apigateway.LambdaIntegration(
-      this.logoutFunction
-    );
-    const logoutResource = this.api.root.addResource("logout");
-    logoutResource.addMethod("GET", logoutIntegration, {
-      apiKeyRequired: false,
-      // No authorizer on logout endpoint (it validates session internally)
     });
 
     // Create API Gateway resources and methods
