@@ -23,27 +23,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Get API Gateway URL
-        id: get-api-url
-        run: |
-          API_URL=$(aws cloudformation describe-stacks \
-            --stack-name "${{ env.TIER }}-fhhpb-api-gateway" \
-            --query "Stacks[0].Outputs[?OutputKey=='ApiGatewayUrl'].OutputValue" \
-            --output text)
+      # - name: Get API Gateway URL
+      #   id: get-api-url
+      #   run: |
+      #     API_URL=$(aws cloudformation describe-stacks \
+      #       --stack-name "${{ env.TIER }}-fhhpb-api-gateway" \
+      #       --query "Stacks[0].Outputs[?OutputKey=='ApiGatewayUrl'].OutputValue" \
+      #       --output text)
 
-          if [ -z "$API_URL" ] || [ "$API_URL" = "None" ]; then
-            echo "Error: API Gateway URL not found. The API Gateway stack must be deployed first."
-            exit 1
-          fi
+      #     if [ -z "$API_URL" ] || [ "$API_URL" = "None" ]; then
+      #       echo "Error: API Gateway URL not found. The API Gateway stack must be deployed first."
+      #       exit 1
+      #     fi
 
-          API_URL=$(echo "$API_URL" | sed 's/\/$//')
-          echo "api-url=$API_URL" >> $GITHUB_OUTPUT
+      #     API_URL=$(echo "$API_URL" | sed 's/\/$//')
+      #     echo "api-url=$API_URL" >> $GITHUB_OUTPUT
 
       - name: Build frontend assets
         run: |
           cd frontend
           echo "Building with API configuration"
-          python3 build.py --api-url "${{ steps.get-api-url.outputs.api-url }}" --tier "${{ env.TIER }}"
+          python3 build.py --api-url "/api" --tier "${{ env.TIER }}"
 
       - name: Deploy to S3
         run: |
