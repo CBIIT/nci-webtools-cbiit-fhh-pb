@@ -23,6 +23,7 @@ def main():
     templates_dir = frontend_dir / 'templates'
     static_dir = frontend_dir / 'static'
     build_dir = frontend_dir / 'build'
+    config_dir = frontend_dir / 'config'
     
     # Clean and create build directory
     if build_dir.exists():
@@ -34,15 +35,13 @@ def main():
         shutil.copytree(static_dir, build_dir / 'static')
         print(f"Copied static files to {build_dir / 'static'}")
     
-    # Copy and process config files
-    config_dir = frontend_dir / 'config'
     if config_dir.exists():
         shutil.copytree(config_dir, build_dir / 'config')
         print(f"Copied config files to {build_dir / 'config'}")
         
         # Inject API URL into configuration if provided
         if args.api_url:
-            inject_api_url(build_dir / 'config' / 'basic.json', args.api_url, args.tier)
+            inject_api_url(build_dir / 'config' / 'lfss.json', args.api_url, args.tier)
     
     # Process templates
     for template_file in templates_dir.glob('*.html'):
