@@ -219,6 +219,41 @@ function move_poly(el, diff_x, diff_y) {
   }
 }
 
+function move_path(el, diff_x, diff_y) {
+  let d = el.attributes.d.value;
+  const commands = d.split(" ");
+  let new_d = "";
+  for (let i = 0; i < commands.length; i++) {
+    const command = commands[i];
+    if (isString(command)) {
+      if (command == "M") {
+        i++; const x = commands[i] - diff_x;
+        i++; const y = commands[i] - diff_y;
+        new_d += "M " + x + " " + y + " ";
+      } else if (command == "L") {
+        i++; const x = commands[i] - diff_x;
+        i++; const y = commands[i] - diff_y;
+        new_d += "L " + x + " " + y + " ";
+      } else if (command == "A") {
+        // Arc command has multiple parameters
+        i++; const rx = commands[i]; 
+        i++; const ry = commands[i]; 
+        i++; const x_axis_rotation = commands[i]; 
+        i++; const large_arc_flag = commands[i]; 
+        i++; const sweep_flag = commands[i];
+        i++; const x = commands[i] - diff_x; 
+        i++; const y = commands[i] - diff_y;  
+        new_d += "A " + rx + " " + ry + " " + x_axis_rotation + " " + large_arc_flag + " " + sweep_flag + " " + x + " " + y + " ";
+
+      } else {
+        // Just copy over other commands like Z
+        new_d += command + " ";
+      }
+    }
+  }
+  el.attributes.d.value = new_d;
+} 
+
 function shift_points(points, diff_x, diff_y) {
   let new_points = "";
   const point_array = points.split(' ');

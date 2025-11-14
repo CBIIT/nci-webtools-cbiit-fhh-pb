@@ -219,13 +219,16 @@ function create_placeholder_partner(person_id, gen, side, role) {
   person.demographics = {};
   if (role == "mother") {
     person.demographics.gender = "Female";
-    person.name = "Mother of " + person_id;
+    person.name = "Partner of " + person_id;
     person.id = "m_" + person_id;
   } else {
     person.demographics.gender = "Male";
-    person.name = "Father of " + person_id;
+    person.name = "Partner of " + person_id;
     person.id = "f_" + person_id;
   }
+
+
+  
   console.log ("Ready to place person: " + person.id + "," + gen + "," + side);
   data["people"][person.id] = person;
   place_person(person.id, gen, side)

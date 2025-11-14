@@ -130,4 +130,4 @@ def write_annotations_api_gateway(family_id):
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(ssl_context='adhoc',debug=True)
