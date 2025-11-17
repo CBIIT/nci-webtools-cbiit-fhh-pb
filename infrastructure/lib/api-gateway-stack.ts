@@ -24,6 +24,7 @@ export class ApiGatewayStack extends cdk.Stack {
   public readonly authorizer?: apigateway.RequestAuthorizer;
   public readonly authorizerFunction: lambda.Function;
   public readonly callbackFunction: lambda.Function;
+  public readonly apiDomainName: string;
 
   constructor(scope: Construct, id: string, props: ApiGatewayStackProps) {
     super(scope, id, props);
@@ -136,12 +137,12 @@ export class ApiGatewayStack extends cdk.Stack {
       );
     }
 
-    const corsOrigins = [
-      `https://pedigree-${tier}.cancer.gov`,
-      `https://${props.cloudFrontDomainName}`,
-    ];
+    const corsOrigins = [`https://pedigree-${tier}.cancer.gov`];
 
-    // Add custom API domain to CORS origins if certificate is available
+    if (props.cloudFrontDomainName) {
+      corsOrigins.push(`https://${props.cloudFrontDomainName}`);
+    }
+
     if (certificate) {
       corsOrigins.push(`https://${apiDomainName}`);
     }
@@ -331,7 +332,12 @@ export class ApiGatewayStack extends cdk.Stack {
       cdk.Tags.of(this.api).add(key, value);
     });
 
-    // outputs
+    const executeApiDomain = cdk.Fn.select(
+      2,
+      cdk.Fn.split("/", this.api.url)
+    );
+    this.apiDomainName = executeApiDomain;
+
     new cdk.CfnOutput(this, "ApiGatewayUrl", {
       value: this.api.url,
       description: "API Gateway URL for the FHHPB application",

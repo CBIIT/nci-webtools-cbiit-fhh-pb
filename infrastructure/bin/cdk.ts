@@ -43,22 +43,6 @@ const dynamoDBSessionStack = new DynamoDBSessionStack(
   }
 );
 
-// Create the combined CloudFront + S3 stack for frontend hosting
-const cloudFrontS3Stack = new CloudFrontS3Stack(
-  app,
-  `CloudFrontS3Stack-${TIER}`,
-  {
-    env: { account: AWS_ACCOUNT_ID, region: "us-east-1" },
-    stackName: `${TIER}-fhhpb-cloudfront-s3`,
-    enableAuth: true, // Set to true to enable Lambda@Edge authentication
-    sessionsTable: dynamoDBSessionStack.sessionsTable,
-    // Route /api/* to API Gateway execute-api URL
-    // Empty origin path - CloudFront forwards full request path /api/login -> origin/api/login
-    apiDomainName: `tlwlxji4a1.execute-api.us-east-1.amazonaws.com`,
-    apiOriginPath: "", // Empty - full request path is forwarded
-  }
-);
-
 // Create the Lambda JSON processor stack
 const lambdaJsonProcessorStack = new LambdaJsonProcessorStack(
   app,
@@ -122,7 +106,6 @@ const apiGatewayStack = new ApiGatewayStack(app, `ApiGateway-${TIER}`, {
   getFamilyFunction: lambdaGetFamilyStack.lambdaFunction,
   getAnnotationsFunction: lambdaGetAnnotationsStack.lambdaFunction,
   writeAnnotationsFunction: lambdaWriteAnnotationsStack.lambdaFunction,
-  cloudFrontDomainName: cloudFrontS3Stack.distribution.distributionDomainName,
   sessionsTable: dynamoDBSessionStack.sessionsTable,
 });
 
@@ -132,6 +115,20 @@ dynamoDBSessionStack.sessionsTable.grantReadWriteData(
 );
 dynamoDBSessionStack.sessionsTable.grantReadWriteData(
   apiGatewayStack.callbackFunction
+);
+
+// Create the combined CloudFront + S3 stack for frontend hosting
+const cloudFrontS3Stack = new CloudFrontS3Stack(
+  app,
+  `CloudFrontS3Stack-${TIER}`,
+  {
+    env: { account: AWS_ACCOUNT_ID, region: "us-east-1" },
+    stackName: `${TIER}-fhhpb-cloudfront-s3`,
+    enableAuth: true,
+    sessionsTable: dynamoDBSessionStack.sessionsTable,
+    apiDomainName: apiGatewayStack.apiDomainName,
+    apiOriginPath: "",
+  }
 );
 
 // Ensure proper stack dependencies
@@ -145,3 +142,4 @@ apiGatewayStack.addDependency(lambdaGetAnnotationsStack);
 apiGatewayStack.addDependency(lambdaGetFamilyStack);
 apiGatewayStack.addDependency(lambdaListFamiliesStack);
 cloudFrontS3Stack.addDependency(dynamoDBSessionStack);
+cloudFrontS3Stack.addDependency(apiGatewayStack);

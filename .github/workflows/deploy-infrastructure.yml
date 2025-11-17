@@ -39,56 +39,18 @@ jobs:
           cd infrastructure
           npm ci
 
-      - name: Get API Gateway URL (if exists)
-        id: get-initial-api-url
-        run: |
-          API_URL=$(aws cloudformation describe-stacks \
-            --stack-name "${{ env.TIER }}-fhhpb-api-gateway" \
-            --query "Stacks[0].Outputs[?OutputKey=='ApiGatewayUrl'].OutputValue" \
-            --output text 2>/dev/null || echo "")
-
-          if [ ! -z "$API_URL" ]; then
-            API_URL=$(echo "$API_URL" | sed 's/\/$//')
-          else
-            echo "No API Gateway URL found (stack may not exist yet)"
-          fi
-
-          echo "api-url=$API_URL" >> $GITHUB_OUTPUT
-
-      - name: Build frontend assets (required for CDK synthesis)
-        run: |
-          cd frontend
-          if [ ! -z "${{ steps.get-initial-api-url.outputs.api-url }}" ]; then
-            echo "Building with existing API configuration"
-            python3 build.py --api-url "${{ steps.get-initial-api-url.outputs.api-url }}" --tier "${{ env.TIER }}"
-          else
-            echo "Building with local configuration (no API Gateway yet)"
-            python3 build.py --tier "${{ env.TIER }}"
-          fi
-
       - name: CDK Bootstrap
         run: |
           cd infrastructure
           npx cdk bootstrap --region ${{ env.AWS_REGION }}
 
-      - name: Deploy Backend Infrastructure Stacks
+      - name: Deploy Foundation Stacks
         run: |
           cd infrastructure
-          echo "Deploying backend infrastructure stacks for ${{ env.TIER }} environment..."
-
-          # Deploy backend stacks
+          echo "Deploying foundation infrastructure for ${{ env.TIER }} environment..."
           npx cdk deploy \
             S3DataStack-${{ env.TIER }} \
             DynamoDBSession-${{ env.TIER }} \
-            --require-approval never
-
-      - name: Deploy Backend Lambda Stacks
-        run: |
-          cd infrastructure
-          echo "Deploying backend Lambda stacks for ${{ env.TIER }} environment..."
-
-          # Deploy data Lambda functions
-          npx cdk deploy \
             LambdaJsonProcessor-${{ env.TIER }} \
             LambdaWriteAnnotations-${{ env.TIER }} \
             LambdaGetAnnotations-${{ env.TIER }} \
@@ -96,47 +58,36 @@ jobs:
             LambdaListFamilies-${{ env.TIER }} \
             --require-approval never
 
-      - name: Deploy CloudFront Stack with Lambda@Edge
+      - name: Deploy API Gateway and CloudFront Stacks
         run: |
           cd infrastructure
-          echo "Deploying CloudFront and Lambda@Edge stacks for ${{ env.TIER }} environment..."
-
+          echo "Deploying API Gateway and CloudFront for ${{ env.TIER }} environment..."
           npx cdk deploy \
-            LambdaOidcCloudFront-${{ env.TIER }} \
+            ApiGateway-${{ env.TIER }} \
             CloudFrontS3Stack-${{ env.TIER }} \
             --require-approval never
 
-      - name: Deploy API Gateway Stack
-        run: |
-          cd infrastructure
-          echo "Deploying API Gateway stack for ${{ env.TIER }} environment..."
+      # - name: Get API Gateway URL
+      #   id: get-api-url
+      #   run: |
+      #     API_URL=$(aws cloudformation describe-stacks \
+      #       --stack-name "${{ env.TIER }}-fhhpb-api-gateway" \
+      #       --query "Stacks[0].Outputs[?OutputKey=='ApiGatewayUrl'].OutputValue" \
+      #       --output text)
 
-          # Deploy API Gateway stack
-          npx cdk deploy \
-            ApiGateway-${{ env.TIER }} \
-            --require-approval never
+      #     if [ -z "$API_URL" ] || [ "$API_URL" = "None" ]; then
+      #       echo "Error: API Gateway URL not found. The API Gateway stack must be deployed successfully."
+      #       exit 1
+      #     fi
 
-      - name: Get API Gateway URL
-        id: get-api-url
-        run: |
-          API_URL=$(aws cloudformation describe-stacks \
-            --stack-name "${{ env.TIER }}-fhhpb-api-gateway" \
-            --query "Stacks[0].Outputs[?OutputKey=='ApiGatewayUrl'].OutputValue" \
-            --output text)
-
-          if [ -z "$API_URL" ] || [ "$API_URL" = "None" ]; then
-            echo "Error: API Gateway URL not found. The API Gateway stack must be deployed successfully."
-            exit 1
-          fi
-
-          API_URL=$(echo "$API_URL" | sed 's/\/$//')
-          echo "api-gateway-url=$API_URL" >> $GITHUB_OUTPUT
+      #     API_URL=$(echo "$API_URL" | sed 's/\/$//')
+      #     echo "api-gateway-url=$API_URL" >> $GITHUB_OUTPUT
 
       - name: Build frontend assets
         run: |
           cd frontend
           echo "Building with configured API Gateway URL"
-          python3 build.py --api-url "${{ steps.get-api-url.outputs.api-gateway-url }}" --tier "${{ env.TIER }}"
+          python3 build.py --api-url "/api" --tier "${{ env.TIER }}"
 
       - name: Deploy to S3
         run: |
@@ -174,15 +125,14 @@ jobs:
           echo ""
           echo "Deployed Stacks:"
           echo "  • S3DataStack-${{ env.TIER }}"
-          echo "  • DynamoDBSession-${{ env.TIER }} (Session Management)"
-          echo "  • LambdaOidcCloudFront-${{ env.TIER }} (CloudFront Auth)"
+          echo "  • DynamoDBSession-${{ env.TIER }}"
           echo "  • LambdaJsonProcessor-${{ env.TIER }}"
           echo "  • LambdaWriteAnnotations-${{ env.TIER }}"
           echo "  • LambdaGetAnnotations-${{ env.TIER }}"
           echo "  • LambdaGetFamily-${{ env.TIER }}"
           echo "  • LambdaListFamilies-${{ env.TIER }}"
-          echo "  • CloudFrontS3Stack-${{ env.TIER }}"
           echo "  • ApiGateway-${{ env.TIER }}"
+          echo "  • CloudFrontS3Stack-${{ env.TIER }} (includes Lambda@Edge)"
           echo ""
           echo "URLs:"
           echo "  • Frontend: https://pedigree-${{ env.TIER }}.cancer.gov"
