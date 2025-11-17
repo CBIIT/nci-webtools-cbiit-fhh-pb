@@ -55,7 +55,7 @@ The build script performs the following steps:
 
 The system dynamically configures API endpoints through configuration:
 
-1. **Configuration Loading**: App loads `config/basic.json` at startup
+1. **Configuration Loading**: App loads `config/lfss.json` at startup
 2. **API Initialization**: `initializeApiConfig()` reads the `api.baseUrl` setting
 3. **Dynamic URLs**: All API calls use `buildApiUrl()` to construct complete URLs
 4. **Fallback**: Falls back to relative paths for local development
@@ -128,7 +128,7 @@ build/
 │       ├── fhh_load.js
 │       └── fhh_move.js
 └── config/
-    └── basic.json
+    └── lfss.json
 ```
 
 ## Template Processing
@@ -160,7 +160,7 @@ const [data, annotations, config] = await load_config_and_data("family_123");
 
 ### Local Development
 
-- Leave `api.baseUrl` empty in `config/basic.json`
+- Leave `api.baseUrl` empty in `config/lfss.json`
 - Uses relative paths to Flask server
 - All routes work locally
 
@@ -183,7 +183,7 @@ The CloudFront distribution serves:
 
 ### API Gateway Issues
 
-1. Check `config/basic.json` has correct `api.baseUrl`
+1. Check `config/lfss.json` has correct `api.baseUrl`
 2. Verify CORS configuration on API Gateway
 3. Ensure API Gateway is deployed before frontend
 

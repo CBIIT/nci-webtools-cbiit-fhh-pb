@@ -45,12 +45,16 @@ export function get_config() {
 let select = document.getElementById("file_select");
 select.addEventListener("change", function (event) {
   // Code to be executed when the value changes
-  const promise = load_config_and_data(event.target.value, "basic");
+  const promise = load_config_and_data(event.target.value, "lfss");
   promise.then(([d, a, c]) => {
     data = d;
     annotations = a;
     config = c;
     display_pedigree();
+    show_all_blocks();
+    show_summary_block();
+    set_study_summary();
+    set_family_summary();
   });
 });
 
@@ -74,6 +78,19 @@ save_elem.addEventListener("click", function () {
   save_positions_and_annotations(data);
 });
 
+let raw_data_elem = document.getElementById("raw_data_button");
+raw_data_elem.addEventListener("click", function () {
+  const elem = document.getElementById("details_textbox");
+  const raw_elem = document.getElementById("raw_data_text");
+  if (raw_elem.style.display === "block") {
+    raw_elem.style.display = "none";
+    raw_data_elem.innerHTML = "Show Raw Data";
+  } else {
+    raw_elem.style.display = "block";
+    raw_data_elem.innerHTML = "Hide Raw Data";
+  }
+});
+
 document.addEventListener("DOMContentLoaded", function () {
   try {
     const urlParams = new URLSearchParams(window.location.search);
@@ -85,17 +102,39 @@ document.addEventListener("DOMContentLoaded", function () {
     if (family) {
       filename = family + ".json";
     }
-    const promise = load_config_and_data(family, "basic");
-    promise.then(([d, a, c]) => {
-      data = d;
-      annotations = a;
-      config = c;
-      display_pedigree();
-    });
+    if (filename) { 
+      const promise = load_config_and_data(family, "lfss");
+      promise.then(([d, a, c]) => {
+        data = d;
+        annotations = a;
+        config = c;
+        display_pedigree();
+      });
+    }
   } catch (error) {
     console.error("Error fetching data:", error);
   }
 });
+
+function show_all_blocks() {
+  const text_blocks = document.getElementsByClassName("textblock");
+  Array.from(text_blocks).forEach(block => {
+    block.style.display = "block";
+  });
+
+  const alert_blocks = document.getElementsByClassName("alertbar");
+  Array.from(alert_blocks).forEach(block => {
+    block.style.display = "block";
+  });
+
+  const pedigree_blocks = document.getElementsByClassName("fhh_pedigree");
+  Array.from(pedigree_blocks).forEach(block => {
+    block.style.display = "block";
+  });
+  
+}
+
+
 
 function add_placeholder_children() {
   for (const person_id in data["people"]) {
@@ -147,7 +186,7 @@ function add_overlap_alerts(alert_elem) {
 
   if (overlaps && Object.keys(overlaps).length > 0) {
     alert_elem.style.backgroundColor = "#FDD";
-    alert_elem.style.border = "4px dashed #F00";
+    alert_elem.style.border = "1px dashed #F00";
     const p = document.createElement("p");
     p.classList.add("alert-line");
     alert_elem.append(p);
@@ -167,7 +206,7 @@ function add_unplaced_people_alerts(alert_elem) {
 
   if (missing_people && Object.keys(missing_people).length > 0) {
     alert_elem.style.backgroundColor = "#FDD";
-    alert_elem.style.border = "4px dashed #F00";
+    alert_elem.style.border = "1px dashed #F00";
     const p = document.createElement("p");
     p.classList.add("alert-line");
     alert_elem.append(p);
@@ -212,10 +251,11 @@ function draw_frame() {
   const height_of_svg = 2 * config.margin + num_generations * config.v_spacing;
 
   const svgElem = create_svg(width_of_svg, height_of_svg);
-  const r2 = draw_rectangle(width_of_svg - 2, height_of_svg - 2, 1, 1);
-  r2.setAttributeNS(null, "stroke", "black");
-  r2.setAttributeNS(null, "fill", "white");
-  r2.setAttributeNS(null, "stroke-width", "2");
+  
+  //const r2 = draw_rectangle(width_of_svg - 2, height_of_svg - 2, 1, 1);
+  //r2.setAttributeNS(null, "stroke", "black");
+  //r2.setAttributeNS(null, "fill", "white");
+  //r2.setAttributeNS(null, "stroke-width", "2");
 
   //  const center = draw_circle(10, center_offset.x, center_offset.y);
   //  center.setAttributeNS(null, "fill", "blue");
@@ -317,11 +357,20 @@ function draw_person(person_id) {
   //  console.log(person_id);
   const person = data["people"][person_id];
 
-  if (person && person["demographics"]["gender"] == "Male")
+  if (person && person["demographics"]["gender"] == "Male") {
     draw_male(person_id);
-  else if (person && person["demographics"]["gender"] == "Female")
+    draw_quadrants_male(person_id);
+  } else if (person && person["demographics"]["gender"] == "Female") {
     draw_female(person_id);
-  else draw_unknown(person_id);
+    draw_quadrants_female(person_id);
+  } else {
+    draw_unknown(person_id);
+    draw_quadrants_unknown(person_id);
+  }
+
+  if (data["people"][person_id].deceased) {
+    draw_slash(person_id);
+  }
 }
 
 function draw_person_connectors(person_id) {
@@ -358,6 +407,237 @@ function get_center(person) {
   return center;
 }
 
+//////////////////////
+
+function show_summary_block() {
+  const summary_elem = document.getElementsByClassName("summary-display-section");
+  summary_elem[0].style.display = "block";
+  const person_elem = document.getElementsByClassName("person-display-section");
+  person_elem[0].style.display = "none";
+
+  summary_elem[0].innerHTML = "";
+}
+
+
+function set_study_summary() { 
+  const summary_elem = document.getElementsByClassName("study-display-section");
+  summary_elem[0].innerHTML = "";
+
+  const study_name = config.study_name || "Unknown Study";
+  const study = data.general?.study;
+
+  const top_left = config.quadrants.top_left?.name || "Unknown";
+  const top_right = config.quadrants.top_right?.name || "Unknown";
+  const bottom_left = config.quadrants.bottom_left?.name || "Unknown";
+  const bottom_right = config.quadrants.bottom_right?.name || "Unknown";
+
+  const table = document.createElement("table");
+  table.classList.add("data-display-table");
+  const thead = document.createElement("thead");
+  const headerRow = document.createElement("tr");
+  const codeHeader = document.createElement("th");
+  codeHeader.colSpan = 2;
+  codeHeader.textContent = study_name + " - Study Summary";
+  headerRow.appendChild(codeHeader);
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+  const tbody = document.createElement("tbody");
+  add_row_to_table(tbody, "Top Left", top_left);
+  add_row_to_table(tbody, "Top Right", top_right);
+  add_row_to_table(tbody, "Bottom Left", bottom_left);
+  add_row_to_table(tbody, "Bottom Right", bottom_right);
+
+  table.appendChild(tbody);
+  summary_elem[0].appendChild(table);
+
+}
+
+function set_family_summary() {  
+  const summary_elem = document.getElementsByClassName("summary-display-section");
+ 
+  const proband_id = data.general?.proband;
+  const study = data.general?.study;
+  const family_classification = data.general?.family_classification;
+  const family_genetic_status = data.general?.family_genetic_status;
+  
+  
+  const number_of_people = Object.keys(data.people).length;
+  const number_of_diagnoses = Object.values(data.people).reduce((acc, person) => acc + (person.diseases ? person.diseases.length : 0), 0);
+  const number_of_procedures = Object.values(data.people).reduce((acc, person) => acc + (person.procedures ? person.procedures.length : 0), 0);
+
+  
+
+  const table = document.createElement("table");
+  table.classList.add("data-display-table");
+  const thead = document.createElement("thead");
+  const headerRow = document.createElement("tr");
+  const codeHeader = document.createElement("th");
+  codeHeader.colSpan = 2;
+  codeHeader.textContent = proband_id + " - Family Summary";
+  headerRow.appendChild(codeHeader);
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+  const tbody = document.createElement("tbody");
+  add_row_to_table(tbody, "Proband", proband_id);
+  add_row_to_table(tbody, "Family Classification", family_classification);
+  add_row_to_table(tbody, "Family Genetic Status", family_genetic_status);
+  add_row_to_table(tbody, "People", number_of_people);
+  add_row_to_table(tbody, "Diagnoses", number_of_diagnoses);
+  add_row_to_table(tbody, "Procedures", number_of_procedures);
+  table.appendChild(tbody);
+  summary_elem[0].appendChild(table);
+
+}
+
+
+function set_raw_data_of_person(person_id) {
+  const elem = document.getElementById("raw_data_text");
+  elem.innerHTML = "";
+  const pre = document.createElement("pre");
+  pre.textContent = JSON.stringify(data["people"][person_id], null, 2);
+  pre.classList.add("raw_data");
+  elem.appendChild(pre);
+}
+
+function set_demographics_of_person(person_id) {
+  const elem = document.getElementById("person_demographics");
+  elem.innerHTML = "";
+
+  const h2 = document.createElement("h2");
+  h2.textContent = data["people"][person_id]["name"];
+  elem.appendChild(h2); 
+
+  const table = document.createElement("table");
+  table.classList.add("data-display-table");
+  const thead = document.createElement("thead");
+  const headerRow = document.createElement("tr");
+  const codeHeader = document.createElement("th");
+  codeHeader.colSpan = 2;
+  codeHeader.textContent = "Demographics";
+  headerRow.appendChild(codeHeader);
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+  const tbody = document.createElement("tbody");
+  add_row_to_table(tbody, "ID", person_id);
+  add_row_to_table(tbody, "Sex", data["people"][person_id]["demographics"]["gender"]);
+
+  add_row_to_table(tbody, "Birthdate", data["people"][person_id]["born"]);
+  add_row_to_table(tbody, "Deceased", data["people"][person_id]["deceased"]);
+  add_row_to_table(tbody, "Pedigree Symbol", data["people"][person_id]["pedigree_symbol"]);
+  add_row_to_table(tbody, "Mother", data["people"][person_id]["mother"]);
+  add_row_to_table(tbody, "Father", data["people"][person_id]["father"]);
+  table.appendChild(tbody);
+  elem.appendChild(table);
+}
+
+function add_row_to_table(tbody, label, value) {
+  if (!value) return;
+  if (value == "UN/UN/UNKN" || value == "00/00/0000") return;
+  if (value == "Unknown") return;
+  if (value == "UNK") return;
+
+
+  const row = document.createElement("tr");
+  const label_cell = document.createElement("td");
+  label_cell.textContent = label;
+  const value_cell = document.createElement("td");
+  value_cell.textContent = value;
+  row.appendChild(label_cell);
+  row.appendChild(value_cell);
+  tbody.appendChild(row);
+}
+
+function set_diagnoses_of_person(person_id) {
+  const elem = document.getElementById("person_diagnoses");
+  elem.innerHTML = "";
+
+  const diseases = data["people"][person_id]["diseases"];
+  if (diseases && diseases.length > 0) {
+    const h2 = document.createElement("h2");
+    h2.textContent = "Diagnoses";
+    elem.appendChild(h2);
+
+
+    for (const disease of diseases) {
+      // There is a potential error in the code for non-cancer diseases, they include the shorthand as well.  So for now I will trim the code to dbefore the -
+      const code = trimAfterCharacter(disease.code, "-");
+
+     
+      const table = document.createElement("table");
+      table.classList.add("data-display-table");
+      if (code[0] == "C") table.classList.add("cancer-diagnosis");
+      const thead = document.createElement("thead");
+      const headerRow = document.createElement("tr");
+      const codeHeader = document.createElement("th");
+      codeHeader.colSpan = 2;
+      codeHeader.textContent = code + " - " + disease.shorthand;
+      headerRow.appendChild(codeHeader);
+      thead.appendChild(headerRow);
+      table.appendChild(thead);
+      const tbody = document.createElement("tbody");
+      add_row_to_table(tbody, "Code", code);
+      add_row_to_table(tbody, "Shorthand", disease.shorthand);
+      add_row_to_table(tbody, "Age of Diagnosis", disease.age_of_diagnosis);
+      add_row_to_table(tbody, "Date of Diagnosis", disease.date_of_diagnosis);
+      add_row_to_table(tbody, "Laterality", disease.laterality);
+      add_row_to_table(tbody, "D Num", disease.d_num);
+      
+      table.appendChild(tbody);
+      elem.appendChild(table);
+    }
+  }
+} 
+
+function set_procedures_of_person(person_id) {
+  const elem = document.getElementById("person_procedures");
+  elem.innerHTML = "";
+
+  const procedures = data["people"][person_id]["procedures"];
+  if (procedures && procedures.length > 0) {
+    const h2 = document.createElement("h2");
+    h2.textContent = "Procedures";
+    elem.appendChild(h2);
+
+
+    for (const procedure of procedures) {
+      // There is a potential error in the code for non-cancer diseases, they include the shorthand as well.  So for now I will trim the code to dbefore the -
+      const code = trimAfterCharacter(procedure.code, "-");
+
+      const table = document.createElement("table");
+      table.classList.add("data-display-table");
+      const thead = document.createElement("thead");
+      const headerRow = document.createElement("tr");
+      const codeHeader = document.createElement("th");
+      codeHeader.colSpan = 2;
+      codeHeader.textContent = code + " - " + procedure.shorthand;
+      headerRow.appendChild(codeHeader);
+      thead.appendChild(headerRow);
+      table.appendChild(thead);
+      const tbody = document.createElement("tbody");
+      add_row_to_table(tbody, "Code", code);
+      add_row_to_table(tbody, "Shorthand", procedure.shorthand);
+      add_row_to_table(tbody, "Date of Procedure", procedure.date_of_procedure);
+      add_row_to_table(tbody, "Procedure #", procedure.proc_num);
+
+      table.appendChild(tbody);
+      elem.appendChild(table);
+    }
+  }
+} 
+
+function set_details_of_person(person_id) {
+  const summary_elem = document.getElementsByClassName("summary-display-section");
+  summary_elem[0].style.display = "none";
+  const person_elem = document.getElementsByClassName("person-display-section");
+  person_elem[0].style.display = "block";
+
+  set_demographics_of_person(person_id);
+  set_diagnoses_of_person(person_id);
+  set_procedures_of_person(person_id);
+
+  set_raw_data_of_person(person_id);
+}
+
 function add_clicking_to_element(el, person_id) {
   el.addEventListener("mousedown", (e) => {
     const selectedValue = document.querySelector(
@@ -365,6 +645,10 @@ function add_clicking_to_element(el, person_id) {
     ).value;
 
     if (selectedValue == "details") {
+      // Log the person data to the console
+      set_study_summary();
+      set_details_of_person(person_id);
+
       console.log(data["people"][person_id]);
     } else if (selectedValue == "free") {
       start_free_move(e);
@@ -382,7 +666,6 @@ function draw_male(person_id) {
   person.x = center.x;
   person.y = center.y;
 
-  //  const el = draw_square(config.size, center.x , center.y );
   const el = draw_square(
     config.size,
     center.x - config.size / 2,
@@ -391,6 +674,10 @@ function draw_male(person_id) {
   el.setAttributeNS(null, "id", person_id);
   el.setAttributeNS(null, "name", person_id);
   el.setAttributeNS(null, "sex", "Male");
+ 
+  if (data["people"][person_id]["diseases"]) {
+    el.setAttributeNS(null, "stroke-width", "3");
+  } 
 
   if (person.placeholder) el.setAttributeNS(null, "fill", "White");
 
@@ -402,10 +689,6 @@ function draw_male(person_id) {
     draw_name(center, person_id);
     draw_pedigree_symbol(center, person_id);
     draw_born_and_deceased(center, person_id);
-  }
-
-  if (data["people"][person_id].deceased) {
-    draw_slash(person_id);
   }
 }
 
@@ -422,6 +705,10 @@ function draw_female(person_id) {
   el.setAttributeNS(null, "name", person_id);
   el.setAttributeNS(null, "sex", "Female");
 
+  if (data["people"][person_id]["diseases"]) {
+    el.setAttributeNS(null, "stroke-width", "3");
+  } 
+
   if (person.placeholder) el.setAttributeNS(null, "fill", "White");
 
   people_drawn.push(person_id);
@@ -433,9 +720,6 @@ function draw_female(person_id) {
     draw_born_and_deceased(center, person_id);
   }
 
-  if (data["people"][person_id].deceased) {
-    draw_slash(person_id);
-  }
 }
 
 function draw_unknown(person_id) {
@@ -457,6 +741,10 @@ function draw_unknown(person_id) {
   el.setAttributeNS(null, "cx", center.x);
   el.setAttributeNS(null, "cy", center.y);
 
+ if (data["people"][person_id]["diseases"]) {
+    el.setAttributeNS(null, "stroke-width", "3");
+  } 
+
   if (person.placeholder) el.setAttributeNS(null, "fill", "White");
 
   people_drawn.push(person_id);
@@ -466,12 +754,10 @@ function draw_unknown(person_id) {
     draw_name(center, person_id);
   }
 
-  if (data["people"][person_id].deceased) {
-    draw_slash(person_id);
-  }
 }
 
 function draw_slash(person_id) {
+  console.log("draw_slash for " + person_id);
   if (!data["people"][person_id]) return;
   let person = data["people"][person_id];
 
@@ -480,10 +766,10 @@ function draw_slash(person_id) {
   person.y = center.y;
   const s = config.size / 2;
   const slash_elem = draw_line(
-    person.x - s,
-    person.y + s,
-    person.x + s,
-    person.y - s
+    person.x - s - 5 ,
+    person.y + s + 5,
+    person.x + s + 5,
+    person.y - s - 5
   );
   slash_elem.setAttributeNS(null, "id", person_id);
 }
@@ -756,3 +1042,173 @@ function draw_line(x1, y1, x2, y2) {
 
   return lineElem;
 }
+
+/////. Helper functions /////
+function trimAfterCharacter(str, char) {
+  const index = str.indexOf(char); // Find the index of the first occurrence of the character
+
+  if (index !== -1) { // If the character is found
+    return str.substring(0, index); // Return the substring from the beginning up to the character's index
+  } else {
+    return str; // If the character is not found, return the original string
+  }
+}
+
+///
+// Quadrants
+
+function check_quadrant_tr(person_id) {
+  if (!data["people"][person_id]) return;
+  let person = data["people"][person_id];
+
+  const top_right_type = config.quadrants.top_right?.type || "Unknown";
+  if (top_right_type == "disease") {
+    if (person.diseases && person.diseases.length > 0) {
+      const valid_codes = config.quadrants.top_right?.codes || [];
+      for (const disease of person.diseases) {
+        const code = trimAfterCharacter(disease.code, "-");
+        console.log("For " + person_id + " checking disease code " + code);
+        if (valid_codes.includes(code)) {
+          return true;
+        }
+      }
+    }
+  }
+}
+
+
+function check_quadrant_tl(person_id) {
+  if (!data["people"][person_id]) return;
+  let person = data["people"][person_id];
+
+  const top_left_type = config.quadrants.top_left?.type || "Unknown";
+  if (top_left_type == "disease") {
+    if (person.diseases && person.diseases.length > 0) {
+      const valid_codes = config.quadrants.top_left?.codes || [];
+      for (const disease of person.diseases) {
+        const code = trimAfterCharacter(disease.code, "-");
+        console.log("For " + person_id + " checking disease code " + code);
+        if (valid_codes.includes(code)) {
+          return true;
+        }
+      }
+    }
+  }
+}
+
+function check_quadrant_bl(person_id) {
+  if (!data["people"][person_id]) return;
+  let person = data["people"][person_id];
+
+  const bottom_left_type = config.quadrants.bottom_left?.type || "Unknown";
+  if (bottom_left_type == "disease") {
+    if (person.diseases && person.diseases.length > 0) {
+      const valid_codes = config.quadrants.bottom_left?.codes || [];
+      console.log(valid_codes);
+      for (const disease of person.diseases) {
+        const code = trimAfterCharacter(disease.code, "-");
+        console.log("For " + person_id + " checking disease code " + code);
+        if (valid_codes.includes(code)) {
+          return true;
+        }
+      }
+    }
+  }
+}
+
+function check_quadrant_br(person_id) {
+  if (!data["people"][person_id]) return;
+  let person = data["people"][person_id];
+
+  const bottom_right_type = config.quadrants.bottom_right?.type || "Unknown";
+  if (bottom_right_type == "disease") {
+    if (person.diseases && person.diseases.length > 0) {
+      const valid_codes = config.quadrants.bottom_right?.codes || [];
+      console.log(valid_codes);
+      for (const disease of person.diseases) {
+        const code = trimAfterCharacter(disease.code, "-");
+        console.log("For " + person_id + " checking disease code " + code);
+        if (valid_codes.includes(code)) {
+          return true;
+        }
+      }
+    }
+  }
+}
+
+function draw_quadrants_male(person_id) {
+  console.log("draw_quadrants_male");
+
+  let el;
+  const size = config.size / 2;
+  const center_x = data["people"][person_id].x;
+  const center_y = data["people"][person_id].y;
+
+  if (check_quadrant_tr(person_id)) el = draw_square(size, center_x, center_y - size); 
+  if (check_quadrant_tl(person_id)) el = draw_square(size, center_x - size, center_y -size);
+  if (check_quadrant_br(person_id)) el = draw_square(size, center_x, center_y);
+  if (check_quadrant_bl(person_id)) el = draw_square(size, center_x - size, center_y);
+  if (el) {
+    el.setAttributeNS(null, "id", person_id);
+    el.setAttributeNS(null, "fill", "#7AA4A2");
+    el.setAttributeNS(null, "stroke-width", "2");
+  }
+}
+
+
+function draw_quadrants_female(person_id) {
+  let el;
+  const size = config.size / 2;
+  const center_x = data["people"][person_id].x;
+  const center_y = data["people"][person_id].y;
+
+  if (check_quadrant_tr(person_id)) el = draw_arc_90(person_id, center_x, center_y, size, "tr"); 
+  if (check_quadrant_tl(person_id)) el = draw_arc_90(person_id, center_x, center_y, size, "tl");
+  if (check_quadrant_bl(person_id)) el = draw_arc_90(person_id, center_x, center_y, size, "bl");
+  if (check_quadrant_br(person_id)) el = draw_arc_90(person_id, center_x, center_y, size, "br");
+
+
+  console.log("draw_quadrants_female");
+}
+
+function draw_arc_90(person_id, center_x, center_y, radius, quadrant) {
+  
+  let path = "M " + center_x + " " + center_y + " ";
+  if (quadrant == "tr") {
+    path += "L " + (center_x + radius) + " " + center_y + " ";
+    path += "A " + radius + " " + radius + " 0 0 0 " + (center_x) + " " + (center_y - radius);
+  } else if (quadrant == "tl") {
+    path += "L " + (center_x - radius) + " " + center_y + " ";
+    path += "A " + radius + " " + radius + " 1 0 1 " + (center_x) + " " + (center_y - radius);
+  } else if (quadrant == "bl") {
+    path += "L " + (center_x - radius) + " " + center_y + " ";
+    path += "A " + radius + " " + radius + " 0 0 0 " + (center_x) + " " + (center_y + radius);
+  } else if (quadrant == "br") {
+    path += "L " + (center_x + radius) + " " + center_y + " ";
+    path += "A " + radius + " " + radius + " 1 0 1 " + (center_x) + " " + (center_y + radius);
+  }
+  path += " L " + center_x + " " + center_y + " Z";
+
+
+  let el = document.createElementNS(svgns, "path");
+
+  el.setAttributeNS(null, "d", path);
+  el.setAttributeNS(null, "stroke-width", "2");
+  el.setAttributeNS(null, "id", person_id);
+  el.setAttributeNS(null, "name", person_id);
+  el.setAttributeNS(null, "fill", "#7AA4A2");
+
+  var svg = document.getElementById("svg");
+  svg.appendChild(el);
+
+  return el;
+
+}
+
+
+function draw_quadrants_unknown(person_id) {
+  console.log("draw_quadrants_unknown");
+}
+
+
+/////////////////////

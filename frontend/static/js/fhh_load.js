@@ -39,7 +39,7 @@ export async function check_for_files() {
 
 async function loadInitialConfig() {
   try {
-    const response = await fetch("/config/basic.json");
+    const response = await fetch("/config/lfss.json");
     if (response.ok) {
       const config = await response.json();
       console.log("Initial config loaded:", config);
@@ -114,6 +114,13 @@ async function getFileList(url) {
  */
 export async function load_config_and_data(family_id, config_id) {
   console.log("Family:" + family_id + " and config: " + config_id);
+  if (!family_id) {
+    console.warn("No family ID provided");
+    return;
+  }
+  if (!config_id) {
+    console.log("No config ID provided, defaulting to 'basic'");
+  }
 
   const pedigree_file = buildApiUrl("/families/" + family_id);
   const annotations_file = buildApiUrl("/annotations/" + family_id);

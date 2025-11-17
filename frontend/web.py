@@ -16,9 +16,9 @@ print(PROCESSED_FOLDER)
 
 # Load API configuration
 def get_api_config():
-    """Load API configuration from config/basic.json"""
+    """Load API configuration from config/lfss.json"""
     try:
-        config_path = os.path.join(CONFIG_FOLDER, "basic.json")
+        config_path = os.path.join(CONFIG_FOLDER, "lfss.json")
         with open(config_path, "r") as f:
             config = json.load(f)
             return config.get("api", {}).get("baseUrl", "")
@@ -130,4 +130,4 @@ def write_annotations_api_gateway(family_id):
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(ssl_context='adhoc',debug=True)
