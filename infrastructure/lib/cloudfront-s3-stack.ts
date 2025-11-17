@@ -128,7 +128,6 @@ export class CloudFrontS3Stack extends cdk.Stack {
       });
     }
 
-    // Optional API origin for /api/* path
     let apiOrigin: origins.HttpOrigin | undefined;
     let apiOriginRequestPolicy: cloudfront.OriginRequestPolicy | undefined;
     if (props?.apiDomainName) {
@@ -151,6 +150,7 @@ export class CloudFrontS3Stack extends cdk.Stack {
         }
       );
     }
+
 
     // Create CloudFront distribution configuration
     const distributionConfig: cloudfront.DistributionProps = {
@@ -175,18 +175,6 @@ export class CloudFrontS3Stack extends cdk.Stack {
           },
         }),
       defaultRootObject: "index.html",
-      errorResponses: [
-        {
-          httpStatus: 404,
-          responseHttpStatus: 200,
-          responsePagePath: "/index.html",
-        },
-        {
-          httpStatus: 403,
-          responseHttpStatus: 200,
-          responsePagePath: "/index.html",
-        },
-      ],
       priceClass: cloudfront.PriceClass.PRICE_CLASS_100, // Use only North America and Europe
       // Add custom domain and certificate if SSL certificate ARN is provided
       ...(certificate && {

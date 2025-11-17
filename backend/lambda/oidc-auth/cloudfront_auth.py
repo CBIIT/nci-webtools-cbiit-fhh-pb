@@ -62,10 +62,23 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         tier = get_tier()
         cookie_domain = ".cancer.gov"
 
+        # Preserve original URL BEFORE any rewrites for OAuth redirect after login
+        original_url = uri
+        if querystring:
+            original_url += f"?{querystring}"
+
         # Skip auth for /api/* paths (handled by API Gateway authorizer)
         if uri.startswith("/api/"):
             print(f"Skipping auth for API path: {uri}")
             return request
+        
+        # SPA routing: rewrite client-side routes to /index.html
+        # This must happen BEFORE authentication so the SPA can load
+        # Skip for static assets (they have file extensions)
+        if not uri.startswith("/static/") and ("." not in uri or uri == "/"):
+            print(f"Rewriting SPA route {uri} to /index.html")
+            request["uri"] = "/index.html"
+            uri = "/index.html"  # Update uri for subsequent checks
         
         # Skip auth for static assets (CSS, JS, images, etc.)
         if uri.startswith("/static/"):
@@ -123,11 +136,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         state = base64.urlsafe_b64encode(secrets.token_bytes(16)).decode("utf-8").rstrip("=")
         nonce = base64.urlsafe_b64encode(secrets.token_bytes(16)).decode("utf-8").rstrip("=")
         code_verifier, code_challenge = oidc.generate_pkce_pair()
-
-        # Preserve original URL for redirect after login
-        original_url = uri
-        if querystring:
-            original_url += f"?{querystring}"
 
         # Generate unique state_id for DynamoDB storage
         state_id = base64.urlsafe_b64encode(secrets.token_bytes(16)).decode("utf-8")
