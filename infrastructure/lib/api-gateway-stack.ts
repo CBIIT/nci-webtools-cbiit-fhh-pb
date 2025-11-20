@@ -344,6 +344,7 @@ export class ApiGatewayStack extends cdk.Stack {
     familiesResource.addMethod("GET", listFamiliesIntegration, {
       apiKeyRequired: false,
       authorizer: this.authorizer,
+      authorizationType: apigateway.AuthorizationType.CUSTOM,
       requestValidator: new apigateway.RequestValidator(
         this,
         "ListFamiliesValidator",
@@ -360,6 +361,7 @@ export class ApiGatewayStack extends cdk.Stack {
     familyIdResource.addMethod("GET", getFamilyIntegration, {
       apiKeyRequired: false,
       authorizer: this.authorizer,
+      authorizationType: apigateway.AuthorizationType.CUSTOM,
       requestValidator: new apigateway.RequestValidator(
         this,
         "GetFamilyValidator",
@@ -381,6 +383,7 @@ export class ApiGatewayStack extends cdk.Stack {
     annotationsFamilyIdResource.addMethod("GET", getAnnotationsIntegration, {
       apiKeyRequired: false,
       authorizer: this.authorizer,
+      authorizationType: apigateway.AuthorizationType.CUSTOM,
       requestValidator: new apigateway.RequestValidator(
         this,
         "GetAnnotationsValidator",
@@ -399,6 +402,7 @@ export class ApiGatewayStack extends cdk.Stack {
     annotationsFamilyIdResource.addMethod("POST", writeAnnotationsIntegration, {
       apiKeyRequired: false,
       authorizer: this.authorizer,
+      authorizationType: apigateway.AuthorizationType.CUSTOM,
       requestValidator: new apigateway.RequestValidator(
         this,
         "WriteAnnotationsValidator",
