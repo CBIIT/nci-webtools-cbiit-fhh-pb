@@ -141,7 +141,7 @@ class OIDCClient:
         params = {
             "client_id": self.client_id,
             "response_type": "code",
-            "scope": "openid profile email group member", 
+            "scope": "openid profile email member", 
             "redirect_uri": self.callback_uri,
             "state": state,
             "code_challenge": code_challenge,

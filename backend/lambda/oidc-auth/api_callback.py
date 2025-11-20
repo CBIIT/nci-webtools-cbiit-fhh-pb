@@ -193,7 +193,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         auth_token = id_token
 
         print(
-            f"Authenticated user {user_id}: email={user_email}, groups={user_groups[:3] if len(user_groups) > 3 else user_groups}"
+            f"Authenticated user {user_id}: email={user_email}"
         )
 
         # Store session in DynamoDB
