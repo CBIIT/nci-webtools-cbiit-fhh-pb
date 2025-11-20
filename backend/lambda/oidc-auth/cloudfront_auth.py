@@ -68,7 +68,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Skip auth for /api/* paths (handled by API Gateway authorizer)
         if uri.startswith("/api/"):
-
             return request
 
         # SPA routing: rewrite client-side routes to /index.html
