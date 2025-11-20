@@ -260,9 +260,8 @@ class OIDCClient:
         # Check if at least one user group matches a required group
         matched = any(group in required for group in user_groups)
         
-        if matched:
-            print(f"User authorized with group membership")
-        else:
-            print(f"User groups {user_groups[:3]}... do not match required {required[:3]}...")
+        if not matched:
+            print(f"No matching group membership found")
+            return False
         
         return matched

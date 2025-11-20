@@ -70,7 +70,6 @@ def get_secret(secret_name: Optional[str] = None, region_name: str = "us-east-1"
         # Cache the secret
         _secrets_cache[secret_name] = secret_dict
 
-        print(f"Successfully fetched secret: {secret_name}")
         return secret_dict
 
     except ClientError as e:
