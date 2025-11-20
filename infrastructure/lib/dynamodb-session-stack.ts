@@ -22,6 +22,15 @@ export class DynamoDBSessionStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
+    this.sessionsTable.addGlobalSecondaryIndex({
+      indexName: "user_id-index",
+      partitionKey: {
+        name: "user_id",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
     const tableTags = createTags({ tier, resourceName: "sessions-table" });
     Object.entries(tableTags).forEach(([key, value]) => {
       cdk.Tags.of(this.sessionsTable).add(key, value);
