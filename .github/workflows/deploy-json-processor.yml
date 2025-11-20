@@ -14,6 +14,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: ${{ inputs.tier }}
     env:
       TIER: ${{ inputs.tier }}
       AWS_REGION: us-east-1

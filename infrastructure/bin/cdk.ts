@@ -8,6 +8,7 @@ import { LambdaGetFamilyStack } from "../lib/lambda-get-family-stack";
 import { LambdaListFamiliesStack } from "../lib/lambda-list-families-stack";
 import { ApiGatewayStack } from "../lib/api-gateway-stack";
 import { S3DataStack } from "../lib/s3-data-stack";
+import { DynamoDBSessionStack } from "../lib/dynamodb-session-stack";
 
 // Get environment variables with fallbacks
 const AWS_ACCOUNT_ID = process.env.AWS_ACCOUNT_ID;
@@ -32,13 +33,13 @@ const s3DataStack = new S3DataStack(app, `S3DataStack-${TIER}`, {
   stackName: `${TIER}-fhhpb-s3-data`,
 });
 
-// Create the combined CloudFront + S3 stack for frontend hosting
-const cloudFrontS3Stack = new CloudFrontS3Stack(
+// Create DynamoDB stack for session management
+const dynamoDBSessionStack = new DynamoDBSessionStack(
   app,
-  `CloudFrontS3Stack-${TIER}`,
+  `DynamoDBSession-${TIER}`,
   {
     env: { account: AWS_ACCOUNT_ID, region: "us-east-1" },
-    stackName: `${TIER}-fhhpb-cloudfront-s3`,
+    stackName: `${TIER}-fhhpb-dynamodb-session`,
   }
 );
 
@@ -105,16 +106,40 @@ const apiGatewayStack = new ApiGatewayStack(app, `ApiGateway-${TIER}`, {
   getFamilyFunction: lambdaGetFamilyStack.lambdaFunction,
   getAnnotationsFunction: lambdaGetAnnotationsStack.lambdaFunction,
   writeAnnotationsFunction: lambdaWriteAnnotationsStack.lambdaFunction,
-  cloudFrontDomainName: cloudFrontS3Stack.distribution.distributionDomainName,
+  sessionsTable: dynamoDBSessionStack.sessionsTable,
 });
+
+// Grant DynamoDB permissions to OIDC functions
+dynamoDBSessionStack.sessionsTable.grantReadWriteData(
+  apiGatewayStack.authorizerFunction
+);
+dynamoDBSessionStack.sessionsTable.grantReadWriteData(
+  apiGatewayStack.callbackFunction
+);
+
+// Create the combined CloudFront + S3 stack for frontend hosting
+const cloudFrontS3Stack = new CloudFrontS3Stack(
+  app,
+  `CloudFrontS3Stack-${TIER}`,
+  {
+    env: { account: AWS_ACCOUNT_ID, region: "us-east-1" },
+    stackName: `${TIER}-fhhpb-cloudfront-s3`,
+    enableAuth: true,
+    sessionsTable: dynamoDBSessionStack.sessionsTable,
+    apiDomainName: apiGatewayStack.apiDomainName,
+    apiOriginPath: "",
+  }
+);
 
 // Ensure proper stack dependencies
 lambdaWriteAnnotationsStack.addDependency(s3DataStack);
 lambdaGetAnnotationsStack.addDependency(s3DataStack);
 lambdaGetFamilyStack.addDependency(s3DataStack);
 lambdaListFamiliesStack.addDependency(s3DataStack);
+apiGatewayStack.addDependency(dynamoDBSessionStack);
 apiGatewayStack.addDependency(lambdaWriteAnnotationsStack);
 apiGatewayStack.addDependency(lambdaGetAnnotationsStack);
 apiGatewayStack.addDependency(lambdaGetFamilyStack);
 apiGatewayStack.addDependency(lambdaListFamiliesStack);
-apiGatewayStack.addDependency(cloudFrontS3Stack);
+cloudFrontS3Stack.addDependency(dynamoDBSessionStack);
+cloudFrontS3Stack.addDependency(apiGatewayStack);

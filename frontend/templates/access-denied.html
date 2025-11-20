@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Access Denied - Pedigree Application</title>
+    <style>
+        body {
+            font-family: sans-serif, Arial;
+            background-color: #f5f5f5;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .error-container {
+            background-color: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 40px;
+            max-width: 600px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        h1 {
+            color: #d32f2f;
+            margin-top: 0;
+        }
+        .icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+        p {
+            color: #555;
+            line-height: 1.6;
+            margin: 15px 0;
+        }
+        .details {
+            background-color: #f9f9f9;
+            border-left: 4px solid #d32f2f;
+            padding: 15px;
+            margin: 20px 0;
+            text-align: left;
+        }
+        .action-buttons {
+            margin-top: 30px;
+        }
+        button, a.button {
+            background-color: #1976d2;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            margin: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 14px;
+        }
+        button:hover, a.button:hover {
+            background-color: #1565c0;
+        }
+        .secondary {
+            background-color: #757575;
+        }
+        .secondary:hover {
+            background-color: #616161;
+        }
+    </style>
+</head>
+<body>
+    <div class="error-container">
+        <div class="icon">🔒</div>
+        <h1>Access Denied</h1>
+        <p>You have successfully authenticated, but you do not have permission to access the Pedigree Builder Application.</p>
+        
+        <div class="details">
+            <strong>Reason:</strong> Your account is not a member of the required access groups.
+        </div>
+        
+        <p>If you believe you should have access to this application, please contact your administrator or IT support to request access to the appropriate security groups.</p>
+        
+        <div class="action-buttons">
+            <a href="https://nih.gov" class="button secondary">Return to NIH.gov</a>
+        </div>
+    </div>
+</body>
+</html>
+
