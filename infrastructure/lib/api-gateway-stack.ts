@@ -125,6 +125,99 @@ export class ApiGatewayStack extends cdk.Stack {
       })
     );
 
+    const logoutLogGroup = logs.LogGroup.fromLogGroupName(
+      this,
+      "OidcLogoutLogGroup",
+      `/aws/lambda/${tier}-fhhpb-api-oidc-logout`
+    );
+
+    const extendSessionLogGroup = logs.LogGroup.fromLogGroupName(
+      this,
+      "OidcExtendSessionLogGroup",
+      `/aws/lambda/${tier}-fhhpb-api-oidc-extend`
+    );
+
+    // Logout function
+    const logoutFunction = new lambda.Function(this, "OidcLogoutFunction", {
+      functionName: `${tier}-fhhpb-api-oidc-logout`,
+      runtime: lambda.Runtime.PYTHON_3_11,
+      handler: "logout.lambda_handler",
+      code: lambda.Code.fromAsset("../backend/lambda/oidc-auth", {
+        bundling: {
+          image: lambda.Runtime.PYTHON_3_11.bundlingImage,
+          platform: "linux/amd64",
+          user: "root",
+          command: [
+            "bash",
+            "-c",
+            [
+              "pip install -r requirements.txt -t /asset-output --platform manylinux2014_x86_64 --only-binary=:all:",
+              "cp -r . /asset-output",
+            ].join(" && "),
+          ],
+        },
+      }),
+      timeout: cdk.Duration.seconds(10),
+      memorySize: 256,
+      logGroup: logoutLogGroup,
+      environment: {
+        SESSIONS_TABLE_NAME: props.sessionsTable.tableName,
+      },
+    });
+
+    // Extend session function
+    const extendSessionFunction = new lambda.Function(this, "OidcExtendSessionFunction", {
+      functionName: `${tier}-fhhpb-api-oidc-extend`,
+      runtime: lambda.Runtime.PYTHON_3_11,
+      handler: "extend_session.lambda_handler",
+      code: lambda.Code.fromAsset("../backend/lambda/oidc-auth", {
+        bundling: {
+          image: lambda.Runtime.PYTHON_3_11.bundlingImage,
+          platform: "linux/amd64",
+          user: "root",
+          command: [
+            "bash",
+            "-c",
+            [
+              "pip install -r requirements.txt -t /asset-output --platform manylinux2014_x86_64 --only-binary=:all:",
+              "cp -r . /asset-output",
+            ].join(" && "),
+          ],
+        },
+      }),
+      timeout: cdk.Duration.seconds(10),
+      memorySize: 256,
+      logGroup: extendSessionLogGroup,
+      environment: {
+        SESSIONS_TABLE_NAME: props.sessionsTable.tableName,
+      },
+    });
+
+    // Grant DynamoDB permissions
+    props.sessionsTable.grantReadWriteData(logoutFunction);
+    props.sessionsTable.grantReadWriteData(extendSessionFunction);
+
+    // Grant Secrets Manager access
+    logoutFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["secretsmanager:GetSecretValue"],
+        resources: [
+          `arn:aws:secretsmanager:us-east-1:${cdk.Stack.of(this).account}:secret:${secretName}-*`,
+        ],
+      })
+    );
+
+    extendSessionFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["secretsmanager:GetSecretValue"],
+        resources: [
+          `arn:aws:secretsmanager:us-east-1:${cdk.Stack.of(this).account}:secret:${secretName}-*`,
+        ],
+      })
+    );
+
     // Define custom domain and certificate if SSL certificate ARN is provided
     const apiDomainName = `api-pedigree-${tier}.cancer.gov`;
     let certificate: certificatemanager.ICertificate | undefined;
@@ -225,6 +318,23 @@ export class ApiGatewayStack extends cdk.Stack {
     loginResource.addMethod("GET", callbackIntegration, {
       apiKeyRequired: false,
       // No authorizer on callback endpoint
+    });
+
+    // Logout endpoint - GET /api/logout
+    const logoutResource = this.api.root.addResource("logout");
+    const logoutIntegration = new apigateway.LambdaIntegration(logoutFunction);
+    logoutResource.addMethod("GET", logoutIntegration, {
+      apiKeyRequired: false,
+      // No authorizer - anyone can logout
+    });
+
+    // Extend session endpoint - POST /api/extend-session (requires auth)
+    const extendSessionResource = this.api.root.addResource("extend-session");
+    const extendSessionIntegration = new apigateway.LambdaIntegration(extendSessionFunction);
+    extendSessionResource.addMethod("POST", extendSessionIntegration, {
+      apiKeyRequired: false,
+      authorizer: this.authorizer,
+      authorizationType: apigateway.AuthorizationType.CUSTOM,
     });
 
     // Create API Gateway resources and methods

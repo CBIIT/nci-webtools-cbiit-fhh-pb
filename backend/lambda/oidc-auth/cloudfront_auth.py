@@ -54,24 +54,23 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         headers = request.get("headers", {})
         uri = request.get("uri", "")
         querystring = request.get("querystring", "")
-        
-        # Debug logging
-        print(f"URI: {uri}")
-
-        # Get tier and cookie domain
         tier = get_tier()
-        cookie_domain = ".cancer.gov"
 
         # Preserve original URL BEFORE any rewrites for OAuth redirect after login
         original_url = uri
         if querystring:
             original_url += f"?{querystring}"
 
+        # Skip auth for /access-denied.html
+        if uri == "/access-denied.html":
+            print(f"Skipping auth for access-denied page")
+            return request
+
         # Skip auth for /api/* paths (handled by API Gateway authorizer)
         if uri.startswith("/api/"):
-            print(f"Skipping auth for API path: {uri}")
+
             return request
-        
+
         # SPA routing: rewrite client-side routes to /index.html
         # This must happen BEFORE authentication so the SPA can load
         # Skip for static assets (they have file extensions)
@@ -79,10 +78,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             print(f"Rewriting SPA route {uri} to /index.html")
             request["uri"] = "/index.html"
             uri = "/index.html"  # Update uri for subsequent checks
-        
+
         # Skip auth for static assets (CSS, JS, images, etc.)
         if uri.startswith("/static/"):
-            print(f"Skipping auth for static path: {uri}")
             return request
 
         # Parse cookies
@@ -114,9 +112,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 # Add user info to request headers for downstream use
                 request["headers"]["x-auth-user"] = [{"value": session_data.get("user_id", "")}]
                 request["headers"]["x-auth-email"] = [{"value": session_data.get("email", "")}]
-                request["headers"]["x-auth-groups"] = [
-                    {"value": ",".join(session_data.get("groups", []))}
-                ]
+                request["headers"]["x-auth-groups"] = [{"value": ",".join(session_data.get("groups", []))}]
                 return request
             else:
                 # Invalid or expired session - clear cookie and redirect to login
@@ -139,16 +135,16 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Generate unique state_id for DynamoDB storage
         state_id = base64.urlsafe_b64encode(secrets.token_bytes(16)).decode("utf-8")
-        
+
         # Store OAuth state in DynamoDB instead of cookie (solves cross-domain cookie issue)
         import boto3
         from datetime import datetime, timedelta
-        
+
         dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
         # Lambda@Edge doesn't support environment variables, so hardcode table name
         table_name = f"{tier}-fhhpb-sessions"
         table = dynamodb.Table(table_name)
-        
+
         # Store state with 10 minute TTL
         ttl = int((datetime.utcnow() + timedelta(minutes=10)).timestamp())
         table.put_item(
@@ -162,8 +158,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "created_at": datetime.utcnow().isoformat(),
             }
         )
-        
-        print(f"Stored OAuth state in DynamoDB: oauth_state_{state_id}")
 
         # Include state_id in the OAuth state parameter so callback can retrieve it
         # Format: state:state_id

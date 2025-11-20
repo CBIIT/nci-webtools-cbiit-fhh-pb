@@ -77,7 +77,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "headers": {"Content-Type": "application/json"},
                 "body": json.dumps({"error": "Invalid state format"}),
             }
-        
+
         state_parts = state.split(":", 1)
         if len(state_parts) != 2:
             return {
@@ -85,18 +85,17 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "headers": {"Content-Type": "application/json"},
                 "body": json.dumps({"error": "Invalid state format"}),
             }
-        
+
         stored_state, state_id = state_parts
-        print(f"Retrieving OAuth state from DynamoDB: oauth_state_{state_id}")
-        
+
         # Retrieve OAuth state from DynamoDB
         import boto3
         import os
-        
+
         dynamodb = boto3.resource("dynamodb")
         table_name = os.environ.get("SESSIONS_TABLE_NAME", "dev-fhhpb-sessions")
         table = dynamodb.Table(table_name)
-        
+
         try:
             response = table.get_item(Key={"session_id": f"oauth_state_{state_id}"})
             if "Item" not in response:
@@ -106,13 +105,13 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     "headers": {"Content-Type": "application/json"},
                     "body": json.dumps({"error": "OAuth state not found or expired"}),
                 }
-            
+
             item = response["Item"]
             db_stored_state = item.get("state")
             code_verifier = item.get("code_verifier")
             nonce = item.get("nonce")
             original_url = item.get("original_url", "/")
-            
+
             # Validate state matches what we stored
             if stored_state != db_stored_state:
                 print(f"State mismatch: received {stored_state}, expected {db_stored_state}")
@@ -121,11 +120,10 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     "headers": {"Content-Type": "application/json"},
                     "body": json.dumps({"error": "State mismatch - possible CSRF attack"}),
                 }
-            
+
             # Delete the OAuth state after retrieval (one-time use)
             table.delete_item(Key={"session_id": f"oauth_state_{state_id}"})
-            print(f"Retrieved and deleted OAuth state: oauth_state_{state_id}")
-            
+
         except Exception as e:
             print(f"Error retrieving OAuth state from DynamoDB: {str(e)}")
             return {
@@ -155,35 +153,60 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "body": json.dumps({"error": "Token validation failed"}),
             }
 
+        # Fetch UserInfo endpoint
+        access_token = tokens.get("access_token")
+        userinfo = {}
+        if access_token:
+            userinfo = oidc.get_userinfo(access_token)
+
+        # Merge UserInfo claims with ID token claims (UserInfo takes precedence)
+        # This ensures we get email, groups, etc. from wherever they're provided
+        merged_claims = {**payload, **userinfo}
+
+        # Extract member_of from merged claims (comma-separated string from UserInfo)
+        member_of_str = merged_claims.get("member_of", "")
+        user_groups = [g.strip() for g in member_of_str.split(",") if g.strip()] if member_of_str else []
+
         # Check group membership if REQUIRED_GROUPS is configured
-        # Groups are checked from Secrets Manager automatically
-        user_groups = payload.get("member", [])
-        if not oidc.check_group_membership(payload):
+        # Use merged claims which includes both ID token and UserInfo
+        if not oidc.check_group_membership(merged_claims):
             print(f"User {payload.get('sub')} lacks required group membership")
+
+            tier = get_tier()
+            base_domain = f"https://pedigree-{tier}.cancer.gov"
+
             return {
-                "statusCode": 403,
-                "headers": {"Content-Type": "application/json"},
-                "body": json.dumps({"error": "Access denied - insufficient permissions"}),
+                "statusCode": 302,
+                "headers": {
+                    "Location": f"{base_domain}/access-denied.html",
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                },
             }
 
         # Create session in DynamoDB
-        user_id = payload.get("sub", "")
-        user_email = payload.get("email", "")
+        # Use merged_claims to get email/name from UserInfo if not in ID token
+        user_id = merged_claims.get("sub", "")
+        user_email = merged_claims.get("email", "")
         expires_in = tokens.get("expires_in", 3600)
 
         # Use ID token for authentication (contains user claims)
         auth_token = id_token
+
+        print(
+            f"Authenticated user {user_id}: email={user_email}, groups={user_groups[:3] if len(user_groups) > 3 else user_groups}"
+        )
 
         # Store session in DynamoDB
         session_id = create_session(
             user_id=user_id,
             token=auth_token,
             email=user_email,
-            groups=user_groups if isinstance(user_groups, list) else [user_groups] if user_groups else [],
+            groups=user_groups,
             expires_in=expires_in,
             metadata={
                 "nonce": nonce,
                 "created_from": "oidc_callback",
+                "has_userinfo": bool(userinfo),
             },
         )
 
@@ -195,9 +218,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         tier = get_tier()
         base_domain = f"https://pedigree-{tier}.cancer.gov"
         redirect_url = (
-            f"{base_domain}{original_url}"
-            if original_url.startswith("/")
-            else f"{base_domain}/{original_url}"
+            f"{base_domain}{original_url}" if original_url.startswith("/") else f"{base_domain}/{original_url}"
         )
         cookie_domain = ".cancer.gov"  # Shared domain for CloudFront and API subdomain
 
@@ -213,9 +234,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # HTML/JS fallback to ensure navigation even if Location header is altered by intermediaries
         html_fallback = (
             f"<html><head>"
-            f"<meta http-equiv=\"refresh\" content=\"0;url={redirect_url}\" />"
-            f"<script>window.location.replace(\"{redirect_url}\");</script>"
-            f"</head><body>Redirecting to <a href=\"{redirect_url}\">{redirect_url}</a>…" 
+            f'<meta http-equiv="refresh" content="0;url={redirect_url}" />'
+            f'<script>window.location.replace("{redirect_url}");</script>'
+            f'</head><body>Redirecting to <a href="{redirect_url}">{redirect_url}</a>…'
             f"</body></html>"
         )
 
