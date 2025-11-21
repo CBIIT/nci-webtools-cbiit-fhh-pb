@@ -10,6 +10,7 @@ demographics, diseases, procedures, and family relationships.
 import json
 import re
 import sys
+import unicodedata
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -399,6 +400,34 @@ class JSONProcessor:
                 return default
             current = current[key]
         return current
+    
+    @staticmethod
+    def sanitize_folder_name(name: str, max_length: int = 20, default="other") -> str:
+        """
+        Returns a safe folder-friendly name for S3, macOS, and Windows.
+        - Removes unsafe characters
+        - Converts spaces to underscores
+        - Strips Unicode combining marks
+        - Limits output to `max_length` characters
+        """
+        # Normalize unicode to remove accents
+        name = unicodedata.normalize("NFKD", name)
+        name = "".join(ch for ch in name if not unicodedata.combining(ch))
+
+        # Replace spaces with underscores
+        name = name.replace(" ", "_")
+
+        # Keep only safe characters: letters, numbers, _, -
+        name = re.sub(r"[^A-Za-z0-9_-]", "", name)
+
+        # Collapse multiple underscores
+        name = re.sub(r"_+", "_", name)
+
+        # Trim to max length
+        name = name[:max_length]
+
+        # Fallback if empty (e.g., input was all invalid chars)
+        return name or default
 
 def parse_json(file_path: str) -> Optional[Dict[str, Any]]:
     """
@@ -506,8 +535,15 @@ def main():
         # Process the records
         processor.process_records(input_data)
 
-        # Generate and save output
+        # Generate output
         output_data = processor.get_output_data()
+
+        # Determine destination folder based on study
+        study_name = JSONProcessor.safe_get(output_data, 'general', 'study', default="not_found")
+        #dst_folder = lookup_processed.get(study_name, "study_unknown")
+        dst_folder = JSONProcessor.sanitize_folder_name(study_name, 20, "study_unknown")
+
+        # Save output JSON
         processor.save_json(output_data, output_path)
 
         # Print summary

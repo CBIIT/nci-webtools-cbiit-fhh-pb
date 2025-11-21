@@ -83,8 +83,9 @@ def lambda_handler(event, context):
             output_data = processor.get_output_data()
 
             # Determine destination folder based on study
-            study_name = JSONProcessor.safe_get(output_data, 'general', 'study', default="other")
-            dst_folder = lookup_processed.get(study_name, "study_unknown")
+            study_name = JSONProcessor.safe_get(output_data, 'general', 'study', default="not_found")
+            #dst_folder = lookup_processed.get(study_name, "study_unknown")
+            dst_folder = JSONProcessor.sanitize_folder_name(study_name, 20, "study_unknown")
 
             # 2. Serialize to JSON string
             json_string = json.dumps(output_data)
