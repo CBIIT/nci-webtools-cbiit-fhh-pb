@@ -21,6 +21,11 @@ def lambda_handler(event, context):
         'xp-het': 'XP Heterozygotes'
     }
 
+    # for determining destination folder
+    lookup_processed = {
+        'Li-Fraumeni Syndrome': 'lfss',
+    }
+
     print("[INFO] Running json_processor ...")
 
     s3_bucket_name = event['Records'][0]['s3']['bucket']['name']
@@ -77,13 +82,17 @@ def lambda_handler(event, context):
             # Generate and save output
             output_data = processor.get_output_data()
 
+            # Determine destination folder based on study
+            study_name = JSONProcessor.safe_get(output_data, 'general', 'study', default="other")
+            dst_folder = lookup_processed.get(study_name, "study_unknown")
+
             # 2. Serialize to JSON string
             json_string = json.dumps(output_data)
 
             # 3. Upload to S3
             filename_with_ext = os.path.basename(s3_file_name)
             filename_without_ext = os.path.splitext(filename_with_ext)[0]
-            s3_object_key = f"processed/{filename_without_ext}.processed.json"
+            s3_object_key = f"processed/{dst_folder}/{filename_without_ext}.processed.json"
 
             #s3 = boto3.client('s3')
             s3_client.put_object(

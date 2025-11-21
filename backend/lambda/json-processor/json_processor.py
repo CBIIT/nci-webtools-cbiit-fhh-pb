@@ -15,6 +15,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+#DEL
+lookup_processed = {
+    'Li-Fraumeni Syndrome': 'lfss',
+}
+
 class JSONProcessor:
     """
     A class to handle JSON medical data processing and transformation.
@@ -200,10 +205,11 @@ class JSONProcessor:
             return None
 
         disease_num = record.get('Subject non cancer[N_CANCER.NUMBER]', '')
+        med_code, shorthand = self._parse_medical_code(code)
 
         return {
-            'shorthand': code,
-            'code': code,
+            'shorthand': shorthand,
+            'code': med_code,
             'laterality': str(record.get('Subject non cancer[N_CANCER.PRM_TUMOR_LATERAL_TP_STD]', '')),
             'diagnosis_method': record.get('Subject non cancer[N_CANCER.TBD]', ''),
             'age_of_diagnosis': str(record.get('Subject non cancer[N_CANCER.AGE_AT_DIAGNOSIS]', '')),
@@ -218,10 +224,11 @@ class JSONProcessor:
             return None
 
         proc_num = record.get('Subject procedure[PRTRT.NUMBER]', '')
+        med_code, shorthand = self._parse_medical_code(code)
 
         return {
-            'shorthand': code,
-            'code': code,
+            'shorthand': shorthand,
+            'code': med_code,
             'age_at_procedure': record.get('Subject procedure[PRTRT.DERIV_PRSN_AGE]', ''),
             'date_of_procedure': record.get('Subject procedure[PRTRT.PRSTDAT]', ''),
             'proc_num': f"P{proc_num}" if proc_num else ''
@@ -382,6 +389,16 @@ class JSONProcessor:
             'general': dict(self.general),
             'people': dict(self.people)  # Convert defaultdict to regular dict
         }
+    
+    @staticmethod
+    def safe_get(data, *keys, default="<missing>"):
+        """Safely retrieve nested keys, returning default if any key is missing."""
+        current = data
+        for key in keys:
+            if not isinstance(current, dict) or key not in current:
+                return default
+            current = current[key]
+        return current
 
 def parse_json(file_path: str) -> Optional[Dict[str, Any]]:
     """
