@@ -427,7 +427,7 @@ class JSONProcessor:
         name = name[:max_length]
 
         # Fallback if empty (e.g., input was all invalid chars)
-        return name or default
+        return name.upper() or default.upper()
 
 def parse_json(file_path: str) -> Optional[Dict[str, Any]]:
     """
