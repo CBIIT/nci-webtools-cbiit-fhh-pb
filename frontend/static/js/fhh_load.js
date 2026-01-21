@@ -1,12 +1,13 @@
 let apiConfig = { baseUrl: "" };
 let loaded_family_id = null;
 
+
 /**
  * Builds API URL by combining base URL with endpoint
  * @param {string} endpoint - The API endpoint path
  * @returns {string} Complete URL or relative path if no base URL configured
  */
-function buildApiUrl(endpoint) {
+function build_api_url(endpoint) {
   if (!apiConfig.baseUrl) return endpoint;
 
   const cleanEndpoint = endpoint.startsWith("/") ? endpoint.slice(1) : endpoint;
@@ -29,15 +30,22 @@ export function initializeApiConfig(config) {
   }
 }
 
+export async function check_for_studies() { 
+  console.log("Checking for studies...");
+  const studies = await get_study_list(build_api_url("/studies"));
+  console.log(studies);
+} 
+
 /**
  * Loads configuration first, then displays the list of available family files
  */
-export async function check_for_files() {
-  await loadInitialConfig();
-  await getFileList(buildApiUrl("/families"));
+export async function check_for_families(study_id) {
+  console.log("Checking for families...");
+  const familes = await get_family_list(build_api_url("/families/" + study_id));
+  console.log(familes);
 }
 
-async function loadInitialConfig() {
+export async function load_initial_config() {
   try {
     const response = await fetch("/config/lfss.json");
     if (response.ok) {
@@ -59,8 +67,31 @@ async function loadInitialConfig() {
  * Populates the file selection dropdown with family list
  * @param {string[]} file_list - Array of family IDs
  */
-export function load_files_into_select(file_list) {
-  const select = document.getElementById("file_select");
+export function load_families_into_select(file_list) {
+  const select = document.getElementById("families_select");
+
+  for (let i = select.options.length - 1; i >= 0; i--) {
+    select.remove(i);
+  }
+
+  const blank_option = document.createElement("option");
+  blank_option.text = ""; 
+  select.add(blank_option);
+
+  for (const i2 in file_list) {
+    const option = document.createElement("option");
+    option.value = file_list[i2];
+    option.text = file_list[i2];
+    select.add(option);
+  }
+}
+
+/**
+ * Populates the file selection dropdown with family list
+ * @param {string[]} file_list - Array of family IDs
+ */
+export function load_studies_into_select(file_list) {
+  const select = document.getElementById("study_select");
 
   for (let i = select.options.length - 1; i >= 0; i--) {
     select.remove(i);
@@ -87,7 +118,7 @@ export function load_file() {
  * @param {string} url - API endpoint URL
  * @returns {Promise<string[]>} Array of family IDs
  */
-async function getFileList(url) {
+async function get_family_list(url) {
   try {
     const response = await fetch(url);
     if (!response.ok) {
@@ -98,8 +129,33 @@ async function getFileList(url) {
       .map((filename) => filename.split(".")[0])
       .sort();
 
-    load_files_into_select(family_list);
+    load_families_into_select(family_list);
     return family_list;
+  } catch (error) {
+    console.error("Error fetching file list:", error);
+    return [];
+  }
+}
+
+/**
+ * Fetches and processes the family file list from API
+ * @param {string} url - API endpoint URL
+ * @returns {Promise<string[]>} Array of family IDs
+ */
+async function get_study_list(url) {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const filelist = JSON.parse(await response.text());
+    const study_list = filelist
+      .map((filename) => filename.split(".")[0])
+      .sort();
+
+    if (study_list[0] === "")  study_list.shift(); // First item is an extra blank
+    load_studies_into_select(study_list);
+    return study_list;
   } catch (error) {
     console.error("Error fetching file list:", error);
     return [];
@@ -122,8 +178,8 @@ export async function load_config_and_data(family_id, config_id) {
     console.log("No config ID provided, defaulting to 'basic'");
   }
 
-  const pedigree_file = buildApiUrl("/families/" + family_id);
-  const annotations_file = buildApiUrl("/annotations/" + family_id);
+  const pedigree_file = build_api_url("/family/" + "lfss" + "/" + family_id);
+  const annotations_file = build_api_url("/annotations/" + "lfss" + "/" + family_id);
   const config_file = `/config/${config_id || "basic"}.json`;
 
   loaded_family_id = family_id;
@@ -167,7 +223,8 @@ export async function load_config_and_data(family_id, config_id) {
 export function save_positions_and_annotations(data) {
   const proband_id = data.general?.proband;
   const family_id = loaded_family_id;
-  console.log(family_id);
+  const study_id = "lfss";
+  console.log("saving Annotations: " + study_id + "/" + family_id);
 
   const people_positions = Object.fromEntries(
     Object.entries(data.people).map(([person_id, person]) => [
@@ -176,7 +233,7 @@ export function save_positions_and_annotations(data) {
     ])
   );
 
-  save_file(family_id, { positions: people_positions });
+  save_file(study_id, family_id, { positions: people_positions });
 }
 
 /**
@@ -185,8 +242,8 @@ export function save_positions_and_annotations(data) {
  * @param {Object} annotations - The annotation data to save
  * @returns {Promise<Object>} Server response data
  */
-async function save_file(family_id, annotations) {
-  const site_url = buildApiUrl("/annotations/" + family_id);
+async function save_file(study_id, family_id, annotations) {
+  const site_url = build_api_url("/annotations/" + study_id + "/" +  family_id);
 
   try {
     const response = await fetch(site_url, {

@@ -13,14 +13,20 @@
         Special Actions:<br/>
         <BUTTON id='log-button'>LOG</BUTTON>
         <BUTTON id='clear-alert-button'>Clear Alerts</BUTTON>
+        <br/><button id="save-button"> Save Annotations </button>
+
       </div>
       <div class="file-block">
-        Family:<br/>
-        <SELECT id="file_select">
+       Study:
+        <SELECT id="study_select">
+          <OPTION> </OPTION>
+          <OPTION> This is where we list the studies </OPTION>
+        </SELECT>
+        <br/>Family:
+        <SELECT id="families_select">
           <OPTION> </OPTION>
           <OPTION> This is where we list the pedigrees </OPTION>
         </SELECT>
-        <br/><button id="save-button"> Save </button>
       </div>
       <div class="radio-block"> Action Mode: <br />
         <input type="radio" id="details" name="action_choice" value="details" checked="checked">

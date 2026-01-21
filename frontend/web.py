@@ -55,22 +55,22 @@ def index():
     return render_template("index.html")
 
 
-@app.route("/family/<family_id>")
-def get_family_legacy(family_id):
-    return get_family_api_gateway(family_id)
+@app.route("/family/<study_id>/<family_id>")
+def get_family_legacy(study_id, family_id):
+    return get_family_api_gateway(study_id,family_id)
 
 
-@app.route("/annotations/<family_id>", methods=["GET"])
-def get_annotations(family_id):
+@app.route("/annotations/<study_id>/<family_id>", methods=["GET"])
+def get_annotations(study_id, family_id):
     # Try API Gateway first if configured
-    api_response = proxy_to_api_gateway(f"annotations/{family_id}", "GET")
+    api_response = proxy_to_api_gateway(f"annotations/{study_id}/{family_id}", "GET")
     if api_response is not None:
         return jsonify(api_response.json()), api_response.status_code
 
     # Fall back to local file serving
     filename = family_id + ".annotations.json"
     app.logger.info(ANNOTATIONS_FOLDER + "/" + filename)
-    return send_from_directory(ANNOTATIONS_FOLDER, filename)
+    return send_from_directory(os.path.join(ANNOTATIONS_FOLDER, study_id), filename)
 
 
 @app.route("/config/<config_name>")
@@ -86,40 +86,53 @@ def get_config_with_extension(config_name):
 
 
 # API Gateway compatible routes
-@app.route("/families")
-def list_families():
+@app.route("/families/<study_id>")
+def list_families(study_id):
     # Try API Gateway first if configured
-    api_response = proxy_to_api_gateway("families", "GET")
+    api_response = proxy_to_api_gateway(f"families/{study_id}", "GET")
     if api_response is not None:
         return jsonify(api_response.json()), api_response.status_code
 
     # Fall back to local directory listing
-    return jsonify(os.listdir(PROCESSED_FOLDER))
+    return jsonify(os.listdir(os.path.join(PROCESSED_FOLDER, study_id)))
 
-
-@app.route("/families/<family_id>")
-def get_family_api_gateway(family_id):
+@app.route("/studies")
+def list_studies():
     # Try API Gateway first if configured
-    api_response = proxy_to_api_gateway(f"families/{family_id}", "GET")
+    api_response = proxy_to_api_gateway("studies", "GET")
+    if api_response is not None:
+        return jsonify(api_response.json()), api_response.status_code
+
+    # Fall back to local directory listing
+    return jsonify(os.listdir(os.path.join(PROCESSED_FOLDER)))
+
+
+@app.route("/family/<study_id>/<family_id>")
+def get_family_api_gateway(study_id, family_id):
+    # Try API Gateway first if configured
+    api_response = proxy_to_api_gateway(f"family/{study_id}/{family_id}", "GET")
     if api_response is not None:
         return jsonify(api_response.json()), api_response.status_code
 
     # Fall back to local file serving
+    study_name = study_id;
     filename = family_id + ".processed.json"
-    return send_from_directory(PROCESSED_FOLDER, filename)
+    print ("Reading local file: " + PROCESSED_FOLDER + "/" + study_name + "/" + filename)
+    return send_from_directory(os.path.join(PROCESSED_FOLDER, study_name), filename)
 
 
-@app.route("/annotations/<family_id>", methods=["POST"])
-def write_annotations_api_gateway(family_id):
+@app.route("/annotations/<study_id>/<family_id>", methods=["POST"])
+def write_annotations_api_gateway(study_id,family_id):
     # Try API Gateway first if configured
     data = request.data
-    api_response = proxy_to_api_gateway(f"annotations/{family_id}", "POST", data)
+    api_response = proxy_to_api_gateway(f"annotations/{study_id}/{family_id}", "POST", data)
     if api_response is not None:
         return jsonify(api_response.json()), api_response.status_code
 
     # Fall back to local file writing
-    os.makedirs(ANNOTATIONS_FOLDER, exist_ok=True)
-    filename = ANNOTATIONS_FOLDER + "/" + family_id + ".annotations.json"
+    os.makedirs(os.path.join(ANNOTATIONS_FOLDER, study_id), exist_ok=True)
+    filename = os.path.join(ANNOTATIONS_FOLDER, study_id, family_id + ".annotations.json")
+
     datastr = data.decode("utf-8")
     app.logger.info(datastr)
 
@@ -130,4 +143,4 @@ def write_annotations_api_gateway(family_id):
 
 
 if __name__ == "__main__":
-    app.run(ssl_context='adhoc',debug=True)
+    app.run(ssl_context='adhoc', debug=True)

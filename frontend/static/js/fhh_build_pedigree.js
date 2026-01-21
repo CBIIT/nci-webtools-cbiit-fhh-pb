@@ -353,8 +353,8 @@ export function check_for_unplaced_people() {
   for (const person_id in data["people"]) {
     const person = data["people"][person_id];
 
-    if (!person.x || person.x < 0) { missing_people.push(person_id); console.log(person_id);}
-    else if (!person.y || person.u < 0) { missing_people.push(person_id); console.log(person_id);}
+    if (!person.x || person.x < 0) { missing_people.push(person_id); }
+    else if (!person.y || person.u < 0) { missing_people.push(person_id); }
   }
 
   return missing_people;
