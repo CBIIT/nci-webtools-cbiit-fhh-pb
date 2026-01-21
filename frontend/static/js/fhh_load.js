@@ -41,6 +41,7 @@ export async function check_for_studies() {
  */
 export async function check_for_families(study_id) {
   console.log("Checking for families...");
+  await load_initial_config();
   const familes = await get_family_list(build_api_url("/families/" + study_id));
   console.log(familes);
 }
