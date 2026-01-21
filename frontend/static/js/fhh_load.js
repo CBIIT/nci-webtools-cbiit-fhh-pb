@@ -1,6 +1,7 @@
 let apiConfig = { baseUrl: "" };
 let loaded_family_id = null;
-
+let configPromise = null;
+let configData = null;
 
 /**
  * Builds API URL by combining base URL with endpoint
@@ -21,7 +22,7 @@ function build_api_url(endpoint) {
  * Initializes API configuration from loaded config object
  * @param {Object} config - Configuration object containing API settings
  */
-export function initializeApiConfig(config) {
+function initializeApiConfig(config) {
   if (config?.api?.baseUrl) {
     apiConfig.baseUrl = config.api.baseUrl;
     console.log("API base URL configured:", apiConfig.baseUrl);
@@ -30,38 +31,56 @@ export function initializeApiConfig(config) {
   }
 }
 
+export async function ensureConfigLoaded() {
+  if (configData) {
+    return configData;
+  }
+  
+  if (!configPromise) {
+    configPromise = loadConfigOnce();
+  }
+  
+  return configPromise;
+}
+
+async function loadConfigOnce() {
+  try {
+    const response = await fetch("/config/lfss.json");
+    if (response.ok) {
+      configData = await response.json();
+      initializeApiConfig(configData);
+      console.log("Initial config loaded:", configData);
+      return configData;
+    } else {
+      console.log("Could not load config, using defaults");
+      configData = { api: { baseUrl: "" } };
+      return configData;
+    }
+  } catch (error) {
+    console.log("Error loading config, using defaults:", error);
+    configData = { api: { baseUrl: "" } };
+    return configData;
+  }
+}
+
+export function resetConfig() {
+  configPromise = null;
+  configData = null;
+  apiConfig = { baseUrl: "" };
+}
+
 export async function check_for_studies() { 
   console.log("Checking for studies...");
+  await ensureConfigLoaded();
   const studies = await get_study_list(build_api_url("/studies"));
   console.log(studies);
 } 
 
-/**
- * Loads configuration first, then displays the list of available family files
- */
 export async function check_for_families(study_id) {
   console.log("Checking for families...");
-  await load_initial_config();
+  await ensureConfigLoaded();
   const familes = await get_family_list(build_api_url("/families/" + study_id));
   console.log(familes);
-}
-
-export async function load_initial_config() {
-  try {
-    const response = await fetch("/config/lfss.json");
-    if (response.ok) {
-      const config = await response.json();
-      console.log("Initial config loaded:", config);
-      initializeApiConfig(config);
-    } else {
-      console.log("Could not load initial config, using default settings");
-    }
-  } catch (error) {
-    console.log(
-      "Could not load initial config, using default settings:",
-      error
-    );
-  }
 }
 
 /**
@@ -179,6 +198,8 @@ export async function load_config_and_data(family_id, config_id) {
     console.log("No config ID provided, defaulting to 'basic'");
   }
 
+  await ensureConfigLoaded();
+
   const pedigree_file = build_api_url("/family/" + "lfss" + "/" + family_id);
   const annotations_file = build_api_url("/annotations/" + "lfss" + "/" + family_id);
   const config_file = `/config/${config_id || "basic"}.json`;
@@ -208,7 +229,6 @@ export async function load_config_and_data(family_id, config_id) {
     const data = await pedigree_response.json();
     const config = await config_response.json();
 
-    // Initialize API config (safe to call multiple times)
     initializeApiConfig(config);
 
     return [data, annotations, config];

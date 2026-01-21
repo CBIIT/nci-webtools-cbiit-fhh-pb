@@ -14,7 +14,7 @@ import {
 } from "./fhh_build_pedigree.js";
 
 import {
-  load_initial_config,
+  ensureConfigLoaded,
   check_for_families,
   load_families_into_select,
   load_config_and_data,
@@ -108,33 +108,28 @@ raw_data_elem.addEventListener("click", function () {
 });
 
 
-///. This is the entry function /////////
-document.addEventListener("DOMContentLoaded", function () {
+document.addEventListener("DOMContentLoaded", async function () {
   try {
+    ensureConfigLoaded();
+    
     const urlParams = new URLSearchParams(window.location.search);
     const family = urlParams.get("family");
     console.log("Family: " + family);
-    load_initial_config();
+    
     check_for_families("lfss");
     check_for_studies();
 
-    let filename = null;
     if (family) {
-      filename = family + ".json";
-    }
-    if (filename) { 
-      const promise = load_config_and_data(family, "lfss");
-      promise.then(([d, a, c]) => {
-        data = d;
-        annotations = a;
-        config = c;
-        console.log("Loaded family from URL param: " + filename);
-          show_all_blocks();
-          show_summary_block();
-          set_study_summary();
-          set_family_summary();
-          display_pedigree();
-      });
+      const [d, a, c] = await load_config_and_data(family, "lfss");
+      data = d;
+      annotations = a;
+      config = c;
+      console.log("Loaded family from URL param: " + family + ".json");
+      show_all_blocks();
+      show_summary_block();
+      set_study_summary();
+      set_family_summary();
+      display_pedigree();
     }
   } catch (error) {
     console.error("Error fetching data:", error);
