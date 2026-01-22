@@ -147,8 +147,8 @@ class JSONProcessor:
             raise ValueError("Record missing required Subject ID")
 
         # Extract basic information
-        first_name = record.get('Merge1[123a.result.participant.first_name]', '')
-        last_name = record.get('Merge1[123a.result.participant.last_name]', '')
+        first_name = record.get('Merge1[participant.first_name]', '')
+        last_name = record.get('Merge1[participant.last_name]', '')
         full_name = f"{first_name} {last_name}".strip()
 
         # Build person structure
@@ -158,7 +158,7 @@ class JSONProcessor:
             'deceased': record.get('DEMO[DTHDAT_RAW]', ''),
             'father': record.get('CORE[FPT_ID3]', ''),
             'mother': record.get('CORE[MPT_ID3]', ''),
-            'pedigree_symbol': record.get('Merge2[Pedigree Symbol]', ''),
+            'pedigree_symbol': record.get('Merge2[Pedigree_Symbol]', ''),
             'demographics': self._extract_demographics(record),
             'partners': [],
             'diseases': [],
@@ -212,7 +212,7 @@ class JSONProcessor:
             'shorthand': shorthand,
             'code': med_code,
             'laterality': str(record.get('Subject non cancer[N_CANCER.PRM_TUMOR_LATERAL_TP_STD]', '')),
-            'diagnosis_method': record.get('Subject non cancer[N_CANCER.TBD]', ''),
+            'diagnosis_method': record.get('Subject non cancer[N_CANCER.PATH_ACQ_METH_TP]', ''),
             'age_of_diagnosis': str(record.get('Subject non cancer[N_CANCER.AGE_AT_DIAGNOSIS]', '')),
             'date_of_diagnosis': record.get('Subject non cancer[N_CANCER.BX_DT]', ''),
             'd_num': f"D{disease_num}" if disease_num else ''
@@ -302,14 +302,14 @@ class JSONProcessor:
         except (KeyError, IndexError):
             raise ValueError("Cannot determine proband from first record")
         try:
-            self.general["family_classification"] = records[0]['Append Genetic status[result.family_classification]']
+            self.general["family_classification"] = records[0]['Merge2[family_classification]']
             print(f"[INFO] Processing family classification: {self.general['family_classification']}")
         except (KeyError, IndexError):
             self.general["family_classification"] = "NO-FAMILY-CLASSIFICATION"
             print(f"[WARNING] Cannot determine family classification from first record")
             #raise ValueError("Cannot determine family classification from first record")
         try:
-            self.general["family_genetic_status"] = records[0]['Append Genetic status[result.family_genetic_status]']
+            self.general["family_genetic_status"] = records[0]['Merge2[family_genetic_status]']
             print(f"[INFO] Processing family genetic status: {self.general['family_genetic_status']}")
         except (KeyError, IndexError):
             self.general["family_genetic_status"] = "NO-FAMILY-GENETIC-STATUS"
