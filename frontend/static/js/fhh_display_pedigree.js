@@ -14,10 +14,12 @@ import {
 } from "./fhh_build_pedigree.js";
 
 import {
-  check_for_files,
-  load_files_into_select,
+  ensureConfigLoaded,
+  check_for_families,
+  load_families_into_select,
   load_config_and_data,
   save_positions_and_annotations,
+  check_for_studies,    
 } from "./fhh_load.js";
 
 import {
@@ -30,6 +32,8 @@ const svgns = "http://www.w3.org/2000/svg";
 var config;
 var data;
 var annotations;
+var study_name;
+
 let family_tree = [];
 let people_drawn = [];
 
@@ -42,10 +46,22 @@ export function get_config() {
   return config;
 }
 
-let select = document.getElementById("file_select");
-select.addEventListener("change", function (event) {
+
+let study_select = document.getElementById("study_select");
+study_select.addEventListener("change", function (event) {
   // Code to be executed when the value changes
-  const promise = load_config_and_data(event.target.value, "lfss");
+  const study_id = event.target.value;
+  console.log("Selected study ID:", study_id);
+  check_for_families(study_id);
+
+});
+
+let family_select = document.getElementById("families_select");
+family_select.addEventListener("change", function (event) {
+  // Code to be executed when the value changes
+  if (!study_name) study_name = "lfss";
+  
+  const promise = load_config_and_data(event.target.value, study_name);
   promise.then(([d, a, c]) => {
     data = d;
     annotations = a;
@@ -91,25 +107,29 @@ raw_data_elem.addEventListener("click", function () {
   }
 });
 
-document.addEventListener("DOMContentLoaded", function () {
+
+document.addEventListener("DOMContentLoaded", async function () {
   try {
+    ensureConfigLoaded();
+    
     const urlParams = new URLSearchParams(window.location.search);
     const family = urlParams.get("family");
+    console.log("Family: " + family);
+    
+    check_for_families("lfss");
+    check_for_studies();
 
-    check_for_files();
-
-    let filename = null;
     if (family) {
-      filename = family + ".json";
-    }
-    if (filename) { 
-      const promise = load_config_and_data(family, "lfss");
-      promise.then(([d, a, c]) => {
-        data = d;
-        annotations = a;
-        config = c;
-        display_pedigree();
-      });
+      const [d, a, c] = await load_config_and_data(family, "lfss");
+      data = d;
+      annotations = a;
+      config = c;
+      console.log("Loaded family from URL param: " + family + ".json");
+      show_all_blocks();
+      show_summary_block();
+      set_study_summary();
+      set_family_summary();
+      display_pedigree();
     }
   } catch (error) {
     console.error("Error fetching data:", error);
@@ -262,11 +282,12 @@ function draw_frame() {
 }
 
 export function create_svg(width, height) {
+  const default_color = config.default_color || "lightblue";
   let svgElem = document.createElementNS(svgns, "svg");
   svgElem.setAttributeNS(null, "viewBox", "0 0 " + width + " " + height);
   svgElem.setAttributeNS(null, "width", width);
   svgElem.setAttributeNS(null, "height", height);
-  svgElem.setAttributeNS(null, "fill", "lightblue");
+  svgElem.setAttributeNS(null, "fill", default_color);
   svgElem.setAttributeNS(null, "stroke", "black");
   svgElem.setAttributeNS(null, "stroke-width", "5");
 
@@ -669,8 +690,10 @@ function draw_male(person_id) {
   const el = draw_square(
     config.size,
     center.x - config.size / 2,
-    center.y - config.size / 2
+    center.y - config.size / 2,
+    config.default_color || "lightgrey"
   );
+
   el.setAttributeNS(null, "id", person_id);
   el.setAttributeNS(null, "name", person_id);
   el.setAttributeNS(null, "sex", "Male");
@@ -962,13 +985,14 @@ function draw_rectangle(width, height, x, y) {
   return rectElem;
 }
 
-function draw_square(size, x, y) {
+function draw_square(size, x, y, color) {
   let rectElem = document.createElementNS(svgns, "rect");
   rectElem.setAttribute("width", size);
   rectElem.setAttribute("height", size);
   rectElem.setAttribute("x", x);
   rectElem.setAttribute("y", y);
   rectElem.setAttribute("stroke-width", "1");
+  rectElem.setAttribute("fill", color);
 
   var svg = document.getElementById("svg");
   svg.appendChild(rectElem);
@@ -1069,7 +1093,7 @@ function check_quadrant_tr(person_id) {
         const code = trimAfterCharacter(disease.code, "-");
         console.log("For " + person_id + " checking disease code " + code);
         if (valid_codes.includes(code)) {
-          return true;
+          return code;
         }
       }
     }
@@ -1089,7 +1113,7 @@ function check_quadrant_tl(person_id) {
         const code = trimAfterCharacter(disease.code, "-");
         console.log("For " + person_id + " checking disease code " + code);
         if (valid_codes.includes(code)) {
-          return true;
+          return code;
         }
       }
     }
@@ -1109,7 +1133,7 @@ function check_quadrant_bl(person_id) {
         const code = trimAfterCharacter(disease.code, "-");
         console.log("For " + person_id + " checking disease code " + code);
         if (valid_codes.includes(code)) {
-          return true;
+          return code;
         }
       }
     }
@@ -1129,7 +1153,7 @@ function check_quadrant_br(person_id) {
         const code = trimAfterCharacter(disease.code, "-");
         console.log("For " + person_id + " checking disease code " + code);
         if (valid_codes.includes(code)) {
-          return true;
+          return code;
         }
       }
     }
@@ -1143,35 +1167,38 @@ function draw_quadrants_male(person_id) {
   const size = config.size / 2;
   const center_x = data["people"][person_id].x;
   const center_y = data["people"][person_id].y;
+  let color = "grey";
+  let code = false;
 
-  if (check_quadrant_tr(person_id)) el = draw_square(size, center_x, center_y - size); 
-  if (check_quadrant_tl(person_id)) el = draw_square(size, center_x - size, center_y -size);
-  if (check_quadrant_br(person_id)) el = draw_square(size, center_x, center_y);
-  if (check_quadrant_bl(person_id)) el = draw_square(size, center_x - size, center_y);
-  if (el) {
+  if (code = check_quadrant_tr(person_id)) { el = draw_square(size, center_x, center_y - size, config.quadrants.top_right?.color || "grey"); } 
+  if (code = check_quadrant_tl(person_id)) { el = draw_square(size, center_x - size, center_y -size, config.quadrants.top_left?.color || "grey"); }
+  if (code = check_quadrant_br(person_id)) { el = draw_square(size, center_x, center_y, config.quadrants.bottom_right?.color || "grey"); }
+  if (code = check_quadrant_bl(person_id)) { el = draw_square(size, center_x - size, center_y, config.quadrants.bottom_left?.color || "grey"); }
+  if (el) { 
     el.setAttributeNS(null, "id", person_id);
-    el.setAttributeNS(null, "fill", "#7AA4A2");
     el.setAttributeNS(null, "stroke-width", "2");
   }
 }
-
 
 function draw_quadrants_female(person_id) {
   let el;
   const size = config.size / 2;
   const center_x = data["people"][person_id].x;
   const center_y = data["people"][person_id].y;
+  let color = "grey";
+  let code = false;
 
-  if (check_quadrant_tr(person_id)) el = draw_arc_90(person_id, center_x, center_y, size, "tr"); 
-  if (check_quadrant_tl(person_id)) el = draw_arc_90(person_id, center_x, center_y, size, "tl");
-  if (check_quadrant_bl(person_id)) el = draw_arc_90(person_id, center_x, center_y, size, "bl");
-  if (check_quadrant_br(person_id)) el = draw_arc_90(person_id, center_x, center_y, size, "br");
+  if (code = check_quadrant_tr(person_id)) { el = draw_arc_90(person_id, center_x, center_y, size, "tr", config.quadrants.top_right?.color || "grey"); }
+  if (code = check_quadrant_tl(person_id)) { el = draw_arc_90(person_id, center_x, center_y, size, "tl", config.quadrants.top_left?.color || "grey"); }
+  if (code = check_quadrant_bl(person_id)) { el = draw_arc_90(person_id, center_x, center_y, size, "bl", config.quadrants.bottom_left?.color || "grey"); }
+  if (code = check_quadrant_br(person_id)) { el = draw_arc_90(person_id, center_x, center_y, size, "br", config.quadrants.bottom_right?.color || "grey"); }
+  if (el) {
 
-
+  }
   console.log("draw_quadrants_female");
 }
 
-function draw_arc_90(person_id, center_x, center_y, radius, quadrant) {
+function draw_arc_90(person_id, center_x, center_y, radius, quadrant, color) {
   
   let path = "M " + center_x + " " + center_y + " ";
   if (quadrant == "tr") {
@@ -1191,12 +1218,11 @@ function draw_arc_90(person_id, center_x, center_y, radius, quadrant) {
 
 
   let el = document.createElementNS(svgns, "path");
-
   el.setAttributeNS(null, "d", path);
   el.setAttributeNS(null, "stroke-width", "2");
   el.setAttributeNS(null, "id", person_id);
   el.setAttributeNS(null, "name", person_id);
-  el.setAttributeNS(null, "fill", "#7AA4A2");
+  el.setAttributeNS(null, "fill", color);
 
   var svg = document.getElementById("svg");
   svg.appendChild(el);
