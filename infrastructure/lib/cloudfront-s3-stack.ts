@@ -177,10 +177,10 @@ export class CloudFrontS3Stack extends cdk.Stack {
       defaultRootObject: "index.html",
       priceClass: cloudfront.PriceClass.PRICE_CLASS_100, // Use only North America and Europe
       // Add custom domain and certificate if SSL certificate ARN is provided
-      ...(certificate && {
-        domainNames: [domainName],
-        certificate: certificate,
-      }),
+      // ...(certificate && {
+      //   domainNames: [domainName],
+      //   certificate: certificate,
+      // }),
     };
 
     // Create CloudFront distribution
