@@ -25,7 +25,11 @@ def lambda_handler(event, context):
         logger.info(f"Received event: {json.dumps(event, default=str)}")
         
         # Validate path parameters
+        study_id = event.get('pathParameters', {}).get('study_id')
         family_id = event.get('pathParameters', {}).get('family_id')
+        
+        if not study_id:
+            return error_response(400, 'Missing study_id in path parameters')
         if not family_id:
             return error_response(400, 'Missing family_id in path parameters')
         
@@ -39,7 +43,7 @@ def lambda_handler(event, context):
             body = base64.b64decode(body).decode('utf-8')
         
         # Process the request
-        result = write_annotations(family_id, body)
+        result = write_annotations(study_id, family_id, body)
         status_code = 200 if result['status'] == 'success' else 500
         
         return {

@@ -67,6 +67,7 @@ jobs:
           npx cdk deploy LambdaWriteAnnotations-${{ env.TIER }} --require-approval never
           npx cdk deploy LambdaGetFamily-${{ env.TIER }} --require-approval never
           npx cdk deploy LambdaListFamilies-${{ env.TIER }} --require-approval never
+          npx cdk deploy LambdaListStudies-${{ env.TIER }} --require-approval never
           npx cdk deploy LambdaJsonProcessor-${{ env.TIER }} --require-approval never
         env:
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}

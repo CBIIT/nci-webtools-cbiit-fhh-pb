@@ -6,6 +6,7 @@ import { LambdaWriteAnnotationsStack } from "../lib/lambda-write-annotations-sta
 import { LambdaGetAnnotationsStack } from "../lib/lambda-get-annotations-stack";
 import { LambdaGetFamilyStack } from "../lib/lambda-get-family-stack";
 import { LambdaListFamiliesStack } from "../lib/lambda-list-families-stack";
+import { LambdaListStudiesStack } from "../lib/lambda-list-studies-stack";
 import { ApiGatewayStack } from "../lib/api-gateway-stack";
 import { S3DataStack } from "../lib/s3-data-stack";
 import { DynamoDBSessionStack } from "../lib/dynamodb-session-stack";
@@ -98,10 +99,22 @@ const lambdaListFamiliesStack = new LambdaListFamiliesStack(
   }
 );
 
+// Create the Lambda stack for list studies API
+const lambdaListStudiesStack = new LambdaListStudiesStack(
+  app,
+  `LambdaListStudies-${TIER}`,
+  {
+    env: { account: AWS_ACCOUNT_ID, region: "us-east-1" },
+    stackName: `${TIER}-fhhpb-lambda-list-studies`,
+    dataBucket: s3DataStack.dataBucket,
+  }
+);
+
 // Create the consolidated API Gateway stack - Always private and secure
 const apiGatewayStack = new ApiGatewayStack(app, `ApiGateway-${TIER}`, {
   env: { account: AWS_ACCOUNT_ID, region: "us-east-1" },
   stackName: `${TIER}-fhhpb-api-gateway`,
+  listStudiesFunction: lambdaListStudiesStack.lambdaFunction,
   listFamiliesFunction: lambdaListFamiliesStack.lambdaFunction,
   getFamilyFunction: lambdaGetFamilyStack.lambdaFunction,
   getAnnotationsFunction: lambdaGetAnnotationsStack.lambdaFunction,
@@ -136,10 +149,12 @@ lambdaWriteAnnotationsStack.addDependency(s3DataStack);
 lambdaGetAnnotationsStack.addDependency(s3DataStack);
 lambdaGetFamilyStack.addDependency(s3DataStack);
 lambdaListFamiliesStack.addDependency(s3DataStack);
+lambdaListStudiesStack.addDependency(s3DataStack);
 apiGatewayStack.addDependency(dynamoDBSessionStack);
 apiGatewayStack.addDependency(lambdaWriteAnnotationsStack);
 apiGatewayStack.addDependency(lambdaGetAnnotationsStack);
 apiGatewayStack.addDependency(lambdaGetFamilyStack);
 apiGatewayStack.addDependency(lambdaListFamiliesStack);
+apiGatewayStack.addDependency(lambdaListStudiesStack);
 cloudFrontS3Stack.addDependency(dynamoDBSessionStack);
 cloudFrontS3Stack.addDependency(apiGatewayStack);

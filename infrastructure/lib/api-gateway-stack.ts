@@ -10,6 +10,7 @@ import { Construct } from "constructs";
 import { createTags } from "./utils/tags";
 
 export interface ApiGatewayStackProps extends cdk.StackProps {
+  listStudiesFunction: lambda.Function;
   listFamiliesFunction: lambda.Function;
   getFamilyFunction: lambda.Function;
   getAnnotationsFunction: lambda.Function;
@@ -293,6 +294,9 @@ export class ApiGatewayStack extends cdk.Stack {
     });
 
     // Create Lambda integrations
+    const listStudiesIntegration = new apigateway.LambdaIntegration(
+      props.listStudiesFunction
+    );
     const listFamiliesIntegration = new apigateway.LambdaIntegration(
       props.listFamiliesFunction
     );
@@ -339,9 +343,27 @@ export class ApiGatewayStack extends cdk.Stack {
 
     // Create API Gateway resources and methods
 
-    // GET /families - List all families
+    // GET /studies - List all studies
+    const studiesResource = this.api.root.addResource("studies");
+    studiesResource.addMethod("GET", listStudiesIntegration, {
+      apiKeyRequired: false,
+      authorizer: this.authorizer,
+      authorizationType: apigateway.AuthorizationType.CUSTOM,
+      requestValidator: new apigateway.RequestValidator(
+        this,
+        "ListStudiesValidator",
+        {
+          restApi: this.api,
+          requestValidatorName: "list-studies-validator",
+          validateRequestParameters: true,
+        }
+      ),
+    });
+
+    // GET /families/{study_id} - List families for a study
     const familiesResource = this.api.root.addResource("families");
-    familiesResource.addMethod("GET", listFamiliesIntegration, {
+    const familiesStudyIdResource = familiesResource.addResource("{study_id}");
+    familiesStudyIdResource.addMethod("GET", listFamiliesIntegration, {
       apiKeyRequired: false,
       authorizer: this.authorizer,
       authorizationType: apigateway.AuthorizationType.CUSTOM,
@@ -354,10 +376,15 @@ export class ApiGatewayStack extends cdk.Stack {
           validateRequestParameters: true,
         }
       ),
+      requestParameters: {
+        "method.request.path.study_id": true,
+      },
     });
 
-    // GET /families/{family_id} - Get specific family
-    const familyIdResource = familiesResource.addResource("{family_id}");
+    // GET /family/{study_id}/{family_id} - Get specific family
+    const familyResource = this.api.root.addResource("family");
+    const familyStudyIdResource = familyResource.addResource("{study_id}");
+    const familyIdResource = familyStudyIdResource.addResource("{family_id}");
     familyIdResource.addMethod("GET", getFamilyIntegration, {
       apiKeyRequired: false,
       authorizer: this.authorizer,
@@ -372,14 +399,15 @@ export class ApiGatewayStack extends cdk.Stack {
         }
       ),
       requestParameters: {
+        "method.request.path.study_id": true,
         "method.request.path.family_id": true,
       },
     });
 
-    // GET /annotations/{family_id} - Get annotations for a family
+    // GET /annotations/{study_id}/{family_id} - Get annotations for a family
     const annotationsResource = this.api.root.addResource("annotations");
-    const annotationsFamilyIdResource =
-      annotationsResource.addResource("{family_id}");
+    const annotationsStudyIdResource = annotationsResource.addResource("{study_id}");
+    const annotationsFamilyIdResource = annotationsStudyIdResource.addResource("{family_id}");
     annotationsFamilyIdResource.addMethod("GET", getAnnotationsIntegration, {
       apiKeyRequired: false,
       authorizer: this.authorizer,
@@ -394,11 +422,12 @@ export class ApiGatewayStack extends cdk.Stack {
         }
       ),
       requestParameters: {
+        "method.request.path.study_id": true,
         "method.request.path.family_id": true,
       },
     });
 
-    // POST /annotations/{family_id} - Write annotations for a family
+    // POST /annotations/{study_id}/{family_id} - Write annotations for a family
     annotationsFamilyIdResource.addMethod("POST", writeAnnotationsIntegration, {
       apiKeyRequired: false,
       authorizer: this.authorizer,
@@ -414,6 +443,7 @@ export class ApiGatewayStack extends cdk.Stack {
         }
       ),
       requestParameters: {
+        "method.request.path.study_id": true,
         "method.request.path.family_id": true,
       },
     });

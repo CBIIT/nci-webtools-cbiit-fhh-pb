@@ -1,6 +1,6 @@
 import json
 import logging
-from list_families import list_families
+from list_studies import list_studies
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -23,17 +23,12 @@ def lambda_handler(event, context):
     try:
         logger.info(f"Received event: {json.dumps(event, default=str)}")
         
-        # Validate path parameters
-        study_id = event.get('pathParameters', {}).get('study_id')
-        if not study_id:
-            return response(400, {'error': 'Missing study_id in path parameters'})
-        
-        # Get list of families for the study
-        result = list_families(study_id)
+        # Get list of studies
+        result = list_studies()
         
         if result['status'] == 'success':
-            # Return the families array directly to match Flask behavior
-            return response(200, result['families'])
+            # Return the studies array directly to match Flask behavior
+            return response(200, result['studies'])
         else:
             return response(500, {'error': result['message']})
             

@@ -25,12 +25,16 @@ def lambda_handler(event, context):
         logger.info(f"Received event: {json.dumps(event, default=str)}")
         
         # Validate path parameters
+        study_id = event.get('pathParameters', {}).get('study_id')
         family_id = event.get('pathParameters', {}).get('family_id')
+        
+        if not study_id:
+            return json_response(400, {'error': 'Missing study_id in path parameters'})
         if not family_id:
             return json_response(400, {'error': 'Missing family_id in path parameters'})
         
         # Get annotations from S3
-        result = get_annotations(family_id)
+        result = get_annotations(study_id, family_id)
         
         if result['status'] == 'success':
             # Return the raw JSON data for successful reads
