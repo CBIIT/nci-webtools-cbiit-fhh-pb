@@ -15,13 +15,11 @@ export interface ApiGatewayStackProps extends cdk.StackProps {
   getFamilyFunction: lambda.Function;
   getAnnotationsFunction: lambda.Function;
   writeAnnotationsFunction: lambda.Function;
-  cloudFrontDomainName?: string;
   sessionsTable: dynamodb.ITable;
 }
 
 export class ApiGatewayStack extends cdk.Stack {
   public readonly api: apigateway.RestApi;
-  public readonly customDomain?: apigateway.DomainName;
   public readonly authorizer?: apigateway.RequestAuthorizer;
   public readonly authorizerFunction: lambda.Function;
   public readonly callbackFunction: lambda.Function;
@@ -31,7 +29,6 @@ export class ApiGatewayStack extends cdk.Stack {
     super(scope, id, props);
 
     const tier = process.env.TIER || "dev";
-    const sslCertificateArn = process.env.SSL_CERTIFICATE_ARN;
     const secretName = `${tier}/fhhpb/oidc-config`;
 
     const authorizerLogGroup = logs.LogGroup.fromLogGroupName(
@@ -219,27 +216,8 @@ export class ApiGatewayStack extends cdk.Stack {
       })
     );
 
-    // Define custom domain and certificate if SSL certificate ARN is provided
-    const apiDomainName = `api-pedigree-${tier}.cancer.gov`;
-    let certificate: certificatemanager.ICertificate | undefined;
-
-    if (sslCertificateArn) {
-      certificate = certificatemanager.Certificate.fromCertificateArn(
-        this,
-        "SSLCertificate",
-        sslCertificateArn
-      );
-    }
-
+    // Configure CORS to only allow CloudFront domain
     const corsOrigins = [`https://pedigree-${tier}.cancer.gov`];
-
-    if (props.cloudFrontDomainName) {
-      corsOrigins.push(`https://${props.cloudFrontDomainName}`);
-    }
-
-    if (certificate) {
-      corsOrigins.push(`https://${apiDomainName}`);
-    }
 
     this.api = new apigateway.RestApi(this, "FhhpbApi", {
       restApiName: `nci-cbiit-fhhpb-api-${tier}`,
@@ -267,24 +245,6 @@ export class ApiGatewayStack extends cdk.Stack {
         throttlingRateLimit: 100, // Requests per second
       },
     });
-
-    // Create custom domain if certificate is available
-    if (certificate) {
-      this.customDomain = new apigateway.DomainName(this, "ApiCustomDomain", {
-        domainName: apiDomainName,
-        certificate: certificate,
-        endpointType: apigateway.EndpointType.REGIONAL,
-        securityPolicy: apigateway.SecurityPolicy.TLS_1_2,
-      });
-
-      // Create base path mapping to connect the custom domain to the API
-      new apigateway.BasePathMapping(this, "ApiBasePathMapping", {
-        domainName: this.customDomain,
-        restApi: this.api,
-        stage: this.api.deploymentStage,
-        basePath: "api",
-      });
-    }
 
     this.authorizer = new apigateway.RequestAuthorizer(this, "OidcAuthorizer", {
       handler: this.authorizerFunction,
@@ -487,13 +447,5 @@ export class ApiGatewayStack extends cdk.Stack {
       description: "API Gateway URL for the FHHPB application",
       exportName: `${tier}-fhhpb-api-gateway-url`,
     });
-
-    if (this.customDomain) {
-      new cdk.CfnOutput(this, "ApiCustomDomainUrl", {
-        value: `https://${apiDomainName}`,
-        description: "Custom domain URL for the API Gateway",
-        exportName: `${tier}-fhhpb-api-custom-domain-url`,
-      });
-    }
   }
 }

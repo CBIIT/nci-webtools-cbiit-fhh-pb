@@ -1,7 +1,7 @@
 """
 Lambda@Edge function for CloudFront OIDC authentication.
 Handles viewer-request to check authentication and redirect to login if needed.
-OAuth callback is handled directly by API Gateway at api-pedigree-dev.cancer.gov/api/login
+OAuth callback is handled by API Gateway via CloudFront at /api/login
 """
 
 import base64
