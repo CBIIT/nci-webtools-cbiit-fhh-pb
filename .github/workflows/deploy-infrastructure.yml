@@ -13,6 +13,7 @@ on:
 
 jobs:
   deploy-infrastructure:
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     environment: ${{ inputs.tier }}
     env:
@@ -26,44 +27,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "18"
-          cache: "npm"
-          cache-dependency-path: infrastructure/package-lock.json
-
       - name: Install CDK and dependencies
         run: |
           npm install -g aws-cdk
           cd infrastructure
           npm ci
 
-      - name: CDK Bootstrap
+      - name: Deploy Data Bucket
         run: |
           cd infrastructure
-          npx cdk bootstrap --region ${{ env.AWS_REGION }}
+          npx cdk deploy S3DataStack-${{ env.TIER }} --require-approval never
 
-      - name: Deploy Foundation Stacks
+      - name: Deploy Lambda Functions
         run: |
           cd infrastructure
-          echo "Deploying foundation infrastructure for ${{ env.TIER }} environment..."
           npx cdk deploy \
-            S3DataStack-${{ env.TIER }} \
-            DynamoDBSession-${{ env.TIER }} \
-            LambdaJsonProcessor-${{ env.TIER }} \
-            LambdaWriteAnnotations-${{ env.TIER }} \
-            LambdaGetAnnotations-${{ env.TIER }} \
-            LambdaGetFamily-${{ env.TIER }} \
-            LambdaListFamilies-${{ env.TIER }} \
-            LambdaListStudies-${{ env.TIER }} \
-            --require-approval never
+          LambdaJsonProcessor-${{ env.TIER }} \
+          LambdaWriteAnnotations-${{ env.TIER }} \
+          LambdaGetAnnotations-${{ env.TIER }} \
+          LambdaGetFamily-${{ env.TIER }} \
+          LambdaListFamilies-${{ env.TIER }} \
+          LambdaListStudies-${{ env.TIER }}
 
-      - name: Deploy API Gateway and CloudFront Stacks
+      - name: Deploy API Gateway and CloudFront
         run: |
           cd infrastructure
-          echo "Deploying API Gateway and CloudFront for ${{ env.TIER }} environment..."
           npx cdk deploy \
+          DynamoDBSession-${{ env.TIER }} \
             ApiGateway-${{ env.TIER }} \
             CloudFrontS3Stack-${{ env.TIER }} \
             --require-approval never

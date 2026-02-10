@@ -13,6 +13,7 @@ on:
 
 jobs:
   deploy:
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     environment: ${{ inputs.tier }}
     env:
@@ -20,16 +21,10 @@ jobs:
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "18"
-          cache: "npm"
-          cache-dependency-path: infrastructure/package-lock.json
 
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -53,39 +48,14 @@ jobs:
           echo "Running Lambda tests..."
           python -m pytest test_lambda.py -v
 
-      - name: Build frontend assets (required for CDK synthesis)
-        run: |
-          cd frontend
-          python3 build.py
-
-      - name: CDK Bootstrap (if needed)
-        run: |
-          cd infrastructure
-          npx cdk bootstrap --region ${{ env.AWS_REGION }}
-        env:
-          TIER: ${{ env.TIER }}
-          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
-
-      - name: CDK Synth
-        run: |
-          cd infrastructure
-          npx cdk synth
-        env:
-          TIER: ${{ env.TIER }}
-          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
-
       - name: Deploy JSON Processor Infrastructure
         run: |
           cd infrastructure
-
 
           echo "Deploying JSON Processor Stack..."
           npx cdk deploy LambdaJsonProcessor-${{ env.TIER }} --require-approval never
 
           echo "JSON Processor infrastructure deployment complete!"
-        env:
-          TIER: ${{ env.TIER }}
-          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
 
       - name: Get deployment outputs
         run: |
