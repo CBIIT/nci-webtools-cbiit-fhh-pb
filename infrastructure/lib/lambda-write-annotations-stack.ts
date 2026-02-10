@@ -38,23 +38,6 @@ export class LambdaWriteAnnotationsStack extends cdk.Stack {
       }
     );
 
-    // Add explicit CloudWatch Logs permissions
-    lambdaRole.addToPolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: [
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents",
-        ],
-        resources: [
-          `arn:aws:logs:${cdk.Stack.of(this).region}:${
-            cdk.Stack.of(this).account
-          }:log-group:/aws/lambda/nci-cbiit-fhhpb-*-${tier}:*`,
-        ],
-      })
-    );
-
     // Add S3 permissions to Lambda role - write to data bucket
     lambdaRole.addToPolicy(
       new iam.PolicyStatement({
