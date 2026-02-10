@@ -46,18 +46,19 @@ jobs:
         run: |
           cd infrastructure
           npx cdk deploy \
-          LambdaJsonProcessor-${{ env.TIER }} \
-          LambdaWriteAnnotations-${{ env.TIER }} \
-          LambdaGetAnnotations-${{ env.TIER }} \
-          LambdaGetFamily-${{ env.TIER }} \
-          LambdaListFamilies-${{ env.TIER }} \
-          LambdaListStudies-${{ env.TIER }}
+            LambdaJsonProcessor-${{ env.TIER }} \
+            LambdaWriteAnnotations-${{ env.TIER }} \
+            LambdaGetAnnotations-${{ env.TIER }} \
+            LambdaGetFamily-${{ env.TIER }} \
+            LambdaListFamilies-${{ env.TIER }} \
+            LambdaListStudies-${{ env.TIER }} \
+            --require-approval never
 
       - name: Deploy API Gateway and CloudFront
         run: |
           cd infrastructure
           npx cdk deploy \
-          DynamoDBSession-${{ env.TIER }} \
+            DynamoDBSession-${{ env.TIER }} \
             ApiGateway-${{ env.TIER }} \
             CloudFrontS3Stack-${{ env.TIER }} \
             --require-approval never

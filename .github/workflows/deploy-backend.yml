@@ -42,11 +42,12 @@ jobs:
       - name: Deploy Lambda + API Gateway
         run: |
           cd infrastructure
-          npx cdk deploy LambdaGetAnnotations-${{ env.TIER }} \
-          LambdaWriteAnnotations-${{ env.TIER }} \
-          LambdaGetFamily-${{ env.TIER }} \
-          LambdaListFamilies-${{ env.TIER }} \
-          LambdaListStudies-${{ env.TIER }} \
-          LambdaJsonProcessor-${{ env.TIER }} \
-          ApiGateway-${{ env.TIER }} \
-          --require-approval never
+          npx cdk deploy \
+            LambdaGetAnnotations-${{ env.TIER }} \
+            LambdaWriteAnnotations-${{ env.TIER }} \
+            LambdaGetFamily-${{ env.TIER }} \
+            LambdaListFamilies-${{ env.TIER }} \
+            LambdaListStudies-${{ env.TIER }} \
+            LambdaJsonProcessor-${{ env.TIER }} \
+            ApiGateway-${{ env.TIER }} \
+            --require-approval never
