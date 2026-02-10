@@ -28,13 +28,11 @@ if (!AWS_ACCOUNT_ID) {
 
 const app = new cdk.App();
 
-// Create the S3 data stack
 const s3DataStack = new S3DataStack(app, `S3DataStack-${TIER}`, {
   env: { account: AWS_ACCOUNT_ID, region: "us-east-1" },
   stackName: `${TIER}-fhhpb-s3-data`,
 });
 
-// Create DynamoDB stack for session management
 const dynamoDBSessionStack = new DynamoDBSessionStack(
   app,
   `DynamoDBSession-${TIER}`,
@@ -44,7 +42,6 @@ const dynamoDBSessionStack = new DynamoDBSessionStack(
   }
 );
 
-// Create the Lambda JSON processor stack
 const lambdaJsonProcessorStack = new LambdaJsonProcessorStack(
   app,
   `LambdaJsonProcessor-${TIER}`,
@@ -55,7 +52,6 @@ const lambdaJsonProcessorStack = new LambdaJsonProcessorStack(
   }
 );
 
-// Create the Lambda stack for write annotations API
 const lambdaWriteAnnotationsStack = new LambdaWriteAnnotationsStack(
   app,
   `LambdaWriteAnnotations-${TIER}`,
@@ -66,7 +62,6 @@ const lambdaWriteAnnotationsStack = new LambdaWriteAnnotationsStack(
   }
 );
 
-// Create the Lambda stack for get annotations API
 const lambdaGetAnnotationsStack = new LambdaGetAnnotationsStack(
   app,
   `LambdaGetAnnotations-${TIER}`,
@@ -77,7 +72,6 @@ const lambdaGetAnnotationsStack = new LambdaGetAnnotationsStack(
   }
 );
 
-// Create the Lambda stack for get family API
 const lambdaGetFamilyStack = new LambdaGetFamilyStack(
   app,
   `LambdaGetFamily-${TIER}`,
@@ -88,7 +82,6 @@ const lambdaGetFamilyStack = new LambdaGetFamilyStack(
   }
 );
 
-// Create the Lambda stack for list families API
 const lambdaListFamiliesStack = new LambdaListFamiliesStack(
   app,
   `LambdaListFamilies-${TIER}`,
@@ -99,7 +92,6 @@ const lambdaListFamiliesStack = new LambdaListFamiliesStack(
   }
 );
 
-// Create the Lambda stack for list studies API
 const lambdaListStudiesStack = new LambdaListStudiesStack(
   app,
   `LambdaListStudies-${TIER}`,
@@ -110,7 +102,6 @@ const lambdaListStudiesStack = new LambdaListStudiesStack(
   }
 );
 
-// Create the consolidated API Gateway stack - Always private and secure
 const apiGatewayStack = new ApiGatewayStack(app, `ApiGateway-${TIER}`, {
   env: { account: AWS_ACCOUNT_ID, region: "us-east-1" },
   stackName: `${TIER}-fhhpb-api-gateway`,
@@ -122,7 +113,6 @@ const apiGatewayStack = new ApiGatewayStack(app, `ApiGateway-${TIER}`, {
   sessionsTable: dynamoDBSessionStack.sessionsTable,
 });
 
-// Grant DynamoDB permissions to OIDC functions
 dynamoDBSessionStack.sessionsTable.grantReadWriteData(
   apiGatewayStack.authorizerFunction
 );
@@ -130,7 +120,6 @@ dynamoDBSessionStack.sessionsTable.grantReadWriteData(
   apiGatewayStack.callbackFunction
 );
 
-// Create the combined CloudFront + S3 stack for frontend hosting
 const cloudFrontS3Stack = new CloudFrontS3Stack(
   app,
   `CloudFrontS3Stack-${TIER}`,
@@ -139,12 +128,10 @@ const cloudFrontS3Stack = new CloudFrontS3Stack(
     stackName: `${TIER}-fhhpb-cloudfront-s3`,
     enableAuth: true,
     sessionsTable: dynamoDBSessionStack.sessionsTable,
-    apiDomainName: apiGatewayStack.apiDomainName,
     apiOriginPath: "",
   }
 );
 
-// Ensure proper stack dependencies
 lambdaWriteAnnotationsStack.addDependency(s3DataStack);
 lambdaGetAnnotationsStack.addDependency(s3DataStack);
 lambdaGetFamilyStack.addDependency(s3DataStack);
@@ -157,4 +144,3 @@ apiGatewayStack.addDependency(lambdaGetFamilyStack);
 apiGatewayStack.addDependency(lambdaListFamiliesStack);
 apiGatewayStack.addDependency(lambdaListStudiesStack);
 cloudFrontS3Stack.addDependency(dynamoDBSessionStack);
-cloudFrontS3Stack.addDependency(apiGatewayStack);

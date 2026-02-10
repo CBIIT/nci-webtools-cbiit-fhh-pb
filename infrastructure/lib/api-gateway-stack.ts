@@ -3,9 +3,9 @@ import * as apigateway from "aws-cdk-lib/aws-apigateway";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as logs from "aws-cdk-lib/aws-logs";
-import * as certificatemanager from "aws-cdk-lib/aws-certificatemanager";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as iam from "aws-cdk-lib/aws-iam";
+import * as ssm from "aws-cdk-lib/aws-ssm";
 import { Construct } from "constructs";
 import { createTags } from "./utils/tags";
 
@@ -23,7 +23,7 @@ export class ApiGatewayStack extends cdk.Stack {
   public readonly authorizer?: apigateway.RequestAuthorizer;
   public readonly authorizerFunction: lambda.Function;
   public readonly callbackFunction: lambda.Function;
-  public readonly apiDomainName: string;
+  public readonly apiGatewayUrl: string;
 
   constructor(scope: Construct, id: string, props: ApiGatewayStackProps) {
     super(scope, id, props);
@@ -440,7 +440,13 @@ export class ApiGatewayStack extends cdk.Stack {
       2,
       cdk.Fn.split("/", this.api.url)
     );
-    this.apiDomainName = executeApiDomain;
+    this.apiGatewayUrl = executeApiDomain;
+
+    new ssm.StringParameter(this, "ApiGatewayUrlParam", {
+      parameterName: `/analysistools/${tier}/fhh-pb/api_gateway_url`,
+      stringValue: this.apiGatewayUrl,
+      description: "API Gateway domain name for CloudFront origin",
+    });
 
     new cdk.CfnOutput(this, "ApiGatewayUrl", {
       value: this.api.url,

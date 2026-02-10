@@ -6,6 +6,7 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as ssm from "aws-cdk-lib/aws-ssm";
 import * as certificatemanager from "aws-cdk-lib/aws-certificatemanager";
 import { Construct } from "constructs";
 import { createTags } from "./utils/tags";
@@ -13,7 +14,6 @@ import { createTags } from "./utils/tags";
 export interface CloudFrontS3StackProps extends cdk.StackProps {
   enableAuth?: boolean; // Enable Lambda@Edge authentication
   sessionsTable?: dynamodb.TableV2; // DynamoDB table for sessions
-  apiDomainName?: string; // e.g., abcdef.execute-api.us-east-1.amazonaws.com or custom domain
   apiOriginPath?: string; // e.g., "/api" (stage name or base path)
 }
 
@@ -128,11 +128,16 @@ export class CloudFrontS3Stack extends cdk.Stack {
       });
     }
 
+    const apiGatewayUrl = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/analysistools/${tier}/fhh-pb/api_gateway_url`
+    );
+
     let apiOrigin: origins.HttpOrigin | undefined;
     let apiOriginRequestPolicy: cloudfront.OriginRequestPolicy | undefined;
-    if (props?.apiDomainName) {
-      apiOrigin = new origins.HttpOrigin(props.apiDomainName, {
-        originPath: props.apiOriginPath || "",
+    if (apiGatewayUrl) {
+      apiOrigin = new origins.HttpOrigin(apiGatewayUrl, {
+        originPath: props?.apiOriginPath || "",
         protocolPolicy: cloudfront.OriginProtocolPolicy.HTTPS_ONLY,
       });
 
@@ -150,7 +155,6 @@ export class CloudFrontS3Stack extends cdk.Stack {
         }
       );
     }
-
 
     // Create CloudFront distribution configuration
     const distributionConfig: cloudfront.DistributionProps = {
