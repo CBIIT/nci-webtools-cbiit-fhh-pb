@@ -1,4 +1,4 @@
-name: Deploy Backend
+name: Deploy Backend (Infrastructure + Lambda)
 permissions:
   id-token: write
   contents: read
@@ -23,13 +23,19 @@ jobs:
     env:
       TIER: ${{ inputs.tier || 'dev' }}
       AWS_REGION: us-east-1
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
-      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
-      SSL_CERTIFICATE_ARN: ${{ secrets.SSL_CERTIFICATE_ARN }}
+      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      SSL_CERTIFICATE_ARN: ${{ vars.SSL_CERTIFICATE_ARN }}
+      CICD_ROLE_ARN: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/power-user-github-actions-cicd
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6.0.2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.0.0
+        with:
+          role-to-assume: ${{ env.CICD_ROLE_ARN }}
+          role-session-name: ${{ env.TIER }}-fhhpb-backend-deploy-${{ github.ref_name }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Install CDK
         run: npm install -g aws-cdk
