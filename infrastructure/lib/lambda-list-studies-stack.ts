@@ -8,24 +8,24 @@ import * as path from "path";
 import { Construct } from "constructs";
 import { createTags } from "./utils/tags";
 
-export interface LambdaGetAnnotationsStackProps extends cdk.StackProps {
+export interface LambdaListStudiesStackProps extends cdk.StackProps {
   dataBucket: s3.Bucket;
 }
 
-export class LambdaGetAnnotationsStack extends cdk.Stack {
+export class LambdaListStudiesStack extends cdk.Stack {
   public readonly lambdaFunction: lambda.Function;
 
   constructor(
     scope: Construct,
     id: string,
-    props: LambdaGetAnnotationsStackProps
+    props: LambdaListStudiesStackProps
   ) {
     super(scope, id, props);
 
     const tier = process.env.TIER || "dev";
 
     // Create IAM role for Lambda function
-    const lambdaRole = new iam.Role(this, "GetAnnotationsLambdaExecutionRole", {
+    const lambdaRole = new iam.Role(this, "ListStudiesLambdaExecutionRole", {
       assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
       managedPolicies: [
         iam.ManagedPolicy.fromAwsManagedPolicyName(
@@ -34,32 +34,29 @@ export class LambdaGetAnnotationsStack extends cdk.Stack {
       ],
     });
 
-    // Add S3 read permissions
+    // Add S3 permissions to Lambda role - list objects in data bucket
     lambdaRole.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: ["s3:GetObject", "s3:ListBucket"],
-        resources: [
-          props.dataBucket.bucketArn,
-          `${props.dataBucket.bucketArn}/*`,
-        ],
+        actions: ["s3:ListBucket", "s3:GetBucketLocation"],
+        resources: [props.dataBucket.bucketArn],
       })
     );
 
     // Create CloudWatch Log Group
-    const logGroup = new logs.LogGroup(this, "GetAnnotationsLogGroup", {
-      logGroupName: `/aws/lambda/nci-cbiit-fhhpb-getannotations-${tier}`,
+    const logGroup = new logs.LogGroup(this, "ListStudiesLogGroup", {
+      logGroupName: `/aws/lambda/nci-cbiit-fhhpb-liststudies-${tier}`,
       retention: logs.RetentionDays.TWO_MONTHS,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
     // Create Lambda function
-    this.lambdaFunction = new lambda.Function(this, "GetAnnotationsFunction", {
-      functionName: `nci-cbiit-fhhpb-getannotations-${tier}`,
+    this.lambdaFunction = new lambda.Function(this, "ListStudiesFunction", {
+      functionName: `nci-cbiit-fhhpb-liststudies-${tier}`,
       runtime: lambda.Runtime.PYTHON_3_12,
       handler: "lambda.lambda_handler",
       code: lambda.Code.fromAsset(
-        path.join(__dirname, "../../backend/lambda/get_annotations")
+        path.join(__dirname, "../../backend/lambda/list_studies")
       ),
       role: lambdaRole,
       timeout: cdk.Duration.minutes(1),
@@ -68,31 +65,34 @@ export class LambdaGetAnnotationsStack extends cdk.Stack {
         DATA_BUCKET: props.dataBucket.bucketName,
         TIER: tier,
       },
+      reservedConcurrentExecutions: 10,
+      maxEventAge: cdk.Duration.minutes(1),
+      retryAttempts: 2,
       logGroup: logGroup,
     });
 
     // Add tags
     const lambdaTags = createTags({
       tier,
-      resourceName: "lambda-get-annotations",
+      resourceName: "lambda-list-studies",
     });
     Object.entries(lambdaTags).forEach(([key, value]) => {
       cdk.Tags.of(this.lambdaFunction).add(key, value);
     });
 
-    // CloudWatch alarms
-    new cloudwatch.Alarm(this, "GetAnnotationsLambdaErrorAlarm", {
+    // Create CloudWatch alarms
+    new cloudwatch.Alarm(this, "ListStudiesLambdaErrorAlarm", {
       metric: this.lambdaFunction.metricErrors(),
       threshold: 1,
       evaluationPeriods: 1,
-      alarmDescription: "Get Annotations Lambda function errors",
+      alarmDescription: "List Studies Lambda function errors",
     });
 
-    new cloudwatch.Alarm(this, "GetAnnotationsLambdaDurationAlarm", {
+    new cloudwatch.Alarm(this, "ListStudiesLambdaDurationAlarm", {
       metric: this.lambdaFunction.metricDuration(),
       threshold: 60000, // 1 minute in milliseconds
       evaluationPeriods: 2,
-      alarmDescription: "Get Annotations Lambda function duration too high",
+      alarmDescription: "List Studies Lambda function duration too high",
     });
   }
 }

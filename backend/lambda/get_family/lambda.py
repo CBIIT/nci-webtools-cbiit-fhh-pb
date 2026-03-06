@@ -24,12 +24,16 @@ def lambda_handler(event, context):
         logger.info(f"Received event: {json.dumps(event, default=str)}")
         
         # Validate path parameters
+        study_id = event.get('pathParameters', {}).get('study_id')
         family_id = event.get('pathParameters', {}).get('family_id')
+        
+        if not study_id:
+            return response(400, {'error': 'Missing study_id in path parameters'})
         if not family_id:
             return response(400, {'error': 'Missing family_id in path parameters'})
         
         # Get family data
-        result = get_family(family_id)
+        result = get_family(study_id, family_id)
         
         if result['status'] == 'success':
             # Return the JSON data directly as the response body

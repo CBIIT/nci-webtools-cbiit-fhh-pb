@@ -3,34 +3,32 @@ import * as apigateway from "aws-cdk-lib/aws-apigateway";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as logs from "aws-cdk-lib/aws-logs";
-import * as certificatemanager from "aws-cdk-lib/aws-certificatemanager";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as iam from "aws-cdk-lib/aws-iam";
+import * as ssm from "aws-cdk-lib/aws-ssm";
 import { Construct } from "constructs";
 import { createTags } from "./utils/tags";
 
 export interface ApiGatewayStackProps extends cdk.StackProps {
+  listStudiesFunction: lambda.Function;
   listFamiliesFunction: lambda.Function;
   getFamilyFunction: lambda.Function;
   getAnnotationsFunction: lambda.Function;
   writeAnnotationsFunction: lambda.Function;
-  cloudFrontDomainName?: string;
   sessionsTable: dynamodb.ITable;
 }
 
 export class ApiGatewayStack extends cdk.Stack {
   public readonly api: apigateway.RestApi;
-  public readonly customDomain?: apigateway.DomainName;
   public readonly authorizer?: apigateway.RequestAuthorizer;
   public readonly authorizerFunction: lambda.Function;
   public readonly callbackFunction: lambda.Function;
-  public readonly apiDomainName: string;
+  public readonly apiGatewayUrl: string;
 
   constructor(scope: Construct, id: string, props: ApiGatewayStackProps) {
     super(scope, id, props);
 
     const tier = process.env.TIER || "dev";
-    const sslCertificateArn = process.env.SSL_CERTIFICATE_ARN;
     const secretName = `${tier}/fhhpb/oidc-config`;
 
     const authorizerLogGroup = logs.LogGroup.fromLogGroupName(
@@ -218,27 +216,8 @@ export class ApiGatewayStack extends cdk.Stack {
       })
     );
 
-    // Define custom domain and certificate if SSL certificate ARN is provided
-    const apiDomainName = `api-pedigree-${tier}.cancer.gov`;
-    let certificate: certificatemanager.ICertificate | undefined;
-
-    if (sslCertificateArn) {
-      certificate = certificatemanager.Certificate.fromCertificateArn(
-        this,
-        "SSLCertificate",
-        sslCertificateArn
-      );
-    }
-
+    // Configure CORS to only allow CloudFront domain
     const corsOrigins = [`https://pedigree-${tier}.cancer.gov`];
-
-    if (props.cloudFrontDomainName) {
-      corsOrigins.push(`https://${props.cloudFrontDomainName}`);
-    }
-
-    if (certificate) {
-      corsOrigins.push(`https://${apiDomainName}`);
-    }
 
     this.api = new apigateway.RestApi(this, "FhhpbApi", {
       restApiName: `nci-cbiit-fhhpb-api-${tier}`,
@@ -267,24 +246,6 @@ export class ApiGatewayStack extends cdk.Stack {
       },
     });
 
-    // Create custom domain if certificate is available
-    if (certificate) {
-      this.customDomain = new apigateway.DomainName(this, "ApiCustomDomain", {
-        domainName: apiDomainName,
-        certificate: certificate,
-        endpointType: apigateway.EndpointType.REGIONAL,
-        securityPolicy: apigateway.SecurityPolicy.TLS_1_2,
-      });
-
-      // Create base path mapping to connect the custom domain to the API
-      new apigateway.BasePathMapping(this, "ApiBasePathMapping", {
-        domainName: this.customDomain,
-        restApi: this.api,
-        stage: this.api.deploymentStage,
-        basePath: "api",
-      });
-    }
-
     this.authorizer = new apigateway.RequestAuthorizer(this, "OidcAuthorizer", {
       handler: this.authorizerFunction,
       identitySources: [apigateway.IdentitySource.header("Cookie")],
@@ -293,6 +254,9 @@ export class ApiGatewayStack extends cdk.Stack {
     });
 
     // Create Lambda integrations
+    const listStudiesIntegration = new apigateway.LambdaIntegration(
+      props.listStudiesFunction
+    );
     const listFamiliesIntegration = new apigateway.LambdaIntegration(
       props.listFamiliesFunction
     );
@@ -339,9 +303,27 @@ export class ApiGatewayStack extends cdk.Stack {
 
     // Create API Gateway resources and methods
 
-    // GET /families - List all families
+    // GET /studies - List all studies
+    const studiesResource = this.api.root.addResource("studies");
+    studiesResource.addMethod("GET", listStudiesIntegration, {
+      apiKeyRequired: false,
+      authorizer: this.authorizer,
+      authorizationType: apigateway.AuthorizationType.CUSTOM,
+      requestValidator: new apigateway.RequestValidator(
+        this,
+        "ListStudiesValidator",
+        {
+          restApi: this.api,
+          requestValidatorName: "list-studies-validator",
+          validateRequestParameters: true,
+        }
+      ),
+    });
+
+    // GET /families/{study_id} - List families for a study
     const familiesResource = this.api.root.addResource("families");
-    familiesResource.addMethod("GET", listFamiliesIntegration, {
+    const familiesStudyIdResource = familiesResource.addResource("{study_id}");
+    familiesStudyIdResource.addMethod("GET", listFamiliesIntegration, {
       apiKeyRequired: false,
       authorizer: this.authorizer,
       authorizationType: apigateway.AuthorizationType.CUSTOM,
@@ -354,10 +336,15 @@ export class ApiGatewayStack extends cdk.Stack {
           validateRequestParameters: true,
         }
       ),
+      requestParameters: {
+        "method.request.path.study_id": true,
+      },
     });
 
-    // GET /families/{family_id} - Get specific family
-    const familyIdResource = familiesResource.addResource("{family_id}");
+    // GET /family/{study_id}/{family_id} - Get specific family
+    const familyResource = this.api.root.addResource("family");
+    const familyStudyIdResource = familyResource.addResource("{study_id}");
+    const familyIdResource = familyStudyIdResource.addResource("{family_id}");
     familyIdResource.addMethod("GET", getFamilyIntegration, {
       apiKeyRequired: false,
       authorizer: this.authorizer,
@@ -372,14 +359,15 @@ export class ApiGatewayStack extends cdk.Stack {
         }
       ),
       requestParameters: {
+        "method.request.path.study_id": true,
         "method.request.path.family_id": true,
       },
     });
 
-    // GET /annotations/{family_id} - Get annotations for a family
+    // GET /annotations/{study_id}/{family_id} - Get annotations for a family
     const annotationsResource = this.api.root.addResource("annotations");
-    const annotationsFamilyIdResource =
-      annotationsResource.addResource("{family_id}");
+    const annotationsStudyIdResource = annotationsResource.addResource("{study_id}");
+    const annotationsFamilyIdResource = annotationsStudyIdResource.addResource("{family_id}");
     annotationsFamilyIdResource.addMethod("GET", getAnnotationsIntegration, {
       apiKeyRequired: false,
       authorizer: this.authorizer,
@@ -394,11 +382,12 @@ export class ApiGatewayStack extends cdk.Stack {
         }
       ),
       requestParameters: {
+        "method.request.path.study_id": true,
         "method.request.path.family_id": true,
       },
     });
 
-    // POST /annotations/{family_id} - Write annotations for a family
+    // POST /annotations/{study_id}/{family_id} - Write annotations for a family
     annotationsFamilyIdResource.addMethod("POST", writeAnnotationsIntegration, {
       apiKeyRequired: false,
       authorizer: this.authorizer,
@@ -414,6 +403,7 @@ export class ApiGatewayStack extends cdk.Stack {
         }
       ),
       requestParameters: {
+        "method.request.path.study_id": true,
         "method.request.path.family_id": true,
       },
     });
@@ -450,20 +440,18 @@ export class ApiGatewayStack extends cdk.Stack {
       2,
       cdk.Fn.split("/", this.api.url)
     );
-    this.apiDomainName = executeApiDomain;
+    this.apiGatewayUrl = executeApiDomain;
+
+    new ssm.StringParameter(this, "ApiGatewayUrlParam", {
+      parameterName: `/analysistools/${tier}/fhh-pb/api_gateway_url`,
+      stringValue: this.apiGatewayUrl,
+      description: "API Gateway domain name for CloudFront origin",
+    });
 
     new cdk.CfnOutput(this, "ApiGatewayUrl", {
       value: this.api.url,
       description: "API Gateway URL for the FHHPB application",
       exportName: `${tier}-fhhpb-api-gateway-url`,
     });
-
-    if (this.customDomain) {
-      new cdk.CfnOutput(this, "ApiCustomDomainUrl", {
-        value: `https://${apiDomainName}`,
-        description: "Custom domain URL for the API Gateway",
-        exportName: `${tier}-fhhpb-api-custom-domain-url`,
-      });
-    }
   }
 }
