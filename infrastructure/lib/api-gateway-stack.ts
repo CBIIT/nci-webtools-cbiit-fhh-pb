@@ -227,7 +227,7 @@ export class ApiGatewayStack extends cdk.Stack {
       },
       defaultCorsPreflightOptions: {
         allowOrigins: corsOrigins,
-        allowMethods: ["GET", "POST", "OPTIONS"],
+        allowMethods: ["GET", "POST", "PUT", "OPTIONS"],
         allowHeaders: [
           "Content-Type",
           "Authorization",
@@ -252,6 +252,25 @@ export class ApiGatewayStack extends cdk.Stack {
       resultsCacheTtl: cdk.Duration.minutes(5),
       authorizerName: `${tier}-oidc-authorizer`,
     });
+
+    // Declare API Key
+    const apiKey = new apigateway.ApiKey(this, "FhhpbApiKey", {
+      apiKeyName: `${tier}-fhhpb-api-key`,
+      description: "API key for upload endpoint access",
+    });
+
+    // Declare Usage Plan
+    const usagePlan = this.api.addUsagePlan("FhhpbUsagePlan", {
+      name: `${tier}-fhhpb-usage-plan`,
+      description: "Usage plan for FHHPB API",
+      apiStages: [
+        {
+          api: this.api,
+          stage: this.api.deploymentStage,
+        },
+      ],
+    });
+    usagePlan.addApiKey(apiKey);
 
     // Create Lambda integrations
     const listStudiesIntegration = new apigateway.LambdaIntegration(
@@ -406,6 +425,46 @@ export class ApiGatewayStack extends cdk.Stack {
         "method.request.path.study_id": true,
         "method.request.path.family_id": true,
       },
+    });
+
+    // PUT /upload/{proxy} - Upload objects to S3 raw/ prefix
+    const uploadResource = this.api.root.addResource("upload");
+    const uploadProxyResource = uploadResource.addResource("{proxy}");
+    const uploadApiGatewayRole = iam.Role.fromRoleArn(
+      this,
+      "UploadApiGatewayRole",
+      `arn:aws:iam::${cdk.Stack.of(this).account}:role/power-user-api-gateway-policy-${tier}`,
+      {
+        mutable: false,
+      }
+    );
+    const uploadIntegration = new apigateway.AwsIntegration({
+      service: "s3",
+      path: `nci-cbiit-fhhpb-data-${tier}/raw/{proxy}`,
+      integrationHttpMethod: "PUT",
+      options: {
+        credentialsRole: uploadApiGatewayRole,
+        requestParameters: {
+          "integration.request.path.proxy": "method.request.path.proxy",
+        },
+        passthroughBehavior: apigateway.PassthroughBehavior.WHEN_NO_MATCH,
+        integrationResponses: [
+          {
+            statusCode: "200",
+          },
+        ],
+      },
+    });
+    uploadProxyResource.addMethod("PUT", uploadIntegration, {
+      apiKeyRequired: true,
+      requestParameters: {
+        "method.request.path.proxy": true,
+      },
+      methodResponses: [
+        {
+          statusCode: "200",
+        },
+      ],
     });
 
     // Add CloudWatch alarms for API Gateway
