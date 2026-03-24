@@ -135,6 +135,25 @@ export class ApiGatewayStack extends cdk.Stack {
       `/aws/lambda/${tier}-fhhpb-api-oidc-extend`
     );
 
+    // Creat project specific role for API Gateway
+    const permissionBoundary = iam.ManagedPolicy.fromManagedPolicyName(
+      this,
+      'PermissionBoundaryPowerUser',
+      'PermissionBoundary_PowerUser'
+    );
+    const s3Policy = iam.ManagedPolicy.fromManagedPolicyName(
+      this,
+      'PowerUserS3Policy',
+      `power-user-s3-policy-${tier}`
+    );
+    const apiGatewayRole = new iam.Role(this, 'AnalysistoolsApiGatewayRole', {
+      roleName: `power_user_analysistools_fhhpb_${tier}`,
+      assumedBy: new iam.ServicePrincipal('apigateway.amazonaws.com'),
+      permissionsBoundary: permissionBoundary,
+      description: 'API Gateway role for analysistools FHHPB uploads',
+    });
+    apiGatewayRole.addManagedPolicy(s3Policy);
+
     // Logout function
     const logoutFunction = new lambda.Function(this, "OidcLogoutFunction", {
       functionName: `${tier}-fhhpb-api-oidc-logout`,
@@ -253,13 +272,13 @@ export class ApiGatewayStack extends cdk.Stack {
       authorizerName: `${tier}-oidc-authorizer`,
     });
 
-    // Declare API Key
+    // Create API Key
     const apiKey = new apigateway.ApiKey(this, "FhhpbApiKey", {
       apiKeyName: `${tier}-fhhpb-api-key`,
       description: "API key for upload endpoint access",
     });
 
-    // Declare Usage Plan
+    // Create Usage Plan
     const usagePlan = this.api.addUsagePlan("FhhpbUsagePlan", {
       name: `${tier}-fhhpb-usage-plan`,
       description: "Usage plan for FHHPB API",
@@ -433,7 +452,7 @@ export class ApiGatewayStack extends cdk.Stack {
     const uploadApiGatewayRole = iam.Role.fromRoleArn(
       this,
       "UploadApiGatewayRole",
-      `arn:aws:iam::${cdk.Stack.of(this).account}:role/power-user-api-gateway-policy-${tier}`,
+      `arn:aws:iam::${cdk.Stack.of(this).account}:role/power-user-analysistools-fhhpb-${tier}`,
       {
         mutable: false,
       }
