@@ -147,7 +147,7 @@ export class ApiGatewayStack extends cdk.Stack {
       `power-user-s3-policy-${tier}`
     );
     const apiGatewayRole = new iam.Role(this, 'AnalysistoolsApiGatewayRole', {
-      roleName: `power_user_analysistools_fhhpb_${tier}`,
+      roleName: `power-user-analysistools-fhhpb-${tier}`,
       assumedBy: new iam.ServicePrincipal('apigateway.amazonaws.com'),
       permissionsBoundary: permissionBoundary,
       description: 'API Gateway role for analysistools FHHPB uploads',
