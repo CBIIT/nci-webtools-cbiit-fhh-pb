@@ -136,18 +136,21 @@ export class ApiGatewayStack extends cdk.Stack {
     );
 
     // Creat project specific role for API Gateway
-    const permissionBoundary = iam.ManagedPolicy.fromManagedPolicyName(
-      this,
-      'PermissionBoundaryPowerUser',
-      'PermissionBoundary_PowerUser'
-    );
+    let permissionBoundary: iam.IManagedPolicy | undefined;
+    if (!['dev', 'qa'].includes(tier)) {
+      permissionBoundary = iam.ManagedPolicy.fromManagedPolicyName(
+        this,
+        'PermissionBoundaryPowerUser',
+        'PermissionBoundary_PowerUser'
+      );
+    }
     const s3Policy = iam.ManagedPolicy.fromManagedPolicyName(
       this,
       'PowerUserS3Policy',
       `power-user-s3-policy-${tier}`
     );
     const apiGatewayRole = new iam.Role(this, 'AnalysistoolsApiGatewayRole', {
-      roleName: `power-user-analysistools-fhhpb-${tier}`,
+      roleName: `power-user-analysistools-fhhpb-apigateway-${tier}`,
       assumedBy: new iam.ServicePrincipal('apigateway.amazonaws.com'),
       permissionsBoundary: permissionBoundary,
       description: 'API Gateway role for analysistools FHHPB uploads',
