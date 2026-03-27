@@ -17,8 +17,8 @@ from get_family import get_family
 @mock_aws
 def test_get_family_success():
     """Test get_family with successful S3 retrieval."""
-    # Create mock S3 bucket and object
     bucket_name = 'test-bucket'
+    study_id = 'LFS'
     family_id = 'test_family_123'
     test_data = '{"family": {"id": "test_family_123", "members": []}}'
     
@@ -26,13 +26,12 @@ def test_get_family_success():
     s3_client.create_bucket(Bucket=bucket_name)
     s3_client.put_object(
         Bucket=bucket_name,
-        Key=f'processed/{family_id}.processed.json',
+        Key=f'processed/{study_id}/{family_id}.processed.json',
         Body=test_data,
         ContentType='application/json'
     )
     
-    # Test the function
-    result = get_family(family_id, bucket_name)
+    result = get_family(study_id, family_id, bucket_name)
     
     assert result['status'] == 'success'
     assert result['data'] == test_data
@@ -41,19 +40,20 @@ def test_get_family_success():
 def test_get_family_not_found():
     """Test get_family when file doesn't exist."""
     bucket_name = 'test-bucket'
+    study_id = 'LFS'
     family_id = 'nonexistent_family'
     
     s3_client = boto3.client('s3', region_name='us-east-1')
     s3_client.create_bucket(Bucket=bucket_name)
     
-    result = get_family(family_id, bucket_name)
+    result = get_family(study_id, family_id, bucket_name)
     
     assert result['status'] == 'not_found'
     assert 'not found' in result['message']
 
 def test_get_family_no_bucket():
     """Test get_family with no bucket specified."""
-    result = get_family('test_family')
+    result = get_family('LFS', 'test_family')
     
     assert result['status'] == 'error'
     assert 'DATA_BUCKET environment variable not set' in result['message']
@@ -61,7 +61,7 @@ def test_get_family_no_bucket():
 def test_lambda_handler_success():
     """Test lambda_handler with successful request."""
     event = {
-        'pathParameters': {'family_id': 'test_family_456'}
+        'pathParameters': {'study_id': 'LFS', 'family_id': 'test_family_456'}
     }
     context = MagicMock()
     
@@ -74,12 +74,12 @@ def test_lambda_handler_success():
         assert result['statusCode'] == 200
         assert result['headers']['Content-Type'] == 'application/json'
         assert result['body'] == test_data
-        mock_get.assert_called_once_with('test_family_456')
+        mock_get.assert_called_once_with('LFS', 'test_family_456')
 
 def test_lambda_handler_not_found():
     """Test lambda_handler when family not found."""
     event = {
-        'pathParameters': {'family_id': 'nonexistent_family'}
+        'pathParameters': {'study_id': 'LFS', 'family_id': 'nonexistent_family'}
     }
     context = MagicMock()
     
@@ -92,9 +92,20 @@ def test_lambda_handler_not_found():
         body = json.loads(result['body'])
         assert 'Family not found' in body['error']
 
+def test_lambda_handler_missing_study_id():
+    """Test lambda_handler with missing study_id."""
+    event = {'pathParameters': {'family_id': 'test_family'}}
+    context = MagicMock()
+    
+    result = lambda_module.lambda_handler(event, context)
+    
+    assert result['statusCode'] == 400
+    body = json.loads(result['body'])
+    assert 'Missing study_id' in body['error']
+
 def test_lambda_handler_missing_family_id():
     """Test lambda_handler with missing family_id."""
-    event = {'pathParameters': {}}
+    event = {'pathParameters': {'study_id': 'LFS'}}
     context = MagicMock()
     
     result = lambda_module.lambda_handler(event, context)
@@ -106,7 +117,7 @@ def test_lambda_handler_missing_family_id():
 def test_lambda_handler_error():
     """Test lambda_handler when get_family returns error."""
     event = {
-        'pathParameters': {'family_id': 'error_family'}
+        'pathParameters': {'study_id': 'LFS', 'family_id': 'error_family'}
     }
     context = MagicMock()
     

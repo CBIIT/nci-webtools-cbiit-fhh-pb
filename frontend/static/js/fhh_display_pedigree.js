@@ -49,19 +49,19 @@ export function get_config() {
 
 let study_select = document.getElementById("study_select");
 study_select.addEventListener("change", function (event) {
-  // Code to be executed when the value changes
-  const study_id = event.target.value;
-  console.log("Selected study ID:", study_id);
-  check_for_families(study_id);
-
+  study_name = event.target.value;
+  console.log("Selected study ID:", study_name);
+  check_for_families(study_name);
 });
 
 let family_select = document.getElementById("families_select");
 family_select.addEventListener("change", function (event) {
-  // Code to be executed when the value changes
-  if (!study_name) study_name = "lfss";
+  if (!study_name) {
+    console.warn("No study selected");
+    return;
+  }
   
-  const promise = load_config_and_data(event.target.value, study_name);
+  const promise = load_config_and_data(study_name, event.target.value, "lfss");
   promise.then(([d, a, c]) => {
     data = d;
     annotations = a;
@@ -110,17 +110,28 @@ raw_data_elem.addEventListener("click", function () {
 
 document.addEventListener("DOMContentLoaded", async function () {
   try {
-    ensureConfigLoaded();
+    await ensureConfigLoaded();
     
     const urlParams = new URLSearchParams(window.location.search);
     const family = urlParams.get("family");
-    console.log("Family: " + family);
-    
-    check_for_families("lfss");
-    check_for_studies();
+    const study = urlParams.get("study");
+    console.log("Study: " + study + " Family: " + family);
 
-    if (family) {
-      const [d, a, c] = await load_config_and_data(family, "lfss");
+    const studies = await check_for_studies();
+
+    if (study) {
+      study_name = study;
+    } else if (studies.length > 0) {
+      study_name = studies[0];
+    }
+
+    if (study_name) {
+      study_select.value = study_name;
+      await check_for_families(study_name);
+    }
+
+    if (family && study_name) {
+      const [d, a, c] = await load_config_and_data(study_name, family, "lfss");
       data = d;
       annotations = a;
       config = c;

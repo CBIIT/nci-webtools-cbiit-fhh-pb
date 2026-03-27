@@ -9,22 +9,25 @@ app.config["JSONIFY_PRETTYPRINT_REGULAR"] = True  # Explicitly enable pretty-pri
 
 
 CONFIG_FOLDER = os.path.join(app.root_path, "config")
-PROCESSED_FOLDER = os.path.join(app.root_path, "../data/processed")
-ANNOTATIONS_FOLDER = os.path.join(app.root_path, "../data/annotations")
 
-print(PROCESSED_FOLDER)
-
-# Load API configuration
-def get_api_config():
-    """Load API configuration from config/lfss.json"""
+def get_app_config():
+    """Load application configuration from config/lfss.json"""
     try:
         config_path = os.path.join(CONFIG_FOLDER, "lfss.json")
         with open(config_path, "r") as f:
-            config = json.load(f)
-            return config.get("api", {}).get("baseUrl", "")
+            return json.load(f)
     except Exception as e:
-        app.logger.warning(f"Could not load API config: {e}")
-        return ""
+        app.logger.warning(f"Could not load app config: {e}")
+        return {}
+
+_app_config = get_app_config()
+DATA_DIR = os.path.join(app.root_path, _app_config.get("dataDir", "../data"))
+PROCESSED_FOLDER = os.path.join(DATA_DIR, "processed")
+ANNOTATIONS_FOLDER = os.path.join(DATA_DIR, "annotations")
+
+def get_api_config():
+    """Return the API base URL from app config."""
+    return _app_config.get("api", {}).get("baseUrl", "")
 
 
 def proxy_to_api_gateway(endpoint, method="GET", data=None):
