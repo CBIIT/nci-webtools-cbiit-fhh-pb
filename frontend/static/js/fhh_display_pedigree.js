@@ -61,17 +61,20 @@ family_select.addEventListener("change", function (event) {
     return;
   }
   
-  const promise = load_config_and_data(study_name, event.target.value, "lfss");
-  promise.then(([d, a, c]) => {
-    data = d;
-    annotations = a;
-    config = c;
-    display_pedigree();
-    show_all_blocks();
-    show_summary_block();
-    set_study_summary();
-    set_family_summary();
-  });
+  load_config_and_data(study_name, event.target.value, "lfss")
+    .then(([d, a, c]) => {
+      data = d;
+      annotations = a;
+      config = c;
+      display_pedigree();
+      show_all_blocks();
+      show_summary_block();
+      set_study_summary();
+      set_family_summary();
+    })
+    .catch((error) => {
+      console.error("Failed to load family data:", error);
+    });
 });
 
 let clear_alert_elem = document.getElementById("clear-alert-button");
@@ -131,16 +134,20 @@ document.addEventListener("DOMContentLoaded", async function () {
     }
 
     if (family && study_name) {
-      const [d, a, c] = await load_config_and_data(study_name, family, "lfss");
-      data = d;
-      annotations = a;
-      config = c;
-      console.log("Loaded family from URL param: " + family + ".json");
-      show_all_blocks();
-      show_summary_block();
-      set_study_summary();
-      set_family_summary();
-      display_pedigree();
+      try {
+        const [d, a, c] = await load_config_and_data(study_name, family, "lfss");
+        data = d;
+        annotations = a;
+        config = c;
+        console.log("Loaded family from URL param: " + family + ".json");
+        show_all_blocks();
+        show_summary_block();
+        set_study_summary();
+        set_family_summary();
+        display_pedigree();
+      } catch (error) {
+        console.error("Failed to load family from URL param:", error);
+      }
     }
   } catch (error) {
     console.error("Error fetching data:", error);

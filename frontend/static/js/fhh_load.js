@@ -238,6 +238,7 @@ export async function load_config_and_data(study_id, family_id, config_id) {
     return [data, annotations, config];
   } catch (error) {
     console.error("Error fetching data:", error);
+    throw error;
   }
 }
 
