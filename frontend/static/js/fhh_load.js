@@ -1,4 +1,5 @@
 let apiConfig = { baseUrl: "" };
+let loaded_study_id = null;
 let loaded_family_id = null;
 let configPromise = null;
 let configData = null;
@@ -74,6 +75,7 @@ export async function check_for_studies() {
   await ensureConfigLoaded();
   const studies = await get_study_list(build_api_url("/studies"));
   console.log(studies);
+  return studies;
 } 
 
 export async function check_for_families(study_id) {
@@ -184,12 +186,13 @@ async function get_study_list(url) {
 
 /**
  * Loads family data, annotations, and configuration
+ * @param {string} study_id - The study identifier (S3/filesystem folder name)
  * @param {string} family_id - The family identifier
  * @param {string} config_id - Optional configuration ID (defaults to 'basic')
  * @returns {Promise<[Object, Object, Object]>} Array of [data, annotations, config]
  */
-export async function load_config_and_data(family_id, config_id) {
-  console.log("Family:" + family_id + " and config: " + config_id);
+export async function load_config_and_data(study_id, family_id, config_id) {
+  console.log("Study:" + study_id + " Family:" + family_id + " Config:" + config_id);
   if (!family_id) {
     console.warn("No family ID provided");
     return;
@@ -200,10 +203,11 @@ export async function load_config_and_data(family_id, config_id) {
 
   await ensureConfigLoaded();
 
-  const pedigree_file = build_api_url("/family/" + "lfss" + "/" + family_id);
-  const annotations_file = build_api_url("/annotations/" + "lfss" + "/" + family_id);
+  const pedigree_file = build_api_url("/family/" + study_id + "/" + family_id);
+  const annotations_file = build_api_url("/annotations/" + study_id + "/" + family_id);
   const config_file = `/config/${config_id || "basic"}.json`;
 
+  loaded_study_id = study_id;
   loaded_family_id = family_id;
   try {
     const [pedigree_response, annotations_response, config_response] =
@@ -234,6 +238,7 @@ export async function load_config_and_data(family_id, config_id) {
     return [data, annotations, config];
   } catch (error) {
     console.error("Error fetching data:", error);
+    throw error;
   }
 }
 
@@ -244,7 +249,7 @@ export async function load_config_and_data(family_id, config_id) {
 export function save_positions_and_annotations(data) {
   const proband_id = data.general?.proband;
   const family_id = loaded_family_id;
-  const study_id = "lfss";
+  const study_id = loaded_study_id;
   console.log("saving Annotations: " + study_id + "/" + family_id);
 
   const people_positions = Object.fromEntries(

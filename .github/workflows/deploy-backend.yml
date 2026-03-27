@@ -1,4 +1,4 @@
-name: Deploy Backend (Infrastructure + Lambda)
+name: Deploy Backend (API Gateway + Lambda)
 permissions:
   id-token: write
   contents: read
