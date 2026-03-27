@@ -4,9 +4,9 @@ This project uses GitHub Actions workflows to deploy infrastructure and applicat
 
 ## Deployment Workflows
 
-### 1. Deploy Infrastructure (Full Stack)
+### 1. Deploy All (Full Stack)
 
-**Workflow:** `.github/workflows/deploy-infrastructure.yml`
+**Workflow:** `.github/workflows/deploy-all.yml`
 
 **Purpose:** Complete infrastructure deployment from scratch, including all AWS resources and the frontend application.
 
@@ -89,7 +89,7 @@ This project uses GitHub Actions workflows to deploy infrastructure and applicat
 
 ### For New Environments (First-Time Setup)
 
-1. **Deploy Infrastructure** - Sets up all AWS resources and deploys the full application
+1. **Deploy All** - Sets up all AWS resources and deploys the full application
    - This single workflow handles the complete initial setup
 
 ### For Existing Environments (Updates)
@@ -99,7 +99,7 @@ Choose the workflow based on what you've changed:
 - **Backend changes only** → Deploy Backend
 - **Frontend changes only** → Deploy Frontend
 - **JSON Processor changes only** → Deploy JSON Processor
-- **Multiple components changed** → Deploy Infrastructure (full stack)
+- **Multiple components changed** → Deploy All (full stack)
 
 ---
 

@@ -1,4 +1,4 @@
-name: Deploy Frontend (CloudFront + S3)
+name: Deploy Frontend (CloudFront)
 permissions:
   id-token: write
   contents: read
