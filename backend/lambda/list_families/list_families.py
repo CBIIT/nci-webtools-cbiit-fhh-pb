@@ -13,7 +13,7 @@ def list_families(study_id, bucket_name=None):
         if not bucket_name:
             raise ValueError("Bucket name not provided and DATA_BUCKET environment variable not set")
 
-        logger.info(f"Listing families from S3: s3://{bucket_name}/public/{study_id}/")
+        logger.info(f"Listing families from S3: s3://{bucket_name}/processed/{study_id}/")
 
         s3_client = boto3.client("s3")
 
@@ -23,7 +23,7 @@ def list_families(study_id, bucket_name=None):
 
         while True:
             page_count += 1
-            params = {"Bucket": bucket_name, "Prefix": f"public/{study_id}/", "Delimiter": "/"}
+            params = {"Bucket": bucket_name, "Prefix": f"processed/{study_id}/", "Delimiter": "/"}
 
             # Add continuation token if this is not the first page
             if continuation_token:

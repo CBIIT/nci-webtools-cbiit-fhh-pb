@@ -28,13 +28,13 @@ def test_list_families_success():
     for family_id in test_families:
         s3_client.put_object(
             Bucket=bucket_name,
-            Key=f"public/{study_id}/{family_id}.processed.json",
+            Key=f"processed/{study_id}/{family_id}.processed.json",
             Body='{"test": "data"}',
             ContentType="application/json",
         )
 
     # Add a non-matching file to ensure filtering works
-    s3_client.put_object(Bucket=bucket_name, Key=f"public/{study_id}/other_file.txt", Body="not a json file")
+    s3_client.put_object(Bucket=bucket_name, Key=f"processed/{study_id}/other_file.txt", Body="not a json file")
 
     result = list_families(study_id, bucket_name)
 
@@ -53,14 +53,14 @@ def test_list_families_pagination():
 
     # First page response
     first_page = {
-        "Contents": [{"Key": f"public/{study_id}/family_{i:05d}.processed.json"} for i in range(1000)],
+        "Contents": [{"Key": f"processed/{study_id}/family_{i:05d}.processed.json"} for i in range(1000)],
         "IsTruncated": True,
         "NextContinuationToken": "token123",
     }
 
     # Second page response
     second_page = {
-        "Contents": [{"Key": f"public/{study_id}/family_{i:05d}.processed.json"} for i in range(1000, 1500)],
+        "Contents": [{"Key": f"processed/{study_id}/family_{i:05d}.processed.json"} for i in range(1000, 1500)],
         "IsTruncated": False,
     }
 

@@ -27,7 +27,7 @@ def test_list_studies_success():
     for study_id in test_studies:
         s3_client.put_object(
             Bucket=bucket_name,
-            Key=f'public/{study_id}/dummy.json',
+            Key=f'processed/{study_id}/dummy.json',
             Body='{"test": "data"}',
             ContentType='application/json'
         )
@@ -47,7 +47,7 @@ def test_list_studies_pagination():
     # First page response with CommonPrefixes (subdirectories)
     first_page = {
         'CommonPrefixes': [
-            {'Prefix': f'public/study_{i:05d}/'}
+            {'Prefix': f'processed/study_{i:05d}/'}
             for i in range(1000)
         ],
         'IsTruncated': True,
@@ -57,7 +57,7 @@ def test_list_studies_pagination():
     # Second page response
     second_page = {
         'CommonPrefixes': [
-            {'Prefix': f'public/study_{i:05d}/'}
+            {'Prefix': f'processed/study_{i:05d}/'}
             for i in range(1000, 1500)
         ],
         'IsTruncated': False
