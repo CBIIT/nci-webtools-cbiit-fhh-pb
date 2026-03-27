@@ -52,8 +52,8 @@ jobs:
       - name: Install and test JSON processor Lambda
         run: |
           cd backend/lambda/json-processor
-          echo "Installing test dependencies..."
-          pip install -r requirements.txt
+          echo "Installing dependencies..."
+          pip install -r requirements.txt -r requirements-test.txt
 
           echo "Running Lambda tests..."
           python -m pytest test_lambda.py -v
