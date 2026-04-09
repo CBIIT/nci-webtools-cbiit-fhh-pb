@@ -252,30 +252,36 @@ class JSONProcessor:
     def _parse_medical_code(self, text):
         """
         Parse medical diagnostic code text to extract the code and title.
+        A valid code is any single token of letters, digits, and dots (e.g. P90X, 1245, c34.2, Z00.00).
+
+        Rules:
+            - "CODE - TITLE"         -> (code, title)
+            - "CODE"  (single token) -> (code, 'NOTITLE')
+            - "multiple words"       -> ('NOCODE', full text)
+            - blank/empty            -> ('NOCODE', 'NOTITLE')
 
         Args:
-            text (str): Input text in format "CODE - TITLE"
-
+            text (str): Raw input string
         Returns:
-            tuple: (code, title) or (None, None) if no match
+            tuple: (code, title)
         """
-        # Regular expression pattern to match code and title
-        # Pattern explanation:
-        # ^         - Start of string
-        # ([A-Z]\d+(?:\.\d+)?) - Capture group 1: Letter followed by digits, optionally with decimal
-        # \s*-\s*   - Dash with optional whitespace on both sides
-        # (.+)      - Capture group 2: Everything else (the title)
-        # $         - End of string
-        pattern = r'^([A-Z]\d+(?:\.\d+)?)\s*-\s*(.+)$'
+        text = text.strip()
 
-        match = re.match(pattern, text.strip(), re.IGNORECASE)
-        if match:
-            code = match.group(1)
-            title = match.group(2).strip()
-            return code, title
-        else:
-            #return None, None
-            return 'NOCODE', text.strip()  # Return original text as title if no code found
+        if not text:
+            return 'NOCODE', 'NOTITLE'
+
+        # A code is any single token of letters, digits, and dots
+        CODE = r'[A-Z0-9.]+'
+
+        m = re.match(rf'^({CODE})\s*-\s*(.+)$', text, re.IGNORECASE)
+        if m:
+            return m.group(1), m.group(2).strip()
+
+        m = re.match(rf'^({CODE})$', text, re.IGNORECASE)
+        if m:
+            return m.group(1), 'NOTITLE'
+
+        return 'NOCODE', text
 
     def process_records(self, records: List[Dict[str, Any]]) -> None:
         """
