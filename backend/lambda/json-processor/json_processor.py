@@ -268,13 +268,14 @@ class JSONProcessor:
         # $         - End of string
         pattern = r'^([A-Z]\d+(?:\.\d+)?)\s*-\s*(.+)$'
 
-        match = re.match(pattern, text.strip())
+        match = re.match(pattern, text.strip(), re.IGNORECASE)
         if match:
             code = match.group(1)
             title = match.group(2).strip()
             return code, title
         else:
-            return None, None
+            #return None, None
+            return 'NOCODE', text.strip()  # Return original text as title if no code found
 
     def process_records(self, records: List[Dict[str, Any]]) -> None:
         """
