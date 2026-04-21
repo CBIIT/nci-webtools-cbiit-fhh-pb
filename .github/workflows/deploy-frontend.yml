@@ -14,6 +14,8 @@ on:
         options:
           - dev
           - qa
+          - stage
+          - prod
 
 jobs:
   deploy:
@@ -36,31 +38,13 @@ jobs:
           role-session-name: ${{ env.TIER }}-fhhpb-frontend-deploy-${{ github.run_id }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # - name: Get API Gateway URL
-      #   id: get-api-url
-      #   run: |
-      #     API_URL=$(aws cloudformation describe-stacks \
-      #       --stack-name "${{ env.TIER }}-fhhpb-api-gateway" \
-      #       --query "Stacks[0].Outputs[?OutputKey=='ApiGatewayUrl'].OutputValue" \
-      #       --output text)
-
-      #     if [ -z "$API_URL" ] || [ "$API_URL" = "None" ]; then
-      #       echo "Error: API Gateway URL not found. The API Gateway stack must be deployed first."
-      #       exit 1
-      #     fi
-
-      #     API_URL=$(echo "$API_URL" | sed 's/\/$//')
-      #     echo "api-url=$API_URL" >> $GITHUB_OUTPUT
-
       - name: Build frontend assets
         run: |
           cd frontend
-          echo "Building with API configuration"
           python3 build.py --api-url "/api" --tier "${{ env.TIER }}"
 
       - name: Deploy to S3
         run: |
-          echo "Deploying to S3..."
           aws s3 sync frontend/build/ s3://nci-cbiit-fhhpb-website-${{ env.TIER }} --delete
 
       - name: Invalidate CloudFront Cache
@@ -91,5 +75,7 @@ jobs:
 
       - name: Deployment Summary
         run: |
-          echo "🎉 Frontend deployment complete!"
-          echo "Environment: ${{ env.TIER }}"
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tier:** ${{ env.TIER }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY

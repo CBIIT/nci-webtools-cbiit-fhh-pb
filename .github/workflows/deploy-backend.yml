@@ -14,6 +14,8 @@ on:
         options:
           - dev
           - qa
+          - stage
+          - prod
 
 jobs:
   deploy-backend:
@@ -57,3 +59,10 @@ jobs:
             LambdaJsonProcessor-${{ env.TIER }} \
             ApiGateway-${{ env.TIER }} \
             --require-approval never
+
+      - name: Deployment Summary
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tier:** ${{ env.TIER }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
