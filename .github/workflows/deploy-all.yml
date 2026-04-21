@@ -14,6 +14,8 @@ on:
         options:
           - dev
           - qa
+          - stage
+          - prod
 
 jobs:
   deploy-all:
@@ -69,22 +71,6 @@ jobs:
             CloudFrontS3Stack-${{ env.TIER }} \
             --require-approval never
 
-      # - name: Get API Gateway URL
-      #   id: get-api-url
-      #   run: |
-      #     API_URL=$(aws cloudformation describe-stacks \
-      #       --stack-name "${{ env.TIER }}-fhhpb-api-gateway" \
-      #       --query "Stacks[0].Outputs[?OutputKey=='ApiGatewayUrl'].OutputValue" \
-      #       --output text)
-
-      #     if [ -z "$API_URL" ] || [ "$API_URL" = "None" ]; then
-      #       echo "Error: API Gateway URL not found. The API Gateway stack must be deployed successfully."
-      #       exit 1
-      #     fi
-
-      #     API_URL=$(echo "$API_URL" | sed 's/\/$//')
-      #     echo "api-gateway-url=$API_URL" >> $GITHUB_OUTPUT
-
       - name: Build frontend assets
         run: |
           cd frontend
@@ -123,20 +109,7 @@ jobs:
 
       - name: Deployment Summary
         run: |
-          echo "Environment: ${{ env.TIER }}"
-          echo ""
-          echo "Deployed Stacks:"
-          echo "  • S3DataStack-${{ env.TIER }}"
-          echo "  • DynamoDBSession-${{ env.TIER }}"
-          echo "  • LambdaJsonProcessor-${{ env.TIER }}"
-          echo "  • LambdaWriteAnnotations-${{ env.TIER }}"
-          echo "  • LambdaGetAnnotations-${{ env.TIER }}"
-          echo "  • LambdaGetFamily-${{ env.TIER }}"
-          echo "  • LambdaListFamilies-${{ env.TIER }}"
-          echo "  • LambdaListStudies-${{ env.TIER }}"
-          echo "  • ApiGateway-${{ env.TIER }}"
-          echo "  • CloudFrontS3Stack-${{ env.TIER }} (includes Lambda@Edge)"
-          echo ""
-          echo "URLs:"
-          echo "  • Frontend: https://pedigree-${{ env.TIER }}.cancer.gov"
-          echo "  • Logout: https://pedigree-${{ env.TIER }}.cancer.gov/api/logout"
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tier:** ${{ env.TIER }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
