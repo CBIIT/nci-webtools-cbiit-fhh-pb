@@ -122,7 +122,10 @@ Each workflow requires the following to be configured in GitHub:
 **Environment Variables (per environment):**
 
 - `AWS_ACCOUNT_ID` - AWS account ID for deployment
-- `SSL_CERTIFICATE_ARN` - SSL certificate ARN for HTTPS
+- `DATADOG_FORWARDER_FUNCTION_ARN` - Full ARN of the Datadog log forwarder Lambda (passed through to CDK at synth time for log subscription filters)
+- `SSL_CERTIFICATE_ARN` - ACM certificate ARN for the CloudFront custom domain (required for workflows that deploy `CloudFrontS3Stack`; use repository or environment **variables** in GitHub)
+
+For local `cdk synth` / tests without setting those env vars, you can use CDK context keys `datadogForwarderArn` and `sslCertificateArn` instead.
 
 **AWS Requirements:**
 

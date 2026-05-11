@@ -3,13 +3,19 @@ import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
 import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as lambda from "aws-cdk-lib/aws-lambda";
-import * as logs from "aws-cdk-lib/aws-logs";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as ssm from "aws-cdk-lib/aws-ssm";
 import * as certificatemanager from "aws-cdk-lib/aws-certificatemanager";
+import * as s3n from "aws-cdk-lib/aws-s3-notifications";
 import { Construct } from "constructs";
 import { createTags } from "./utils/tags";
+import {
+  applyDatadogLogGroupTags,
+  createAppLogGroup,
+  resolveDatadogForwarderArn,
+  subscribeLogGroupToDatadogForwarder,
+} from "./utils/datadog-logging";
 
 export interface CloudFrontS3StackProps extends cdk.StackProps {
   enableAuth?: boolean; // Enable Lambda@Edge authentication
@@ -54,15 +60,51 @@ export class CloudFrontS3Stack extends cdk.Stack {
       cdk.Tags.of(this.bucket).add(key, value);
     });
 
+    const forwarderArn = resolveDatadogForwarderArn(this, tier);
+
+    const cfLogsBucket = new s3.Bucket(this, "CfAccessLogsBucket", {
+      bucketName: `nci-cbiit-fhhpb-cf-access-logs-${tier}`,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      enforceSSL: true,
+      objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_PREFERRED,
+      lifecycleRules: [
+        {
+          id: "ExpireCfAccessLogs",
+          enabled: true,
+          expiration: cdk.Duration.days(tier === "prod" ? 365 : 90),
+        },
+      ],
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+    const cfLogsBucketTags = createTags({
+      tier,
+      resourceName: "cf-access-logs",
+    });
+    Object.entries(cfLogsBucketTags).forEach(([key, value]) => {
+      cdk.Tags.of(cfLogsBucket).add(key, value);
+    });
+
     // Create Lambda@Edge function if auth is enabled
     const edgeFunctions: cloudfront.EdgeLambda[] = [];
     if (props?.enableAuth) {
       const secretName = `${tier}/fhhpb/oidc-config`;
 
-      const cloudFrontAuthLogGroup = logs.LogGroup.fromLogGroupName(
+      const cloudFrontAuthLogGroup = createAppLogGroup(
         this,
         "CloudFrontAuthLogGroup",
-        `/aws/lambda/${tier}-fhhpb-cloudfront-oidc-auth`
+        {
+          logGroupName: `/aws/lambda/${tier}-fhhpb-cloudfront-oidc-auth`,
+        }
+      );
+      applyDatadogLogGroupTags(this, tier, cloudFrontAuthLogGroup, "lambda", {
+        component: "cloudfront-oidc-auth",
+      });
+      subscribeLogGroupToDatadogForwarder(
+        this,
+        "CloudFrontOidcEdge",
+        cloudFrontAuthLogGroup,
+        forwarderArn
       );
 
       this.edgeFunction = new lambda.Function(this, "CloudFrontAuthFunction", {
@@ -192,6 +234,57 @@ export class CloudFrontS3Stack extends cdk.Stack {
       this,
       "FrontendDistribution",
       distributionConfig
+    );
+    this.distribution.node.addDependency(cfLogsBucket);
+
+    const cfnDistribution = this.distribution.node
+      .defaultChild as cloudfront.CfnDistribution;
+    const cfLogPrefix = cdk.Fn.join("", [
+      tier,
+      "/",
+      this.distribution.distributionId,
+      "/",
+    ]);
+    cfnDistribution.addPropertyOverride("DistributionConfig.Logging", {
+      Bucket: cfLogsBucket.bucketRegionalDomainName,
+      Prefix: cfLogPrefix,
+    });
+
+    const distributionSourceArn = this.formatArn({
+      service: "cloudfront",
+      region: "",
+      account: "",
+      resource: "distribution",
+      resourceName: this.distribution.distributionId,
+    });
+    cfLogsBucket.addToResourcePolicy(
+      new iam.PolicyStatement({
+        sid: "AllowCloudFrontAccessLogs",
+        effect: iam.Effect.ALLOW,
+        principals: [new iam.ServicePrincipal("cloudfront.amazonaws.com")],
+        actions: ["s3:PutObject"],
+        resources: [
+          cfLogsBucket.arnForObjects(
+            `${tier}/${this.distribution.distributionId}/*`
+          ),
+        ],
+        conditions: {
+          StringEquals: {
+            "AWS:SourceArn": distributionSourceArn,
+            "s3:x-amz-acl": "bucket-owner-full-control",
+          },
+        },
+      })
+    );
+
+    const datadogForwarderForCfLogs = lambda.Function.fromFunctionArn(
+      this,
+      "CfLogsDatadogForwarderFn",
+      forwarderArn
+    );
+    cfLogsBucket.addEventNotification(
+      s3.EventType.OBJECT_CREATED,
+      new s3n.LambdaDestination(datadogForwarderForCfLogs)
     );
 
     // Add tags to CloudFront distribution

@@ -26,6 +26,7 @@ jobs:
       TIER: ${{ inputs.tier }}
       AWS_REGION: us-east-1
       AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      DATADOG_FORWARDER_FUNCTION_ARN: ${{ vars.DATADOG_FORWARDER_FUNCTION_ARN }}
       CICD_ROLE_ARN: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/power-user-github-actions-cicd
 
     steps:

@@ -4,10 +4,15 @@ import * as s3 from "aws-cdk-lib/aws-s3";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as s3n from "aws-cdk-lib/aws-s3-notifications";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
-import * as logs from "aws-cdk-lib/aws-logs";
 import * as path from "path";
 import { Construct } from "constructs";
 import { createTags } from "./utils/tags";
+import {
+  applyDatadogLogGroupTags,
+  createAppLogGroup,
+  resolveDatadogForwarderArn,
+  subscribeLogGroupToDatadogForwarder,
+} from "./utils/datadog-logging";
 
 export interface LambdaJsonProcessorStackProps extends cdk.StackProps {
   dataBucket: s3.Bucket;
@@ -53,12 +58,19 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
       })
     );
 
-    // Create CloudWatch Log Group
-    const logGroup = new logs.LogGroup(this, "JsonProcessorLogGroup", {
+    const logGroup = createAppLogGroup(this, "JsonProcessorLogGroup", {
       logGroupName: `/aws/lambda/nci-cbiit-fhhpb-jsonprocessor-${tier}`,
-      retention: logs.RetentionDays.TWO_MONTHS,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
+    const forwarderArn = resolveDatadogForwarderArn(this, tier);
+    applyDatadogLogGroupTags(this, tier, logGroup, "lambda", {
+      component: "json-processor",
+    });
+    subscribeLogGroupToDatadogForwarder(
+      this,
+      "JsonProcessor",
+      logGroup,
+      forwarderArn
+    );
 
     // Create Lambda function
     this.lambdaFunction = new lambda.Function(this, "JsonProcessorFunction", {

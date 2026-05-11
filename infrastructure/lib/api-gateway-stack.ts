@@ -2,12 +2,17 @@ import * as cdk from "aws-cdk-lib";
 import * as apigateway from "aws-cdk-lib/aws-apigateway";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
-import * as logs from "aws-cdk-lib/aws-logs";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as ssm from "aws-cdk-lib/aws-ssm";
 import { Construct } from "constructs";
 import { createTags } from "./utils/tags";
+import {
+  applyDatadogLogGroupTags,
+  createAppLogGroup,
+  resolveDatadogForwarderArn,
+  subscribeLogGroupToDatadogForwarder,
+} from "./utils/datadog-logging";
 
 export interface ApiGatewayStackProps extends cdk.StackProps {
   listStudiesFunction: lambda.Function;
@@ -30,11 +35,19 @@ export class ApiGatewayStack extends cdk.Stack {
 
     const tier = process.env.TIER || "dev";
     const secretName = `${tier}/fhhpb/oidc-config`;
+    const forwarderArn = resolveDatadogForwarderArn(this, tier);
 
-    const authorizerLogGroup = logs.LogGroup.fromLogGroupName(
+    const authorizerLogGroup = createAppLogGroup(this, "OidcAuthorizerLogGroup", {
+      logGroupName: `/aws/lambda/${tier}-fhhpb-api-oidc-authorizer`,
+    });
+    applyDatadogLogGroupTags(this, tier, authorizerLogGroup, "lambda", {
+      component: "oidc-authorizer",
+    });
+    subscribeLogGroupToDatadogForwarder(
       this,
-      "OidcAuthorizerLogGroup",
-      `/aws/lambda/${tier}-fhhpb-api-oidc-authorizer`
+      "OidcAuthorizer",
+      authorizerLogGroup,
+      forwarderArn
     );
 
     this.authorizerFunction = new lambda.Function(
@@ -77,10 +90,17 @@ export class ApiGatewayStack extends cdk.Stack {
       })
     );
 
-    const callbackLogGroup = logs.LogGroup.fromLogGroupName(
+    const callbackLogGroup = createAppLogGroup(this, "OidcCallbackLogGroup", {
+      logGroupName: `/aws/lambda/${tier}-fhhpb-api-oidc-callback`,
+    });
+    applyDatadogLogGroupTags(this, tier, callbackLogGroup, "lambda", {
+      component: "oidc-callback",
+    });
+    subscribeLogGroupToDatadogForwarder(
       this,
-      "OidcCallbackLogGroup",
-      `/aws/lambda/${tier}-fhhpb-api-oidc-callback`
+      "OidcCallback",
+      callbackLogGroup,
+      forwarderArn
     );
 
     // OAuth callback function - handles redirect from NIH IdP
@@ -123,16 +143,34 @@ export class ApiGatewayStack extends cdk.Stack {
       })
     );
 
-    const logoutLogGroup = logs.LogGroup.fromLogGroupName(
+    const logoutLogGroup = createAppLogGroup(this, "OidcLogoutLogGroup", {
+      logGroupName: `/aws/lambda/${tier}-fhhpb-api-oidc-logout`,
+    });
+    applyDatadogLogGroupTags(this, tier, logoutLogGroup, "lambda", {
+      component: "oidc-logout",
+    });
+    subscribeLogGroupToDatadogForwarder(
       this,
-      "OidcLogoutLogGroup",
-      `/aws/lambda/${tier}-fhhpb-api-oidc-logout`
+      "OidcLogout",
+      logoutLogGroup,
+      forwarderArn
     );
 
-    const extendSessionLogGroup = logs.LogGroup.fromLogGroupName(
+    const extendSessionLogGroup = createAppLogGroup(
       this,
       "OidcExtendSessionLogGroup",
-      `/aws/lambda/${tier}-fhhpb-api-oidc-extend`
+      {
+        logGroupName: `/aws/lambda/${tier}-fhhpb-api-oidc-extend`,
+      }
+    );
+    applyDatadogLogGroupTags(this, tier, extendSessionLogGroup, "lambda", {
+      component: "oidc-extend",
+    });
+    subscribeLogGroupToDatadogForwarder(
+      this,
+      "OidcExtendSession",
+      extendSessionLogGroup,
+      forwarderArn
     );
 
     // Creat project specific role for API Gateway
@@ -241,9 +279,42 @@ export class ApiGatewayStack extends cdk.Stack {
     // Configure CORS to only allow CloudFront domain
     const corsOrigins = [`https://pedigree-${tier}.cancer.gov`];
 
+    const app = cdk.App.of(this) as cdk.App;
+    const executionLoggingLevel =
+      tier === "prod"
+        ? apigateway.MethodLoggingLevel.ERROR
+        : apigateway.MethodLoggingLevel.INFO;
+    const dataTraceEnabled =
+      (tier === "dev" || tier === "qa") &&
+      app.node.tryGetContext("apigwDataTrace") === true;
+
+    const accessLogGroup = createAppLogGroup(this, "ApiGatewayAccessLogGroup", {
+      logGroupName: `/aws/apigateway/nci-cbiit-fhhpb-api-${tier}/access`,
+    });
+    applyDatadogLogGroupTags(this, tier, accessLogGroup, "apigateway", {
+      component: "apigateway-access",
+    });
+
+    const accessLogFormat = apigateway.AccessLogFormat.custom(
+      [
+        "{",
+        `"requestId":"${apigateway.AccessLogField.contextRequestId()}",`,
+        `"httpMethod":"${apigateway.AccessLogField.contextHttpMethod()}",`,
+        `"resourcePath":"${apigateway.AccessLogField.contextResourcePath()}",`,
+        `"status":"${apigateway.AccessLogField.contextStatus()}",`,
+        `"protocol":"${apigateway.AccessLogField.contextProtocol()}",`,
+        `"responseLatency":"${apigateway.AccessLogField.contextResponseLatency()}",`,
+        `"ip":"${apigateway.AccessLogField.contextIdentitySourceIp()}",`,
+        `"userAgent":"${apigateway.AccessLogField.contextIdentityUserAgent()}",`,
+        `"responseLength":"${apigateway.AccessLogField.contextResponseLength()}"`,
+        "}",
+      ].join("")
+    );
+
     this.api = new apigateway.RestApi(this, "FhhpbApi", {
       restApiName: `nci-cbiit-fhhpb-api-${tier}`,
       description: "API for Family Health History Pedigree Builder",
+      cloudWatchRole: true,
       endpointConfiguration: {
         types: [apigateway.EndpointType.REGIONAL],
       },
@@ -265,8 +336,38 @@ export class ApiGatewayStack extends cdk.Stack {
         tracingEnabled: true,
         throttlingBurstLimit: 500, // Maximum concurrent requests
         throttlingRateLimit: 100, // Requests per second
+        loggingLevel: executionLoggingLevel,
+        dataTraceEnabled,
+        metricsEnabled: true,
+        accessLogDestination: new apigateway.LogGroupLogDestination(
+          accessLogGroup
+        ),
+        accessLogFormat,
       },
     });
+
+    const executionLogGroup = createAppLogGroup(
+      this,
+      "ApiGatewayExecutionLogGroup",
+      {
+        logGroupName: `API-Gateway-Execution-Logs_${this.api.restApiId}`,
+      }
+    );
+    applyDatadogLogGroupTags(this, tier, executionLogGroup, "apigateway", {
+      component: "apigateway-execution",
+    });
+    subscribeLogGroupToDatadogForwarder(
+      this,
+      "ApigwAccess",
+      accessLogGroup,
+      forwarderArn
+    );
+    subscribeLogGroupToDatadogForwarder(
+      this,
+      "ApigwExec",
+      executionLogGroup,
+      forwarderArn
+    );
 
     this.authorizer = new apigateway.RequestAuthorizer(this, "OidcAuthorizer", {
       handler: this.authorizerFunction,

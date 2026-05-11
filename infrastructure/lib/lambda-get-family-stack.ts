@@ -3,10 +3,15 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
-import * as logs from "aws-cdk-lib/aws-logs";
 import * as path from "path";
 import { Construct } from "constructs";
 import { createTags } from "./utils/tags";
+import {
+  applyDatadogLogGroupTags,
+  createAppLogGroup,
+  resolveDatadogForwarderArn,
+  subscribeLogGroupToDatadogForwarder,
+} from "./utils/datadog-logging";
 
 export interface LambdaGetFamilyStackProps extends cdk.StackProps {
   dataBucket: s3.Bucket;
@@ -42,12 +47,19 @@ export class LambdaGetFamilyStack extends cdk.Stack {
       })
     );
 
-    // Create CloudWatch Log Group
-    const logGroup = new logs.LogGroup(this, "GetFamilyLogGroup", {
+    const logGroup = createAppLogGroup(this, "GetFamilyLogGroup", {
       logGroupName: `/aws/lambda/nci-cbiit-fhhpb-getfamily-${tier}`,
-      retention: logs.RetentionDays.TWO_MONTHS,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
+    const forwarderArn = resolveDatadogForwarderArn(this, tier);
+    applyDatadogLogGroupTags(this, tier, logGroup, "lambda", {
+      component: "get-family",
+    });
+    subscribeLogGroupToDatadogForwarder(
+      this,
+      "GetFamily",
+      logGroup,
+      forwarderArn
+    );
 
     // Create Lambda function
     this.lambdaFunction = new lambda.Function(this, "GetFamilyFunction", {
