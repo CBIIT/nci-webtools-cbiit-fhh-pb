@@ -7,13 +7,17 @@ import { LambdaGetFamilyStack } from "../lib/lambda-get-family-stack";
 
 describe("CloudFrontS3Stack", () => {
   const originalTier = process.env.TIER;
+  const originalSslArn = process.env.SSL_CERTIFICATE_ARN;
 
   beforeAll(() => {
     process.env.TIER = "dev";
+    process.env.SSL_CERTIFICATE_ARN =
+      "arn:aws:acm:us-east-1:123456789012:certificate/fake-cert-id";
   });
 
   afterAll(() => {
     process.env.TIER = originalTier;
+    process.env.SSL_CERTIFICATE_ARN = originalSslArn;
   });
 
   test("frontend bucket, CF access logs bucket, and distribution are created", () => {
@@ -28,9 +32,7 @@ describe("CloudFrontS3Stack", () => {
     const stack = new CloudFrontS3Stack(app, "MyTestCloudFrontS3Stack", {
       env: { account: "123456789012", region: "us-east-1" },
     });
-    const template = Template.fromStack(stack, {
-      skipCyclicalDependenciesCheck: true,
-    });
+    const template = Template.fromStack(stack);
 
     template.resourceCountIs("AWS::S3::Bucket", 2);
 
@@ -46,6 +48,12 @@ describe("CloudFrontS3Stack", () => {
 
     template.hasResourceProperties("AWS::S3::Bucket", {
       BucketName: "nci-cbiit-fhhpb-cf-access-logs-dev",
+      OwnershipControls: {
+        Rules: [{ ObjectOwnership: "BucketOwnerEnforced" }],
+      },
+      Tags: Match.arrayWith([
+        Match.objectLike({ Key: "service", Value: "dev-fhh-pb-cloudfront" }),
+      ]),
     });
 
     template.hasResourceProperties("AWS::CloudFront::Distribution", {
@@ -55,13 +63,57 @@ describe("CloudFrontS3Stack", () => {
         },
         PriceClass: "PriceClass_100",
         DefaultRootObject: "index.html",
-        Logging: Match.objectLike({
-          Bucket: Match.anyValue(),
-        }),
       },
     });
 
     template.resourceCountIs("AWS::Logs::SubscriptionFilter", 0);
+
+    template.resourceCountIs("AWS::Logs::DeliverySource", 1);
+    template.resourceCountIs("AWS::Logs::DeliveryDestination", 1);
+    template.resourceCountIs("AWS::Logs::Delivery", 1);
+
+    template.hasResourceProperties("AWS::Logs::DeliverySource", {
+      LogType: "ACCESS_LOGS",
+      Name: "nci-cbiit-fhhpb-cf-access-dev",
+      ResourceArn: Match.anyValue(),
+      Tags: Match.arrayWith([
+        Match.objectLike({ Key: "Project", Value: "fhhpb" }),
+      ]),
+    });
+
+    template.hasResourceProperties("AWS::Logs::DeliveryDestination", {
+      Name: "nci-cbiit-fhhpb-cf-access-s3-dev",
+      OutputFormat: "json",
+      Tags: Match.arrayWith([
+        Match.objectLike({ Key: "Project", Value: "fhhpb" }),
+      ]),
+    });
+
+    template.hasResourceProperties("AWS::Logs::Delivery", {
+      DeliverySourceName: "nci-cbiit-fhhpb-cf-access-dev",
+      S3SuffixPath:
+        "cloudfront/dev/{distributionid}/{yyyy}/{MM}/{dd}/{HH}/",
+      Tags: Match.arrayWith([
+        Match.objectLike({ Key: "Project", Value: "fhhpb" }),
+      ]),
+    });
+
+    template.hasResourceProperties("AWS::S3::BucketPolicy", {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Sid: "AWSLogDeliveryWrite",
+            Principal: { Service: "delivery.logs.amazonaws.com" },
+            Action: "s3:PutObject",
+          }),
+          Match.objectLike({
+            Sid: "AWSLogDeliveryAclCheck",
+            Principal: { Service: "delivery.logs.amazonaws.com" },
+            Action: "s3:GetBucketAcl",
+          }),
+        ]),
+      },
+    });
 
     template.hasOutput("DistributionId", {});
 
