@@ -130,7 +130,7 @@ export function subscribeLogGroupToDatadogForwarder(
     `${idPrefix}DatadogForwarderFn`,
     forwarderArn
   );
-  new logs.SubscriptionFilter(scope, `${idPrefix}DatadogSubscription`, {
+  new logs.SubscriptionFilter(scope, `${idPrefix}DdogSubscription`, {
     logGroup,
     destination: new logsDestinations.LambdaDestination(forwarderFn),
     filterPattern: logs.FilterPattern.allEvents(),
