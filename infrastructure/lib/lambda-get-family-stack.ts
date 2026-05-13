@@ -8,7 +8,7 @@ import { Construct } from "constructs";
 import { createTags } from "./utils/tags";
 import {
   applyDatadogLogGroupTags,
-  createAppLogGroup,
+  createOrReferenceAppLogGroup,
   resolveDatadogForwarderArn,
   subscribeLogGroupToDatadogForwarder,
 } from "./utils/datadog-logging";
@@ -47,7 +47,7 @@ export class LambdaGetFamilyStack extends cdk.Stack {
       })
     );
 
-    const logGroup = createAppLogGroup(this, "GetFamilyLogGroup", {
+    const logGroup = createOrReferenceAppLogGroup(this, "GetFamilyLogGroup", {
       logGroupName: `/aws/lambda/nci-cbiit-fhhpb-getfamily-${tier}`,
     });
     const forwarderArn = resolveDatadogForwarderArn(this, tier);

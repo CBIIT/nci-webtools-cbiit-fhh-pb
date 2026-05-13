@@ -13,7 +13,7 @@ import { Construct } from "constructs";
 import { createTags } from "./utils/tags";
 import {
   applyDatadogLogGroupTags,
-  createAppLogGroup,
+  createOrReferenceAppLogGroup,
   datadogServiceTag,
   resolveDatadogForwarderArn,
   subscribeLogGroupToDatadogForwarder,
@@ -100,7 +100,7 @@ export class CloudFrontS3Stack extends cdk.Stack {
     if (props?.enableAuth) {
       const secretName = `${tier}/fhhpb/oidc-config`;
 
-      const cloudFrontAuthLogGroup = createAppLogGroup(
+      const cloudFrontAuthLogGroup = createOrReferenceAppLogGroup(
         this,
         "CloudFrontAuthLogGroup",
         {

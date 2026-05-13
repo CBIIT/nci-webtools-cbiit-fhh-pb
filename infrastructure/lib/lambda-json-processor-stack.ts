@@ -9,7 +9,7 @@ import { Construct } from "constructs";
 import { createTags } from "./utils/tags";
 import {
   applyDatadogLogGroupTags,
-  createAppLogGroup,
+  createOrReferenceAppLogGroup,
   resolveDatadogForwarderArn,
   subscribeLogGroupToDatadogForwarder,
 } from "./utils/datadog-logging";
@@ -58,7 +58,7 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
       })
     );
 
-    const logGroup = createAppLogGroup(this, "JsonProcessorLogGroup", {
+    const logGroup = createOrReferenceAppLogGroup(this, "JsonProcessorLogGroup", {
       logGroupName: `/aws/lambda/nci-cbiit-fhhpb-jsonprocessor-${tier}`,
     });
     const forwarderArn = resolveDatadogForwarderArn(this, tier);

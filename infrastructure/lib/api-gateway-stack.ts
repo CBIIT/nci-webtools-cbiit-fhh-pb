@@ -10,6 +10,7 @@ import { createTags } from "./utils/tags";
 import {
   applyDatadogLogGroupTags,
   createAppLogGroup,
+  createOrReferenceAppLogGroup,
   resolveDatadogForwarderArn,
   subscribeLogGroupToDatadogForwarder,
 } from "./utils/datadog-logging";
@@ -37,9 +38,13 @@ export class ApiGatewayStack extends cdk.Stack {
     const secretName = `${tier}/fhhpb/oidc-config`;
     const forwarderArn = resolveDatadogForwarderArn(this, tier);
 
-    const authorizerLogGroup = createAppLogGroup(this, "OidcAuthorizerLogGroup", {
+    const authorizerLogGroup = createOrReferenceAppLogGroup(
+      this,
+      "OidcAuthorizerLogGroup",
+      {
       logGroupName: `/aws/lambda/${tier}-fhhpb-api-oidc-authorizer`,
-    });
+      }
+    );
     applyDatadogLogGroupTags(this, tier, authorizerLogGroup, "lambda", {
       component: "oidc-authorizer",
     });
@@ -90,9 +95,13 @@ export class ApiGatewayStack extends cdk.Stack {
       })
     );
 
-    const callbackLogGroup = createAppLogGroup(this, "OidcCallbackLogGroup", {
+    const callbackLogGroup = createOrReferenceAppLogGroup(
+      this,
+      "OidcCallbackLogGroup",
+      {
       logGroupName: `/aws/lambda/${tier}-fhhpb-api-oidc-callback`,
-    });
+      }
+    );
     applyDatadogLogGroupTags(this, tier, callbackLogGroup, "lambda", {
       component: "oidc-callback",
     });
@@ -143,9 +152,13 @@ export class ApiGatewayStack extends cdk.Stack {
       })
     );
 
-    const logoutLogGroup = createAppLogGroup(this, "OidcLogoutLogGroup", {
+    const logoutLogGroup = createOrReferenceAppLogGroup(
+      this,
+      "OidcLogoutLogGroup",
+      {
       logGroupName: `/aws/lambda/${tier}-fhhpb-api-oidc-logout`,
-    });
+      }
+    );
     applyDatadogLogGroupTags(this, tier, logoutLogGroup, "lambda", {
       component: "oidc-logout",
     });
@@ -156,7 +169,7 @@ export class ApiGatewayStack extends cdk.Stack {
       forwarderArn
     );
 
-    const extendSessionLogGroup = createAppLogGroup(
+    const extendSessionLogGroup = createOrReferenceAppLogGroup(
       this,
       "OidcExtendSessionLogGroup",
       {
@@ -288,9 +301,13 @@ export class ApiGatewayStack extends cdk.Stack {
       (tier === "dev" || tier === "qa") &&
       app.node.tryGetContext("apigwDataTrace") === true;
 
-    const accessLogGroup = createAppLogGroup(this, "ApiGatewayAccessLogGroup", {
+    const accessLogGroup = createOrReferenceAppLogGroup(
+      this,
+      "ApiGatewayAccessLogGroup",
+      {
       logGroupName: `/aws/apigateway/nci-cbiit-fhhpb-api-${tier}/access`,
-    });
+      }
+    );
     applyDatadogLogGroupTags(this, tier, accessLogGroup, "apigateway", {
       component: "apigateway-access",
     });

@@ -47,6 +47,12 @@ jobs:
           cd infrastructure
           npm ci
 
+      - name: Resolve app log group modes for CDK
+        working-directory: infrastructure
+        run: |
+          node scripts/resolve-app-log-group-modes.cjs .deploy-log-group-modes.json
+          echo "APP_LOG_GROUP_MODES_FILE=$GITHUB_WORKSPACE/infrastructure/.deploy-log-group-modes.json" >> "$GITHUB_ENV"
+
       - name: Deploy Lambda + API Gateway
         run: |
           cd infrastructure

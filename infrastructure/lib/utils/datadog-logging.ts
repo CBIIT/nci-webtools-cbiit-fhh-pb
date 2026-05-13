@@ -20,6 +20,21 @@ export interface CreateAppLogGroupProps {
   removalPolicy?: cdk.RemovalPolicy;
 }
 
+/** CDK App context key: map of exact log group name → `create` | `import` (set from `bin/cdk.ts` via CI resolver). */
+export const APP_LOG_GROUP_MODES_CONTEXT_KEY = "appLogGroupModes";
+
+export type AppLogGroupModes = Record<string, "create" | "import">;
+
+function getAppLogGroupModes(scope: Construct): AppLogGroupModes | undefined {
+  const app = cdk.App.of(scope) as cdk.App | undefined;
+  if (!app) {
+    return undefined;
+  }
+  return app.node.tryGetContext(APP_LOG_GROUP_MODES_CONTEXT_KEY) as
+    | AppLogGroupModes
+    | undefined;
+}
+
 /** Shortcut that applies the project-wide log retention / removal policy defaults. */
 export function createAppLogGroup(
   scope: Construct,
@@ -31,6 +46,23 @@ export function createAppLogGroup(
     retention: props.retention ?? DEFAULT_LOG_RETENTION,
     removalPolicy: props.removalPolicy ?? DEFAULT_LOG_REMOVAL_POLICY,
   });
+}
+
+/**
+ * Creates a managed log group, or references an existing one by name, depending on
+ * App context `appLogGroupModes` (from `APP_LOG_GROUP_MODES_FILE` in CI). Missing key
+ * or `create` uses {@link createAppLogGroup}; `import` uses `fromLogGroupName` (no CFN LogGroup).
+ */
+export function createOrReferenceAppLogGroup(
+  scope: Construct,
+  id: string,
+  props: CreateAppLogGroupProps
+): logs.ILogGroup {
+  const modes = getAppLogGroupModes(scope);
+  if (modes?.[props.logGroupName] === "import") {
+    return logs.LogGroup.fromLogGroupName(scope, id, props.logGroupName);
+  }
+  return createAppLogGroup(scope, id, props);
 }
 
 /**
