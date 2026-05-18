@@ -1,7 +1,5 @@
 #!/usr/bin/env node
-import * as fs from "fs";
 import * as cdk from "aws-cdk-lib";
-import { APP_LOG_GROUP_MODES_CONTEXT_KEY } from "../lib/utils/datadog-logging";
 import { CloudFrontS3Stack } from "../lib/cloudfront-s3-stack";
 import { LambdaJsonProcessorStack } from "../lib/lambda-json-processor-stack";
 import { LambdaWriteAnnotationsStack } from "../lib/lambda-write-annotations-stack";
@@ -29,21 +27,6 @@ if (!AWS_ACCOUNT_ID) {
 }
 
 const app = new cdk.App();
-
-const modesFile = process.env.APP_LOG_GROUP_MODES_FILE;
-if (modesFile && fs.existsSync(modesFile)) {
-  const parsed = JSON.parse(fs.readFileSync(modesFile, "utf8")) as Record<
-    string,
-    unknown
-  >;
-  const cleaned: Record<string, "create" | "import"> = {};
-  for (const [k, v] of Object.entries(parsed)) {
-    if (v === "create" || v === "import") {
-      cleaned[k] = v;
-    }
-  }
-  app.node.setContext(APP_LOG_GROUP_MODES_CONTEXT_KEY, cleaned);
-}
 
 const s3DataStack = new S3DataStack(app, `S3DataStack-${TIER}`, {
   env: { account: AWS_ACCOUNT_ID, region: "us-east-1" },

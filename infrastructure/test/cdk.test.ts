@@ -4,7 +4,6 @@ import { Template, Match } from "aws-cdk-lib/assertions";
 import { CloudFrontS3Stack } from "../lib/cloudfront-s3-stack";
 import { LambdaJsonProcessorStack } from "../lib/lambda-json-processor-stack";
 import { LambdaGetFamilyStack } from "../lib/lambda-get-family-stack";
-import { APP_LOG_GROUP_MODES_CONTEXT_KEY } from "../lib/utils/datadog-logging";
 
 describe("CloudFrontS3Stack", () => {
   const originalTier = process.env.TIER;
@@ -164,74 +163,11 @@ describe("LambdaJsonProcessorStack", () => {
 
     template.resourceCountIs("AWS::Logs::SubscriptionFilter", 1);
 
-    template.hasResourceProperties("AWS::Logs::LogGroup", {
-      LogGroupName: "/aws/lambda/nci-cbiit-fhhpb-jsonprocessor-dev",
-      RetentionInDays: 365,
-      Tags: Match.arrayWith([
-        { Key: "component", Value: "json-processor" },
-      ]),
-    });
-
-    template.hasResource("AWS::Logs::LogGroup", {
-      DeletionPolicy: "Delete",
-      UpdateReplacePolicy: "Delete",
-    });
-  });
-});
-
-describe("App log group modes (create vs import)", () => {
-  const originalTier = process.env.TIER;
-
-  beforeAll(() => {
-    process.env.TIER = "dev";
-  });
-
-  afterAll(() => {
-    process.env.TIER = originalTier;
-  });
-
-  test("import mode omits AWS::Logs::LogGroup for referenced name", () => {
-    const logName = "/aws/lambda/nci-cbiit-fhhpb-getfamily-dev";
-    const app = new cdk.App({
-      context: {
-        datadogForwarderArn:
-          "arn:aws:lambda:us-east-1:123456789012:function:datadog-forwarder",
-        [APP_LOG_GROUP_MODES_CONTEXT_KEY]: { [logName]: "import" },
-      },
-    });
-    const dataStack = new cdk.Stack(app, "Data", {
-      env: { account: "123456789012", region: "us-east-1" },
-    });
-    const bucket = new s3.Bucket(dataStack, "B");
-    const stack = new LambdaGetFamilyStack(app, "GetFamilyImport", {
-      env: { account: "123456789012", region: "us-east-1" },
-      dataBucket: bucket,
-    });
-    const template = Template.fromStack(stack);
+    // createManagedLogGroup emits 3 Custom::AWS resources per log group
+    // (Create, Retention, Tags) — plus 1 shared provider Lambda.
+    // No AWS::Logs::LogGroup resource is emitted; tags are applied via SDK call.
     template.resourceCountIs("AWS::Logs::LogGroup", 0);
-    template.resourceCountIs("AWS::Logs::SubscriptionFilter", 1);
-  });
-
-  test("create mode includes managed AWS::Logs::LogGroup", () => {
-    const app = new cdk.App({
-      context: {
-        datadogForwarderArn:
-          "arn:aws:lambda:us-east-1:123456789012:function:datadog-forwarder",
-      },
-    });
-    const dataStack = new cdk.Stack(app, "Data2", {
-      env: { account: "123456789012", region: "us-east-1" },
-    });
-    const bucket = new s3.Bucket(dataStack, "B2");
-    const stack = new LambdaGetFamilyStack(app, "GetFamilyCreate", {
-      env: { account: "123456789012", region: "us-east-1" },
-      dataBucket: bucket,
-    });
-    const template = Template.fromStack(stack);
-    template.resourceCountIs("AWS::Logs::LogGroup", 1);
-    template.hasResourceProperties("AWS::Logs::LogGroup", {
-      LogGroupName: "/aws/lambda/nci-cbiit-fhhpb-getfamily-dev",
-    });
+    template.resourceCountIs("Custom::AWS", 3);
   });
 });
 
@@ -246,7 +182,7 @@ describe("LambdaGetFamilyStack Datadog", () => {
     process.env.TIER = originalTier;
   });
 
-  test("subscribes Lambda log group to Datadog forwarder", () => {
+  test("subscribes Lambda log group to Datadog forwarder via CustomResource", () => {
     const app = new cdk.App({
       context: {
         datadogForwarderArn:
@@ -263,19 +199,11 @@ describe("LambdaGetFamilyStack Datadog", () => {
     });
     const template = Template.fromStack(stack);
 
-    template.hasResourceProperties("AWS::Logs::LogGroup", {
-      LogGroupName: "/aws/lambda/nci-cbiit-fhhpb-getfamily-dev",
-      RetentionInDays: 365,
-      Tags: Match.arrayWith([
-        { Key: "component", Value: "get-family" },
-        { Key: "service", Value: "dev-fhh-pb-lambda" },
-      ]),
-    });
+    // No native LogGroup resource — tags are applied via SDK through CustomResource.
+    template.resourceCountIs("AWS::Logs::LogGroup", 0);
 
-    template.hasResource("AWS::Logs::LogGroup", {
-      DeletionPolicy: "Delete",
-      UpdateReplacePolicy: "Delete",
-    });
+    // 3 Custom::AWS resources for the single log group (Create, Retention, Tags).
+    template.resourceCountIs("Custom::AWS", 3);
 
     template.hasResourceProperties("AWS::Logs::SubscriptionFilter", {
       DestinationArn:
@@ -285,4 +213,3 @@ describe("LambdaGetFamilyStack Datadog", () => {
     template.resourceCountIs("AWS::Logs::SubscriptionFilter", 1);
   });
 });
-

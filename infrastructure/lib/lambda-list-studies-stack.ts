@@ -7,8 +7,7 @@ import * as path from "path";
 import { Construct } from "constructs";
 import { createTags } from "./utils/tags";
 import {
-  applyDatadogLogGroupTags,
-  createOrReferenceAppLogGroup,
+  createManagedLogGroup,
   resolveDatadogForwarderArn,
   subscribeLogGroupToDatadogForwarder,
 } from "./utils/datadog-logging";
@@ -48,13 +47,15 @@ export class LambdaListStudiesStack extends cdk.Stack {
       })
     );
 
-    const logGroup = createOrReferenceAppLogGroup(this, "ListStudiesLogGroup", {
-      logGroupName: `/aws/lambda/nci-cbiit-fhhpb-liststudies-${tier}`,
-    });
     const forwarderArn = resolveDatadogForwarderArn(this, tier);
-    applyDatadogLogGroupTags(this, tier, logGroup, "lambda", {
-      component: "list-studies",
-    });
+    const { logGroup, dependency: logGroupDep } = createManagedLogGroup(
+      this,
+      "ListStudiesLogGroup",
+      { logGroupName: `/aws/lambda/nci-cbiit-fhhpb-liststudies-${tier}` },
+      tier,
+      "lambda",
+      { component: "list-studies" }
+    );
     subscribeLogGroupToDatadogForwarder(
       this,
       "ListStudies",
@@ -82,6 +83,7 @@ export class LambdaListStudiesStack extends cdk.Stack {
       retryAttempts: 2,
       logGroup: logGroup,
     });
+    this.lambdaFunction.node.addDependency(logGroupDep);
 
     // Add tags
     const lambdaTags = createTags({

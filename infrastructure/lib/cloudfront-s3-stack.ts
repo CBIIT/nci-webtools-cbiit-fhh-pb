@@ -12,8 +12,7 @@ import * as s3n from "aws-cdk-lib/aws-s3-notifications";
 import { Construct } from "constructs";
 import { createTags } from "./utils/tags";
 import {
-  applyDatadogLogGroupTags,
-  createOrReferenceAppLogGroup,
+  createManagedLogGroup,
   datadogServiceTag,
   resolveDatadogForwarderArn,
   subscribeLogGroupToDatadogForwarder,
@@ -100,16 +99,17 @@ export class CloudFrontS3Stack extends cdk.Stack {
     if (props?.enableAuth) {
       const secretName = `${tier}/fhhpb/oidc-config`;
 
-      const cloudFrontAuthLogGroup = createOrReferenceAppLogGroup(
+      const {
+        logGroup: cloudFrontAuthLogGroup,
+        dependency: logGroupDep,
+      } = createManagedLogGroup(
         this,
         "CloudFrontAuthLogGroup",
-        {
-          logGroupName: `/aws/lambda/${tier}-fhhpb-cloudfront-oidc-auth`,
-        }
+        { logGroupName: `/aws/lambda/${tier}-fhhpb-cloudfront-oidc-auth` },
+        tier,
+        "lambda",
+        { component: "cloudfront-oidc-auth" }
       );
-      applyDatadogLogGroupTags(this, tier, cloudFrontAuthLogGroup, "lambda", {
-        component: "cloudfront-oidc-auth",
-      });
       subscribeLogGroupToDatadogForwarder(
         this,
         "CloudFrontOidcEdge",
@@ -141,6 +141,7 @@ export class CloudFrontS3Stack extends cdk.Stack {
         memorySize: 128,
         logGroup: cloudFrontAuthLogGroup,
       });
+      this.edgeFunction.node.addDependency(logGroupDep);
 
       this.edgeFunction.addToRolePolicy(
         new iam.PolicyStatement({

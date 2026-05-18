@@ -8,6 +8,3 @@ node_modules
 cdk.out
 
 *.env
-
-# CI-generated per–log-group create vs import map (see scripts/resolve-app-log-group-modes.cjs)
-.deploy-log-group-modes.json

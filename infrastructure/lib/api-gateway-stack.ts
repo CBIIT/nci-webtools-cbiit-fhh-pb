@@ -1,6 +1,7 @@
 import * as cdk from "aws-cdk-lib";
 import * as apigateway from "aws-cdk-lib/aws-apigateway";
 import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as logs from "aws-cdk-lib/aws-logs";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as iam from "aws-cdk-lib/aws-iam";
@@ -8,9 +9,7 @@ import * as ssm from "aws-cdk-lib/aws-ssm";
 import { Construct } from "constructs";
 import { createTags } from "./utils/tags";
 import {
-  applyDatadogLogGroupTags,
-  createAppLogGroup,
-  createOrReferenceAppLogGroup,
+  createManagedLogGroup,
   resolveDatadogForwarderArn,
   subscribeLogGroupToDatadogForwarder,
 } from "./utils/datadog-logging";
@@ -38,16 +37,17 @@ export class ApiGatewayStack extends cdk.Stack {
     const secretName = `${tier}/fhhpb/oidc-config`;
     const forwarderArn = resolveDatadogForwarderArn(this, tier);
 
-    const authorizerLogGroup = createOrReferenceAppLogGroup(
+    const {
+      logGroup: authorizerLogGroup,
+      dependency: authorizerLogGroupDep,
+    } = createManagedLogGroup(
       this,
       "OidcAuthorizerLogGroup",
-      {
-      logGroupName: `/aws/lambda/${tier}-fhhpb-api-oidc-authorizer`,
-      }
+      { logGroupName: `/aws/lambda/${tier}-fhhpb-api-oidc-authorizer` },
+      tier,
+      "lambda",
+      { component: "oidc-authorizer" }
     );
-    applyDatadogLogGroupTags(this, tier, authorizerLogGroup, "lambda", {
-      component: "oidc-authorizer",
-    });
     subscribeLogGroupToDatadogForwarder(
       this,
       "OidcAuthorizer",
@@ -82,6 +82,7 @@ export class ApiGatewayStack extends cdk.Stack {
         logGroup: authorizerLogGroup,
       }
     );
+    this.authorizerFunction.node.addDependency(authorizerLogGroupDep);
 
     this.authorizerFunction.addToRolePolicy(
       new iam.PolicyStatement({
@@ -95,16 +96,17 @@ export class ApiGatewayStack extends cdk.Stack {
       })
     );
 
-    const callbackLogGroup = createOrReferenceAppLogGroup(
+    const {
+      logGroup: callbackLogGroup,
+      dependency: callbackLogGroupDep,
+    } = createManagedLogGroup(
       this,
       "OidcCallbackLogGroup",
-      {
-      logGroupName: `/aws/lambda/${tier}-fhhpb-api-oidc-callback`,
-      }
+      { logGroupName: `/aws/lambda/${tier}-fhhpb-api-oidc-callback` },
+      tier,
+      "lambda",
+      { component: "oidc-callback" }
     );
-    applyDatadogLogGroupTags(this, tier, callbackLogGroup, "lambda", {
-      component: "oidc-callback",
-    });
     subscribeLogGroupToDatadogForwarder(
       this,
       "OidcCallback",
@@ -139,6 +141,7 @@ export class ApiGatewayStack extends cdk.Stack {
         SESSIONS_TABLE_NAME: props.sessionsTable.tableName,
       },
     });
+    this.callbackFunction.node.addDependency(callbackLogGroupDep);
 
     this.callbackFunction.addToRolePolicy(
       new iam.PolicyStatement({
@@ -152,16 +155,17 @@ export class ApiGatewayStack extends cdk.Stack {
       })
     );
 
-    const logoutLogGroup = createOrReferenceAppLogGroup(
+    const {
+      logGroup: logoutLogGroup,
+      dependency: logoutLogGroupDep,
+    } = createManagedLogGroup(
       this,
       "OidcLogoutLogGroup",
-      {
-      logGroupName: `/aws/lambda/${tier}-fhhpb-api-oidc-logout`,
-      }
+      { logGroupName: `/aws/lambda/${tier}-fhhpb-api-oidc-logout` },
+      tier,
+      "lambda",
+      { component: "oidc-logout" }
     );
-    applyDatadogLogGroupTags(this, tier, logoutLogGroup, "lambda", {
-      component: "oidc-logout",
-    });
     subscribeLogGroupToDatadogForwarder(
       this,
       "OidcLogout",
@@ -169,16 +173,17 @@ export class ApiGatewayStack extends cdk.Stack {
       forwarderArn
     );
 
-    const extendSessionLogGroup = createOrReferenceAppLogGroup(
+    const {
+      logGroup: extendSessionLogGroup,
+      dependency: extendSessionLogGroupDep,
+    } = createManagedLogGroup(
       this,
       "OidcExtendSessionLogGroup",
-      {
-        logGroupName: `/aws/lambda/${tier}-fhhpb-api-oidc-extend`,
-      }
+      { logGroupName: `/aws/lambda/${tier}-fhhpb-api-oidc-extend` },
+      tier,
+      "lambda",
+      { component: "oidc-extend" }
     );
-    applyDatadogLogGroupTags(this, tier, extendSessionLogGroup, "lambda", {
-      component: "oidc-extend",
-    });
     subscribeLogGroupToDatadogForwarder(
       this,
       "OidcExtendSession",
@@ -235,6 +240,7 @@ export class ApiGatewayStack extends cdk.Stack {
         SESSIONS_TABLE_NAME: props.sessionsTable.tableName,
       },
     });
+    logoutFunction.node.addDependency(logoutLogGroupDep);
 
     // Extend session function
     const extendSessionFunction = new lambda.Function(this, "OidcExtendSessionFunction", {
@@ -263,6 +269,7 @@ export class ApiGatewayStack extends cdk.Stack {
         SESSIONS_TABLE_NAME: props.sessionsTable.tableName,
       },
     });
+    extendSessionFunction.node.addDependency(extendSessionLogGroupDep);
 
     // Grant DynamoDB permissions
     props.sessionsTable.grantReadWriteData(logoutFunction);
@@ -301,16 +308,14 @@ export class ApiGatewayStack extends cdk.Stack {
       (tier === "dev" || tier === "qa") &&
       app.node.tryGetContext("apigwDataTrace") === true;
 
-    const accessLogGroup = createOrReferenceAppLogGroup(
+    const { logGroup: accessLogGroup } = createManagedLogGroup(
       this,
       "ApiGatewayAccessLogGroup",
-      {
-      logGroupName: `/aws/apigateway/nci-cbiit-fhhpb-api-${tier}/access`,
-      }
+      { logGroupName: `/aws/apigateway/nci-cbiit-fhhpb-api-${tier}/access` },
+      tier,
+      "apigateway",
+      { component: "apigateway-access" }
     );
-    applyDatadogLogGroupTags(this, tier, accessLogGroup, "apigateway", {
-      component: "apigateway-access",
-    });
 
     const accessLogFormat = apigateway.AccessLogFormat.custom(
       [
@@ -363,16 +368,17 @@ export class ApiGatewayStack extends cdk.Stack {
       },
     });
 
-    const executionLogGroup = createAppLogGroup(
+    // API Gateway auto-creates `API-Gateway-Execution-Logs_{restApiId}/{stage}` itself
+    // when `loggingLevel` is set on the stage. Declaring it as `AWS::Logs::LogGroup`
+    // risks `ResourceAlreadyExistsException` on first deploy. The `restApiId` is dynamic,
+    // so the resolver script's static list cannot help. Import-by-name lets us still
+    // emit an `AWS::Logs::SubscriptionFilter` that forwards to Datadog, while leaving
+    // creation, retention, and tagging of the log group to AWS / out-of-band tooling.
+    const executionLogGroup = logs.LogGroup.fromLogGroupName(
       this,
       "ApiGatewayExecutionLogGroup",
-      {
-        logGroupName: `API-Gateway-Execution-Logs_${this.api.restApiId}/api`,
-      }
+      `API-Gateway-Execution-Logs_${this.api.restApiId}/api`
     );
-    applyDatadogLogGroupTags(this, tier, executionLogGroup, "apigateway", {
-      component: "apigateway-execution",
-    });
     subscribeLogGroupToDatadogForwarder(
       this,
       "ApigwAccess",

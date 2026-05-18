@@ -8,8 +8,7 @@ import * as path from "path";
 import { Construct } from "constructs";
 import { createTags } from "./utils/tags";
 import {
-  applyDatadogLogGroupTags,
-  createOrReferenceAppLogGroup,
+  createManagedLogGroup,
   resolveDatadogForwarderArn,
   subscribeLogGroupToDatadogForwarder,
 } from "./utils/datadog-logging";
@@ -58,13 +57,15 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
       })
     );
 
-    const logGroup = createOrReferenceAppLogGroup(this, "JsonProcessorLogGroup", {
-      logGroupName: `/aws/lambda/nci-cbiit-fhhpb-jsonprocessor-${tier}`,
-    });
     const forwarderArn = resolveDatadogForwarderArn(this, tier);
-    applyDatadogLogGroupTags(this, tier, logGroup, "lambda", {
-      component: "json-processor",
-    });
+    const { logGroup, dependency: logGroupDep } = createManagedLogGroup(
+      this,
+      "JsonProcessorLogGroup",
+      { logGroupName: `/aws/lambda/nci-cbiit-fhhpb-jsonprocessor-${tier}` },
+      tier,
+      "lambda",
+      { component: "json-processor" }
+    );
     subscribeLogGroupToDatadogForwarder(
       this,
       "JsonProcessor",
@@ -95,6 +96,7 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
       retryAttempts: 2, // Number of retry attempts
       logGroup: logGroup,
     });
+    this.lambdaFunction.node.addDependency(logGroupDep);
 
     // Add S3 event trigger for automatic JSON processing
     // When a JSON file is uploaded to raw/ folder, automatically trigger the JSON processor Lambda

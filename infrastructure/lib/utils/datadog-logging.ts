@@ -2,74 +2,169 @@ import * as cdk from "aws-cdk-lib";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as logsDestinations from "aws-cdk-lib/aws-logs-destinations";
 import * as lambda from "aws-cdk-lib/aws-lambda";
+import {
+  AwsCustomResource,
+  AwsCustomResourcePolicy,
+  PhysicalResourceId,
+} from "aws-cdk-lib/custom-resources";
 import { Construct } from "constructs";
 
 /**
  * Centralized log policy. Datadog is the durable archive; CloudWatch is an
- * ephemeral buffer that ships via subscription filters. DESTROY lets stacks
- * be destroyed and recreated without `AlreadyExists` collisions on fixed names.
+ * ephemeral buffer that ships via subscription filters.
  */
 export const DEFAULT_LOG_RETENTION: logs.RetentionDays =
   logs.RetentionDays.ONE_YEAR;
 export const DEFAULT_LOG_REMOVAL_POLICY: cdk.RemovalPolicy =
   cdk.RemovalPolicy.DESTROY;
 
-export interface CreateAppLogGroupProps {
+export interface CreateManagedLogGroupProps {
   logGroupName: string;
   retention?: logs.RetentionDays;
+  /** Defaults to DEFAULT_LOG_REMOVAL_POLICY. Set to RETAIN to skip onDelete. */
   removalPolicy?: cdk.RemovalPolicy;
 }
 
-/** CDK App context key: map of exact log group name → `create` | `import` (set from `bin/cdk.ts` via CI resolver). */
-export const APP_LOG_GROUP_MODES_CONTEXT_KEY = "appLogGroupModes";
-
-export type AppLogGroupModes = Record<string, "create" | "import">;
-
-function getAppLogGroupModes(scope: Construct): AppLogGroupModes | undefined {
-  const app = cdk.App.of(scope) as cdk.App | undefined;
-  if (!app) {
-    return undefined;
-  }
-  return app.node.tryGetContext(APP_LOG_GROUP_MODES_CONTEXT_KEY) as
-    | AppLogGroupModes
-    | undefined;
+export interface ApplyDatadogLogGroupTagsOptions {
+  /**
+   * Stable per-resource slug (e.g. "list-families", "oidc-authorizer",
+   * "apigateway-access") used for Datadog faceting alongside the shared
+   * `service` tag. Optional so existing callsites stay non-breaking.
+   */
+  component?: string;
 }
 
-/** Shortcut that applies the project-wide log retention / removal policy defaults. */
-export function createAppLogGroup(
-  scope: Construct,
-  id: string,
-  props: CreateAppLogGroupProps
-): logs.LogGroup {
-  return new logs.LogGroup(scope, id, {
-    logGroupName: props.logGroupName,
-    retention: props.retention ?? DEFAULT_LOG_RETENTION,
-    removalPolicy: props.removalPolicy ?? DEFAULT_LOG_REMOVAL_POLICY,
-  });
+/** Datadog `service` tag for CloudWatch log groups (DD_FETCH_LOG_GROUP_TAGS). */
+export function datadogServiceTag(
+  tier: string,
+  kind: "apigateway" | "lambda" | "cloudfront"
+): string {
+  return `${tier}-fhh-pb-${kind}`;
 }
 
 /**
- * Creates a managed log group, or references an existing one by name, depending on
- * App context `appLogGroupModes` (from `APP_LOG_GROUP_MODES_FILE` in CI). Missing key
- * or `create` uses {@link createAppLogGroup}; `import` uses `fromLogGroupName` (no CFN LogGroup).
+ * Creates or updates a CloudWatch log group using AwsCustomResource SDK calls,
+ * making it fully idempotent on every deploy regardless of whether the log
+ * group already exists. Applies retention and Datadog tags in the same deploy.
+ *
+ * Returns an ILogGroup reference (via fromLogGroupName) for use with
+ * lambda.Function `logGroup` prop and subscribeLogGroupToDatadogForwarder.
+ *
+ * IMPORTANT: callers that pass the returned ILogGroup to a Lambda function via
+ * the `logGroup` prop must add an explicit CDK dependency so the log group
+ * exists before the function is deployed:
+ *   const { logGroup, dependency } = createManagedLogGroup(...);
+ *   fn.node.addDependency(dependency);
  */
-export function createOrReferenceAppLogGroup(
+export function createManagedLogGroup(
   scope: Construct,
   id: string,
-  props: CreateAppLogGroupProps
-): logs.ILogGroup {
-  const modes = getAppLogGroupModes(scope);
-  if (modes?.[props.logGroupName] === "import") {
-    return logs.LogGroup.fromLogGroupName(scope, id, props.logGroupName);
-  }
-  return createAppLogGroup(scope, id, props);
+  props: CreateManagedLogGroupProps,
+  tier: string,
+  serviceKind: "apigateway" | "lambda" | "cloudfront",
+  options: ApplyDatadogLogGroupTagsOptions = {}
+): { logGroup: logs.ILogGroup; dependency: Construct } {
+  const retentionDays = (props.retention ?? DEFAULT_LOG_RETENTION) as number;
+  const removalPolicy = props.removalPolicy ?? DEFAULT_LOG_REMOVAL_POLICY;
+
+  const tags: Record<string, string> = {
+    service: datadogServiceTag(tier, serviceKind),
+    env: tier, // Datadog unified tagging standard (required for DD_FETCH_LOG_GROUP_TAGS correlation)
+    tier, // Project-specific alias kept for CloudWatch/AWS Console filtering
+    application: "fhh-pb",
+    ...(options.component ? { component: options.component } : {}),
+  };
+
+  // Exact log-group ARN — used as API call parameters (logGroupName, resourceArn).
+  const logGroupArn = cdk.Stack.of(scope).formatArn({
+    service: "logs",
+    resource: "log-group",
+    resourceName: props.logGroupName,
+    arnFormat: cdk.ArnFormat.COLON_RESOURCE_NAME,
+  });
+  // IAM resource ARN — CWL evaluates actions against arn:...:log-group:name:log-stream:
+  // Append :* so the policy covers that suffix (same pattern CDK LogRetention uses).
+  const iamArn = `${logGroupArn}:*`;
+
+  // Step 1: Create the log group — idempotent, ignores ResourceAlreadyExistsException.
+  const createCR = new AwsCustomResource(scope, `${id}Create`, {
+    onCreate: {
+      service: "CloudWatchLogs",
+      action: "createLogGroup",
+      parameters: { logGroupName: props.logGroupName },
+      physicalResourceId: PhysicalResourceId.of(props.logGroupName),
+      ignoreErrorCodesMatching: "ResourceAlreadyExistsException",
+    },
+    onDelete:
+      removalPolicy === cdk.RemovalPolicy.DESTROY
+        ? {
+            service: "CloudWatchLogs",
+            action: "deleteLogGroup",
+            parameters: { logGroupName: props.logGroupName },
+            ignoreErrorCodesMatching: "ResourceNotFoundException",
+          }
+        : undefined,
+    policy: AwsCustomResourcePolicy.fromSdkCalls({ resources: [logGroupArn, iamArn] }),
+  });
+
+  // Step 2: Set retention — runs on create and update so changes take effect immediately.
+  const retentionCR = new AwsCustomResource(scope, `${id}Retention`, {
+    onCreate: {
+      service: "CloudWatchLogs",
+      action: "putRetentionPolicy",
+      parameters: {
+        logGroupName: props.logGroupName,
+        retentionInDays: retentionDays,
+      },
+      physicalResourceId: PhysicalResourceId.of(
+        `${props.logGroupName}-retention`
+      ),
+    },
+    onUpdate: {
+      service: "CloudWatchLogs",
+      action: "putRetentionPolicy",
+      parameters: {
+        logGroupName: props.logGroupName,
+        retentionInDays: retentionDays,
+      },
+      physicalResourceId: PhysicalResourceId.of(
+        `${props.logGroupName}-retention`
+      ),
+    },
+    policy: AwsCustomResourcePolicy.fromSdkCalls({ resources: [logGroupArn, iamArn] }),
+  });
+  retentionCR.node.addDependency(createCR);
+
+  // Step 3: Apply Datadog tags — runs on create and update so tag changes propagate.
+  const tagCR = new AwsCustomResource(scope, `${id}Tags`, {
+    onCreate: {
+      service: "CloudWatchLogs",
+      action: "tagResource",
+      parameters: { resourceArn: logGroupArn, tags },
+      physicalResourceId: PhysicalResourceId.of(`${props.logGroupName}-tags`),
+    },
+    onUpdate: {
+      service: "CloudWatchLogs",
+      action: "tagResource",
+      parameters: { resourceArn: logGroupArn, tags },
+      physicalResourceId: PhysicalResourceId.of(`${props.logGroupName}-tags`),
+    },
+    policy: AwsCustomResourcePolicy.fromSdkCalls({ resources: [logGroupArn, iamArn] }),
+  });
+  tagCR.node.addDependency(retentionCR);
+
+  const logGroup = logs.LogGroup.fromLogGroupName(scope, id, props.logGroupName);
+  return { logGroup, dependency: tagCR };
 }
 
 /**
  * Resolve forwarder Lambda ARN: CDK context `datadogForwarderArn` wins (local/tests),
  * else `process.env.DATADOG_FORWARDER_FUNCTION_ARN` (e.g. GitHub Actions environment variables).
  */
-export function resolveDatadogForwarderArn(scope: Construct, _tier: string): string {
+export function resolveDatadogForwarderArn(
+  scope: Construct,
+  _tier: string
+): string {
   const app = cdk.App.of(scope) as cdk.App;
   const fromContext = app.node.tryGetContext("datadogForwarderArn") as
     | string
@@ -84,39 +179,6 @@ export function resolveDatadogForwarderArn(scope: Construct, _tier: string): str
   throw new Error(
     "Datadog forwarder ARN: set DATADOG_FORWARDER_FUNCTION_ARN for synth/deploy, or CDK context datadogForwarderArn for local/tests."
   );
-}
-
-/** Datadog `service` tag for CloudWatch log groups (DD_FETCH_LOG_GROUP_TAGS). */
-export function datadogServiceTag(
-  tier: string,
-  kind: "apigateway" | "lambda" | "cloudfront"
-): string {
-  return `${tier}-fhh-pb-${kind}`;
-}
-
-export interface ApplyDatadogLogGroupTagsOptions {
-  /**
-   * Stable per-resource slug (e.g. "list-families", "oidc-authorizer",
-   * "apigateway-access") used for Datadog faceting alongside the shared
-   * `service` tag. Optional so existing callsites stay non-breaking.
-   */
-  component?: string;
-}
-
-export function applyDatadogLogGroupTags(
-  _scope: Construct,
-  tier: string,
-  logGroup: logs.ILogGroup,
-  serviceKind: "apigateway" | "lambda" | "cloudfront",
-  options: ApplyDatadogLogGroupTagsOptions = {}
-): void {
-  cdk.Tags.of(logGroup).add("service", datadogServiceTag(tier, serviceKind));
-  cdk.Tags.of(logGroup).add("env", tier);
-  cdk.Tags.of(logGroup).add("tier", tier);
-  cdk.Tags.of(logGroup).add("application", "fhh-pb");
-  if (options.component) {
-    cdk.Tags.of(logGroup).add("component", options.component);
-  }
 }
 
 export function subscribeLogGroupToDatadogForwarder(
