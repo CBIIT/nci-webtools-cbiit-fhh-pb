@@ -114,12 +114,13 @@ export class CloudFrontS3Stack extends cdk.Stack {
         this,
         "CloudFrontOidcEdge",
         cloudFrontAuthLogGroup,
-        forwarderArn
+        forwarderArn,
+        logGroupDep
       );
 
       this.edgeFunction = new lambda.Function(this, "CloudFrontAuthFunction", {
         functionName: `${tier}-fhhpb-cloudfront-oidc-auth`,
-        description: `OIDC authentication for CloudFront (${tier} environment)`,
+        description: `OIDC authentication for CloudFront distribution (${tier} environment)`,
         runtime: lambda.Runtime.PYTHON_3_13,
         handler: "cloudfront_auth.lambda_handler",
         code: lambda.Code.fromAsset("../backend/lambda/oidc-auth", {

@@ -72,7 +72,8 @@ export class LambdaWriteAnnotationsStack extends cdk.Stack {
       this,
       "WriteAnnotations",
       logGroup,
-      forwarderArn
+      forwarderArn,
+      logGroupDep
     );
 
     // Create Lambda function

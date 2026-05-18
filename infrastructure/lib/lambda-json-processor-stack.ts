@@ -70,7 +70,8 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
       this,
       "JsonProcessor",
       logGroup,
-      forwarderArn
+      forwarderArn,
+      logGroupDep
     );
 
     // Create Lambda function

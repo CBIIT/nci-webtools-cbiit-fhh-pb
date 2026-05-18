@@ -59,7 +59,8 @@ export class LambdaGetFamilyStack extends cdk.Stack {
       this,
       "GetFamily",
       logGroup,
-      forwarderArn
+      forwarderArn,
+      logGroupDep
     );
 
     // Create Lambda function

@@ -60,7 +60,8 @@ export class LambdaListFamiliesStack extends cdk.Stack {
       this,
       "ListFamilies",
       logGroup,
-      forwarderArn
+      forwarderArn,
+      logGroupDep
     );
 
     // Create Lambda function

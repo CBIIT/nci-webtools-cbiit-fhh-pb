@@ -52,7 +52,8 @@ export class ApiGatewayStack extends cdk.Stack {
       this,
       "OidcAuthorizer",
       authorizerLogGroup,
-      forwarderArn
+      forwarderArn,
+      authorizerLogGroupDep
     );
 
     this.authorizerFunction = new lambda.Function(
@@ -111,7 +112,8 @@ export class ApiGatewayStack extends cdk.Stack {
       this,
       "OidcCallback",
       callbackLogGroup,
-      forwarderArn
+      forwarderArn,
+      callbackLogGroupDep
     );
 
     // OAuth callback function - handles redirect from NIH IdP
@@ -170,7 +172,8 @@ export class ApiGatewayStack extends cdk.Stack {
       this,
       "OidcLogout",
       logoutLogGroup,
-      forwarderArn
+      forwarderArn,
+      logoutLogGroupDep
     );
 
     const {
@@ -188,7 +191,8 @@ export class ApiGatewayStack extends cdk.Stack {
       this,
       "OidcExtendSession",
       extendSessionLogGroup,
-      forwarderArn
+      forwarderArn,
+      extendSessionLogGroupDep
     );
 
     // Creat project specific role for API Gateway
@@ -308,7 +312,7 @@ export class ApiGatewayStack extends cdk.Stack {
       (tier === "dev" || tier === "qa") &&
       app.node.tryGetContext("apigwDataTrace") === true;
 
-    const { logGroup: accessLogGroup } = createManagedLogGroup(
+    const { logGroup: accessLogGroup, dependency: accessLogGroupDep } = createManagedLogGroup(
       this,
       "ApiGatewayAccessLogGroup",
       { logGroupName: `/aws/apigateway/nci-cbiit-fhhpb-api-${tier}/access` },
@@ -383,8 +387,10 @@ export class ApiGatewayStack extends cdk.Stack {
       this,
       "ApigwAccess",
       accessLogGroup,
-      forwarderArn
+      forwarderArn,
+      accessLogGroupDep
     );
+    // execution log group is AWS-managed (fromLogGroupName) — no createCR dependency needed
     subscribeLogGroupToDatadogForwarder(
       this,
       "ApigwExec",

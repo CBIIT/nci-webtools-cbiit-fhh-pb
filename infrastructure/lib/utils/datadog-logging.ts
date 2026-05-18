@@ -185,16 +185,20 @@ export function subscribeLogGroupToDatadogForwarder(
   scope: Construct,
   idPrefix: string,
   logGroup: logs.ILogGroup,
-  forwarderArn: string
+  forwarderArn: string,
+  logGroupDependency?: Construct
 ): void {
   const forwarderFn = lambda.Function.fromFunctionArn(
     scope,
     `${idPrefix}DatadogForwarderFn`,
     forwarderArn
   );
-  new logs.SubscriptionFilter(scope, `${idPrefix}DdogSubscription`, {
+  const filter = new logs.SubscriptionFilter(scope, `${idPrefix}DdogSub`, {
     logGroup,
     destination: new logsDestinations.LambdaDestination(forwarderFn),
     filterPattern: logs.FilterPattern.allEvents(),
   });
+  if (logGroupDependency) {
+    filter.node.addDependency(logGroupDependency);
+  }
 }
