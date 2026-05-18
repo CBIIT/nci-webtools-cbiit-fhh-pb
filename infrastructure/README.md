@@ -11,6 +11,8 @@ Deploy workflows run `scripts/resolve-app-log-group-modes.cjs` before `cdk deplo
 - **Skip the probe:** set GitHub Environment variable `APP_LOG_GROUPS_RESOLVE` to `skip`, or enable workflow input **Skip AWS log group probe**.
 - **Local:** omit `APP_LOG_GROUP_MODES_FILE` so all log groups default to CDK-managed **create**. To mimic CI, run `node scripts/resolve-app-log-group-modes.cjs .deploy-log-group-modes.json` with AWS credentials, then `export APP_LOG_GROUP_MODES_FILE=$PWD/.deploy-log-group-modes.json` before `cdk synth` / `cdk deploy`.
 
+If CloudWatch subscription filters for Datadog show **NotFound** on update after fixing log groups, rename the `SubscriptionFilter` construct id once in `lib/utils/datadog-logging.ts` (see comment there), then redeploy.
+
 ## Useful commands
 
 * `npm run build`   compile typescript to js

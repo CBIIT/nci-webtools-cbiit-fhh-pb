@@ -20,7 +20,7 @@ Where `{TIER}` is the deployment tier (e.g., `dev`, `staging`, `prod`).
 
 ### Lambda Function
 
-- **Runtime**: Python 3.9
+- **Runtime**: Python 3.13
 - **Handler**: `lambda_function.lambda_handler`
 - **Timeout**: 5 minutes
 - **Memory**: 512 MB

@@ -60,11 +60,11 @@ export class ApiGatewayStack extends cdk.Stack {
       "OidcAuthorizerFunction",
       {
         functionName: `${tier}-fhhpb-api-oidc-authorizer`,
-        runtime: lambda.Runtime.PYTHON_3_11,
+        runtime: lambda.Runtime.PYTHON_3_13,
         handler: "api_authorizer.lambda_handler",
         code: lambda.Code.fromAsset("../backend/lambda/oidc-auth", {
           bundling: {
-            image: lambda.Runtime.PYTHON_3_11.bundlingImage,
+            image: lambda.Runtime.PYTHON_3_13.bundlingImage,
             platform: "linux/amd64", // Force x86_64 for Lambda
             user: "root",
             command: [
@@ -115,11 +115,11 @@ export class ApiGatewayStack extends cdk.Stack {
     // OAuth callback function - handles redirect from NIH IdP
     this.callbackFunction = new lambda.Function(this, "OidcCallbackFunction", {
       functionName: `${tier}-fhhpb-api-oidc-callback`,
-      runtime: lambda.Runtime.PYTHON_3_11,
+      runtime: lambda.Runtime.PYTHON_3_13,
       handler: "api_callback.lambda_handler",
       code: lambda.Code.fromAsset("../backend/lambda/oidc-auth", {
         bundling: {
-          image: lambda.Runtime.PYTHON_3_11.bundlingImage,
+          image: lambda.Runtime.PYTHON_3_13.bundlingImage,
           platform: "linux/amd64", // Force x86_64 for Lambda
           user: "root",
           command: [
@@ -211,11 +211,11 @@ export class ApiGatewayStack extends cdk.Stack {
     // Logout function
     const logoutFunction = new lambda.Function(this, "OidcLogoutFunction", {
       functionName: `${tier}-fhhpb-api-oidc-logout`,
-      runtime: lambda.Runtime.PYTHON_3_11,
+      runtime: lambda.Runtime.PYTHON_3_13,
       handler: "logout.lambda_handler",
       code: lambda.Code.fromAsset("../backend/lambda/oidc-auth", {
         bundling: {
-          image: lambda.Runtime.PYTHON_3_11.bundlingImage,
+          image: lambda.Runtime.PYTHON_3_13.bundlingImage,
           platform: "linux/amd64",
           user: "root",
           command: [
@@ -239,11 +239,11 @@ export class ApiGatewayStack extends cdk.Stack {
     // Extend session function
     const extendSessionFunction = new lambda.Function(this, "OidcExtendSessionFunction", {
       functionName: `${tier}-fhhpb-api-oidc-extend`,
-      runtime: lambda.Runtime.PYTHON_3_11,
+      runtime: lambda.Runtime.PYTHON_3_13,
       handler: "extend_session.lambda_handler",
       code: lambda.Code.fromAsset("../backend/lambda/oidc-auth", {
         bundling: {
-          image: lambda.Runtime.PYTHON_3_11.bundlingImage,
+          image: lambda.Runtime.PYTHON_3_13.bundlingImage,
           platform: "linux/amd64",
           user: "root",
           command: [

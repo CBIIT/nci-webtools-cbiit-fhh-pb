@@ -156,7 +156,7 @@ describe("LambdaJsonProcessorStack", () => {
     const template = Template.fromStack(stack);
 
     template.hasResourceProperties("AWS::Lambda::Function", {
-      Runtime: "python3.12",
+      Runtime: "python3.13",
       Handler: "lambda_function.lambda_handler",
       Timeout: 300,
       MemorySize: 512,

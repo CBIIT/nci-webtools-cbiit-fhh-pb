@@ -80,7 +80,7 @@ export class LambdaWriteAnnotationsStack extends cdk.Stack {
       "WriteAnnotationsFunction",
       {
         functionName: `nci-cbiit-fhhpb-writeannotations-${tier}`,
-        runtime: lambda.Runtime.PYTHON_3_12,
+        runtime: lambda.Runtime.PYTHON_3_13,
         handler: "lambda.lambda_handler",
         code: lambda.Code.fromAsset(
           path.join(__dirname, "../../backend/lambda/write_annotations")

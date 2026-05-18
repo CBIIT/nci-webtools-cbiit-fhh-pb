@@ -64,7 +64,7 @@ export class LambdaGetFamilyStack extends cdk.Stack {
     // Create Lambda function
     this.lambdaFunction = new lambda.Function(this, "GetFamilyFunction", {
       functionName: `nci-cbiit-fhhpb-getfamily-${tier}`,
-      runtime: lambda.Runtime.PYTHON_3_12,
+      runtime: lambda.Runtime.PYTHON_3_13,
       handler: "lambda.lambda_handler",
       code: lambda.Code.fromAsset(
         path.join(__dirname, "../../backend/lambda/get_family")

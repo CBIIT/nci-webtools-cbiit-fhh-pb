@@ -77,7 +77,7 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
       functionName: `nci-cbiit-fhhpb-jsonprocessor-${tier}`,
       description:
         "Transforms FHH pedigree data from raw JSON files into a specific JSON format that can be processed by FHH Pedigree Builder.",
-      runtime: lambda.Runtime.PYTHON_3_12,
+      runtime: lambda.Runtime.PYTHON_3_13,
       handler: "lambda_function.lambda_handler",
       code: lambda.Code.fromAsset(
         path.join(__dirname, "../../backend/lambda/json-processor")

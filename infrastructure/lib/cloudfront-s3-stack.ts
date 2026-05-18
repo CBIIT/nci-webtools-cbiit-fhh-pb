@@ -120,11 +120,11 @@ export class CloudFrontS3Stack extends cdk.Stack {
       this.edgeFunction = new lambda.Function(this, "CloudFrontAuthFunction", {
         functionName: `${tier}-fhhpb-cloudfront-oidc-auth`,
         description: `OIDC authentication for CloudFront (${tier} environment)`,
-        runtime: lambda.Runtime.PYTHON_3_11,
+        runtime: lambda.Runtime.PYTHON_3_13,
         handler: "cloudfront_auth.lambda_handler",
         code: lambda.Code.fromAsset("../backend/lambda/oidc-auth", {
           bundling: {
-            image: lambda.Runtime.PYTHON_3_11.bundlingImage,
+            image: lambda.Runtime.PYTHON_3_13.bundlingImage,
             platform: "linux/amd64", // Force x86_64 for Lambda@Edge
             user: "root",
             command: [
