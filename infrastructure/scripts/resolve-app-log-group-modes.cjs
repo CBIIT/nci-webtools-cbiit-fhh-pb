@@ -123,7 +123,17 @@ function stackCfManagesLogGroup(stackName, physicalLogGroupName) {
       );
       process.exit(1);
     }
-    return false;
+    // Stack does not exist yet (first deploy) — not managed by CFN, safe to import.
+    if (/ValidationError.*does not exist/i.test(stderr)) {
+      return false;
+    }
+    // Any other unexpected error (transient AWS fault, parse failure, etc.) is unsafe
+    // to silently ignore: returning false would incorrectly set import mode and could
+    // cause CDK to drop a managed AWS::Logs::LogGroup, deleting the log group.
+    console.error(
+      `resolve-app-log-group-modes: unexpected error describing stack ${stackName}:\n${stderr || e.message || e}`
+    );
+    process.exit(1);
   }
 }
 

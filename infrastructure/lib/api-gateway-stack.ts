@@ -367,7 +367,7 @@ export class ApiGatewayStack extends cdk.Stack {
       this,
       "ApiGatewayExecutionLogGroup",
       {
-        logGroupName: `API-Gateway-Execution-Logs_${this.api.restApiId}`,
+        logGroupName: `API-Gateway-Execution-Logs_${this.api.restApiId}/api`,
       }
     );
     applyDatadogLogGroupTags(this, tier, executionLogGroup, "apigateway", {

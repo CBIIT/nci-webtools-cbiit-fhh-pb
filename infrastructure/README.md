@@ -8,10 +8,9 @@ The `cdk.json` file tells the CDK Toolkit how to execute your app.
 
 Deploy workflows run `scripts/resolve-app-log-group-modes.cjs` before `cdk deploy` to write `.deploy-log-group-modes.json` (gitignored). `bin/cdk.ts` reads `APP_LOG_GROUP_MODES_FILE` and sets App context so each static log group is either **created** by CloudFormation or **referenced** if it already exists (avoids `AlreadyExists` on `/aws/lambda/...`). If the log group exists in CloudWatch but the owning stack already manages it as `AWS::Logs::LogGroup`, the resolver keeps **create** so the template does not drop that resource (which would delete the log group and break Datadog subscription filters). The deploy role needs `cloudformation:DescribeStackResources` on those stacks.
 
-- **Skip the probe:** set GitHub Environment variable `APP_LOG_GROUPS_RESOLVE` to `skip`, or enable workflow input **Skip AWS log group probe**.
 - **Local:** omit `APP_LOG_GROUP_MODES_FILE` so all log groups default to CDK-managed **create**. To mimic CI, run `node scripts/resolve-app-log-group-modes.cjs .deploy-log-group-modes.json` with AWS credentials, then `export APP_LOG_GROUP_MODES_FILE=$PWD/.deploy-log-group-modes.json` before `cdk synth` / `cdk deploy`.
 
-If CloudWatch subscription filters for Datadog show **NotFound** on update after fixing log groups, rename the `SubscriptionFilter` construct id once in `lib/utils/datadog-logging.ts` (see comment there), then redeploy.
+If CloudWatch subscription filters for Datadog show **NotFound** on update after fixing log groups, rename the `SubscriptionFilter` construct id by changing the `idPrefix` argument in the affected stack's `subscribeLogGroupToDatadogForwarder(this, "IdPrefix", ...)` call (e.g. `"OidcAuthorizer"` → `"OidcAuthorizerV2"` in `lib/api-gateway-stack.ts`), then redeploy.
 
 ## Useful commands
 
