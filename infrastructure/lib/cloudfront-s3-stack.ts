@@ -99,13 +99,22 @@ export class CloudFrontS3Stack extends cdk.Stack {
     if (props?.enableAuth) {
       const secretName = `${tier}/fhhpb/oidc-config`;
 
+      // Lambda@Edge writes to per-region log groups named
+      // `/aws/lambda/{region}.{functionName}` and ignores the `logGroup` prop on
+      // the function. We can only manage the log group in this stack's region
+      // (us-east-1); replicas that execute in other CloudFront regions create
+      // their own log groups there that are NOT covered by this subscription.
+      // Out of scope for now — track separately if multi-region forwarding is
+      // needed (e.g. via StackSets or per-region Datadog forwarders).
+      const edgeFunctionName = `${tier}-fhhpb-cloudfront-oidc-auth`;
+      const edgeLogGroupName = `/aws/lambda/${this.region}.${edgeFunctionName}`;
       const {
         logGroup: cloudFrontAuthLogGroup,
         dependency: logGroupDep,
       } = createManagedLogGroup(
         this,
         "CloudFrontAuthLogGroup",
-        { logGroupName: `/aws/lambda/${tier}-fhhpb-cloudfront-oidc-auth` },
+        { logGroupName: edgeLogGroupName },
         tier,
         "lambda",
         { component: "cloudfront-oidc-auth" }
@@ -119,7 +128,7 @@ export class CloudFrontS3Stack extends cdk.Stack {
       );
 
       this.edgeFunction = new lambda.Function(this, "CloudFrontAuthFunction", {
-        functionName: `${tier}-fhhpb-cloudfront-oidc-auth`,
+        functionName: edgeFunctionName,
         description: `OIDC authentication for CloudFront distribution (${tier} environment)`,
         runtime: lambda.Runtime.PYTHON_3_13,
         handler: "cloudfront_auth.lambda_handler",
@@ -140,9 +149,7 @@ export class CloudFrontS3Stack extends cdk.Stack {
         }),
         timeout: cdk.Duration.seconds(5),
         memorySize: 128,
-        logGroup: cloudFrontAuthLogGroup,
       });
-      this.edgeFunction.node.addDependency(logGroupDep);
 
       this.edgeFunction.addToRolePolicy(
         new iam.PolicyStatement({

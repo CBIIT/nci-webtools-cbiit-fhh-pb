@@ -87,14 +87,19 @@ export function createManagedLogGroup(
   const iamArn = `${logGroupArn}:*`;
 
   // Step 1: Create the log group — idempotent, ignores ResourceAlreadyExistsException.
+  // onUpdate mirrors onCreate so deploys re-assert the log group exists; this self-heals
+  // cases where the log group was deleted out-of-band (e.g. cascade from a stale
+  // AWS::Logs::LogGroup cleanup) while CFN still believes downstream resources are valid.
+  const createSdkCall = {
+    service: "CloudWatchLogs",
+    action: "createLogGroup",
+    parameters: { logGroupName: props.logGroupName },
+    physicalResourceId: PhysicalResourceId.of(props.logGroupName),
+    ignoreErrorCodesMatching: "ResourceAlreadyExistsException",
+  };
   const createCR = new AwsCustomResource(scope, `${id}Create`, {
-    onCreate: {
-      service: "CloudWatchLogs",
-      action: "createLogGroup",
-      parameters: { logGroupName: props.logGroupName },
-      physicalResourceId: PhysicalResourceId.of(props.logGroupName),
-      ignoreErrorCodesMatching: "ResourceAlreadyExistsException",
-    },
+    onCreate: createSdkCall,
+    onUpdate: createSdkCall,
     onDelete:
       removalPolicy === cdk.RemovalPolicy.DESTROY
         ? {
@@ -108,6 +113,8 @@ export function createManagedLogGroup(
   });
 
   // Step 2: Set retention — runs on create and update so changes take effect immediately.
+  // The `-v2` PRID suffix forces CFN to REPLACE any pre-existing retentionCR carried
+  // over from an older deploy; safe because this CR has no onDelete handler.
   const retentionCR = new AwsCustomResource(scope, `${id}Retention`, {
     onCreate: {
       service: "CloudWatchLogs",
@@ -117,7 +124,7 @@ export function createManagedLogGroup(
         retentionInDays: retentionDays,
       },
       physicalResourceId: PhysicalResourceId.of(
-        `${props.logGroupName}-retention`
+        `${props.logGroupName}-retention-v2`
       ),
     },
     onUpdate: {
@@ -128,7 +135,7 @@ export function createManagedLogGroup(
         retentionInDays: retentionDays,
       },
       physicalResourceId: PhysicalResourceId.of(
-        `${props.logGroupName}-retention`
+        `${props.logGroupName}-retention-v2`
       ),
     },
     policy: AwsCustomResourcePolicy.fromSdkCalls({ resources: [logGroupArn, iamArn] }),
@@ -141,13 +148,13 @@ export function createManagedLogGroup(
       service: "CloudWatchLogs",
       action: "tagResource",
       parameters: { resourceArn: logGroupArn, tags },
-      physicalResourceId: PhysicalResourceId.of(`${props.logGroupName}-tags`),
+      physicalResourceId: PhysicalResourceId.of(`${props.logGroupName}-tags-v2`),
     },
     onUpdate: {
       service: "CloudWatchLogs",
       action: "tagResource",
       parameters: { resourceArn: logGroupArn, tags },
-      physicalResourceId: PhysicalResourceId.of(`${props.logGroupName}-tags`),
+      physicalResourceId: PhysicalResourceId.of(`${props.logGroupName}-tags-v2`),
     },
     policy: AwsCustomResourcePolicy.fromSdkCalls({ resources: [logGroupArn, iamArn] }),
   });
@@ -193,7 +200,7 @@ export function subscribeLogGroupToDatadogForwarder(
     `${idPrefix}DatadogForwarderFn`,
     forwarderArn
   );
-  const filter = new logs.SubscriptionFilter(scope, `${idPrefix}DdogSub`, {
+  const filter = new logs.SubscriptionFilter(scope, `${idPrefix}DdogSubFilter`, {
     logGroup,
     destination: new logsDestinations.LambdaDestination(forwarderFn),
     filterPattern: logs.FilterPattern.allEvents(),
