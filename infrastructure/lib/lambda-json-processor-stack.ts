@@ -4,10 +4,14 @@ import * as s3 from "aws-cdk-lib/aws-s3";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as s3n from "aws-cdk-lib/aws-s3-notifications";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
-import * as logs from "aws-cdk-lib/aws-logs";
 import * as path from "path";
 import { Construct } from "constructs";
 import { createTags } from "./utils/tags";
+import {
+  createManagedLogGroup,
+  resolveDatadogForwarderArn,
+  subscribeLogGroupToDatadogForwarder,
+} from "./utils/datadog-logging";
 
 export interface LambdaJsonProcessorStackProps extends cdk.StackProps {
   dataBucket: s3.Bucket;
@@ -53,19 +57,29 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
       })
     );
 
-    // Create CloudWatch Log Group
-    const logGroup = new logs.LogGroup(this, "JsonProcessorLogGroup", {
-      logGroupName: `/aws/lambda/nci-cbiit-fhhpb-jsonprocessor-${tier}`,
-      retention: logs.RetentionDays.TWO_MONTHS,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
+    const forwarderArn = resolveDatadogForwarderArn(this, tier);
+    const { logGroup, dependency: logGroupDep } = createManagedLogGroup(
+      this,
+      "JsonProcessorLogGroup",
+      { logGroupName: `/aws/lambda/nci-cbiit-fhhpb-jsonprocessor-${tier}` },
+      tier,
+      "lambda",
+      { component: "json-processor" }
+    );
+    subscribeLogGroupToDatadogForwarder(
+      this,
+      "JsonProcessor",
+      logGroup,
+      forwarderArn,
+      logGroupDep
+    );
 
     // Create Lambda function
     this.lambdaFunction = new lambda.Function(this, "JsonProcessorFunction", {
       functionName: `nci-cbiit-fhhpb-jsonprocessor-${tier}`,
       description:
         "Transforms FHH pedigree data from raw JSON files into a specific JSON format that can be processed by FHH Pedigree Builder.",
-      runtime: lambda.Runtime.PYTHON_3_12,
+      runtime: lambda.Runtime.PYTHON_3_13,
       handler: "lambda_function.lambda_handler",
       code: lambda.Code.fromAsset(
         path.join(__dirname, "../../backend/lambda/json-processor")
@@ -83,6 +97,7 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
       retryAttempts: 2, // Number of retry attempts
       logGroup: logGroup,
     });
+    this.lambdaFunction.node.addDependency(logGroupDep);
 
     // Add S3 event trigger for automatic JSON processing
     // When a JSON file is uploaded to raw/ folder, automatically trigger the JSON processor Lambda

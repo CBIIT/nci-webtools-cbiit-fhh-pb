@@ -3,10 +3,14 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
-import * as logs from "aws-cdk-lib/aws-logs";
 import * as path from "path";
 import { Construct } from "constructs";
 import { createTags } from "./utils/tags";
+import {
+  createManagedLogGroup,
+  resolveDatadogForwarderArn,
+  subscribeLogGroupToDatadogForwarder,
+} from "./utils/datadog-logging";
 
 export interface LambdaListFamiliesStackProps extends cdk.StackProps {
   dataBucket: s3.Bucket;
@@ -43,17 +47,27 @@ export class LambdaListFamiliesStack extends cdk.Stack {
       })
     );
 
-    // Create CloudWatch Log Group
-    const logGroup = new logs.LogGroup(this, "ListFamiliesLogGroup", {
-      logGroupName: `/aws/lambda/nci-cbiit-fhhpb-listfamilies-${tier}`,
-      retention: logs.RetentionDays.TWO_MONTHS,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
+    const forwarderArn = resolveDatadogForwarderArn(this, tier);
+    const { logGroup, dependency: logGroupDep } = createManagedLogGroup(
+      this,
+      "ListFamiliesLogGroup",
+      { logGroupName: `/aws/lambda/nci-cbiit-fhhpb-listfamilies-${tier}` },
+      tier,
+      "lambda",
+      { component: "list-families" }
+    );
+    subscribeLogGroupToDatadogForwarder(
+      this,
+      "ListFamilies",
+      logGroup,
+      forwarderArn,
+      logGroupDep
+    );
 
     // Create Lambda function
     this.lambdaFunction = new lambda.Function(this, "ListFamiliesFunction", {
       functionName: `nci-cbiit-fhhpb-listfamilies-${tier}`,
-      runtime: lambda.Runtime.PYTHON_3_12,
+      runtime: lambda.Runtime.PYTHON_3_13,
       handler: "lambda.lambda_handler",
       code: lambda.Code.fromAsset(
         path.join(__dirname, "../../backend/lambda/list_families")
@@ -70,6 +84,7 @@ export class LambdaListFamiliesStack extends cdk.Stack {
       retryAttempts: 2,
       logGroup: logGroup,
     });
+    this.lambdaFunction.node.addDependency(logGroupDep);
 
     // Add tags
     const lambdaTags = createTags({
