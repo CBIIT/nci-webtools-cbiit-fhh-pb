@@ -1,7 +1,6 @@
 import * as cdk from "aws-cdk-lib";
 import * as apigateway from "aws-cdk-lib/aws-apigateway";
 import * as lambda from "aws-cdk-lib/aws-lambda";
-import * as logs from "aws-cdk-lib/aws-logs";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as iam from "aws-cdk-lib/aws-iam";
@@ -12,6 +11,7 @@ import {
   createManagedLogGroup,
   resolveDatadogForwarderArn,
   subscribeLogGroupToDatadogForwarder,
+  subscribeLogGroupToDatadogForwarderWhenReady,
 } from "./utils/datadog-logging";
 
 export interface ApiGatewayStackProps extends cdk.StackProps {
@@ -378,11 +378,6 @@ export class ApiGatewayStack extends cdk.Stack {
     // so the resolver script's static list cannot help. Import-by-name lets us still
     // emit an `AWS::Logs::SubscriptionFilter` that forwards to Datadog, while leaving
     // creation, retention, and tagging of the log group to AWS / out-of-band tooling.
-    const executionLogGroup = logs.LogGroup.fromLogGroupName(
-      this,
-      "ApiGatewayExecutionLogGroup",
-      `API-Gateway-Execution-Logs_${this.api.restApiId}/api`
-    );
     subscribeLogGroupToDatadogForwarder(
       this,
       "ApigwAccess",
@@ -390,12 +385,13 @@ export class ApiGatewayStack extends cdk.Stack {
       forwarderArn,
       accessLogGroupDep
     );
-    // execution log group is AWS-managed (fromLogGroupName) — no createCR dependency needed
-    subscribeLogGroupToDatadogForwarder(
+    // Execution log group is AWS-managed; wait for it before PutSubscriptionFilter.
+    subscribeLogGroupToDatadogForwarderWhenReady(
       this,
       "ApigwExec",
-      executionLogGroup,
-      forwarderArn
+      `API-Gateway-Execution-Logs_${this.api.restApiId}/api`,
+      forwarderArn,
+      this.api.deploymentStage
     );
 
     this.authorizer = new apigateway.RequestAuthorizer(this, "OidcAuthorizer", {
