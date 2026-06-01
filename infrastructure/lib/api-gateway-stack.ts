@@ -463,6 +463,29 @@ export class ApiGatewayStack extends cdk.Stack {
       // No authorizer - anyone can logout
     });
 
+    // Healthcheck endpoint - GET /api/ping
+    const pingResource = this.api.root.addResource("ping");
+    pingResource.addMethod(
+      "GET",
+      new apigateway.MockIntegration({
+        integrationResponses: [
+          {
+            statusCode: "200",
+            responseTemplates: {
+              "application/json": '{"status":"ok"}',
+            },
+          },
+        ],
+        requestTemplates: {
+          "application/json": '{ "statusCode": 200 }',
+        },
+      }),
+      {
+        apiKeyRequired: false,
+        methodResponses: [{ statusCode: "200" }],
+      }
+    );
+
     // Extend session endpoint - POST /api/extend-session (requires auth)
     const extendSessionResource = this.api.root.addResource("extend-session");
     const extendSessionIntegration = new apigateway.LambdaIntegration(extendSessionFunction);
