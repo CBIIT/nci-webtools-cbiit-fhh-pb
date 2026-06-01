@@ -63,12 +63,18 @@ jobs:
             LambdaListStudies-${{ env.TIER }} \
             --require-approval never
 
-      - name: Deploy API Gateway and CloudFront
+      - name: Deploy API Gateway and DynamoDB Session
         run: |
           cd infrastructure
           npx cdk deploy \
             DynamoDBSession-${{ env.TIER }} \
             ApiGateway-${{ env.TIER }} \
+            --require-approval never
+
+      - name: Deploy CloudFront
+        run: |
+          cd infrastructure
+          npx cdk deploy \
             CloudFrontS3Stack-${{ env.TIER }} \
             --require-approval never
 
