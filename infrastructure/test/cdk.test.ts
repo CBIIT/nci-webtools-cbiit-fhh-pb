@@ -4,6 +4,7 @@ import { Template, Match } from "aws-cdk-lib/assertions";
 import { CloudFrontS3Stack } from "../lib/cloudfront-s3-stack";
 import { LambdaJsonProcessorStack } from "../lib/lambda-json-processor-stack";
 import { LambdaGetFamilyStack } from "../lib/lambda-get-family-stack";
+import { subscribeLogGroupToDatadogForwarderWhenReady } from "../lib/utils/datadog-logging";
 
 describe("CloudFrontS3Stack", () => {
   const originalTier = process.env.TIER;
@@ -168,6 +169,48 @@ describe("LambdaJsonProcessorStack", () => {
     // No AWS::Logs::LogGroup resource is emitted; tags are applied via SDK call.
     template.resourceCountIs("AWS::Logs::LogGroup", 0);
     template.resourceCountIs("Custom::AWS", 3);
+  });
+});
+
+describe("subscribeLogGroupToDatadogForwarderWhenReady", () => {
+  test("uses custom resources instead of native SubscriptionFilter for execution logs", () => {
+    const app = new cdk.App({
+      context: {
+        datadogForwarderArn:
+          "arn:aws:lambda:us-east-1:123456789012:function:datadog-forwarder",
+      },
+    });
+    const stack = new cdk.Stack(app, "ExecLogSubTest", {
+      env: { account: "123456789012", region: "us-east-1" },
+    });
+
+    subscribeLogGroupToDatadogForwarderWhenReady(
+      stack,
+      "ApigwExec",
+      "API-Gateway-Execution-Logs_abc123/api",
+      "arn:aws:lambda:us-east-1:123456789012:function:datadog-forwarder"
+    );
+
+    const template = Template.fromStack(stack);
+
+    template.resourceCountIs("AWS::Logs::SubscriptionFilter", 0);
+    template.resourceCountIs("Custom::AWS", 2);
+
+    template.hasResourceProperties("Custom::AWS", {
+      Create: Match.stringLikeRegexp('"action":"describeLogGroups"'),
+    });
+
+    template.hasResourceProperties("Custom::AWS", {
+      Create: Match.stringLikeRegexp('"action":"putSubscriptionFilter"'),
+      Update: Match.stringLikeRegexp('"filterName":"ApigwExec-datadog-exec"'),
+    });
+
+    template.hasResourceProperties("AWS::Lambda::Permission", {
+      Action: "lambda:InvokeFunction",
+      Principal: "logs.amazonaws.com",
+      FunctionName:
+        "arn:aws:lambda:us-east-1:123456789012:function:datadog-forwarder",
+    });
   });
 });
 

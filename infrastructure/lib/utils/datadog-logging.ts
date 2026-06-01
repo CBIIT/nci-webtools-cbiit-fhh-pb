@@ -209,3 +209,95 @@ export function subscribeLogGroupToDatadogForwarder(
     filter.node.addDependency(logGroupDependency);
   }
 }
+
+/**
+ * Subscribe a (possibly not-yet-created) log group to the Datadog forwarder after it exists.
+ * Use for AWS-managed groups such as API Gateway execution logs; access/managed groups
+ * should use {@link subscribeLogGroupToDatadogForwarder} with {@link createManagedLogGroup}.
+ */
+export function subscribeLogGroupToDatadogForwarderWhenReady(
+  scope: Construct,
+  idPrefix: string,
+  logGroupName: string,
+  forwarderArn: string,
+  dependsOn?: Construct
+): Construct {
+  const stack = cdk.Stack.of(scope);
+  const logGroupArn = stack.formatArn({
+    service: "logs",
+    resource: "log-group",
+    resourceName: logGroupName,
+    arnFormat: cdk.ArnFormat.COLON_RESOURCE_NAME,
+  });
+  const iamArn = `${logGroupArn}:*`;
+
+  const logGroupNamePrefix = logGroupName.includes("/")
+    ? logGroupName.substring(0, logGroupName.lastIndexOf("/"))
+    : logGroupName;
+
+  const describeLogGroupsCall = {
+    service: "CloudWatchLogs",
+    action: "describeLogGroups",
+    parameters: { logGroupNamePrefix },
+    physicalResourceId: PhysicalResourceId.fromResponse(
+      "logGroups.0.logGroupName"
+    ),
+  };
+
+  const waitCR = new AwsCustomResource(scope, `${idPrefix}ExecLogReady`, {
+    onCreate: describeLogGroupsCall,
+    onUpdate: describeLogGroupsCall,
+    policy: AwsCustomResourcePolicy.fromSdkCalls({
+      resources: AwsCustomResourcePolicy.ANY_RESOURCE,
+    }),
+  });
+  if (dependsOn) {
+    waitCR.node.addDependency(dependsOn);
+  }
+
+  const filterName = `${idPrefix}-datadog-exec`;
+
+  const invokePermission = new lambda.CfnPermission(
+    scope,
+    `${idPrefix}ExecLogDdogSubCanInvoke`,
+    {
+      action: "lambda:InvokeFunction",
+      functionName: forwarderArn,
+      principal: "logs.amazonaws.com",
+      sourceArn: logGroupArn,
+      sourceAccount: stack.account,
+    }
+  );
+  invokePermission.node.addDependency(waitCR);
+
+  const putSubscriptionFilterCall = {
+    service: "CloudWatchLogs",
+    action: "putSubscriptionFilter",
+    parameters: {
+      logGroupName,
+      filterName,
+      filterPattern: "",
+      destinationArn: forwarderArn,
+    },
+    physicalResourceId: PhysicalResourceId.of(
+      `${logGroupName}-${filterName}`
+    ),
+  };
+
+  const subCR = new AwsCustomResource(scope, `${idPrefix}ExecLogDdogSub`, {
+    onCreate: putSubscriptionFilterCall,
+    onUpdate: putSubscriptionFilterCall,
+    onDelete: {
+      service: "CloudWatchLogs",
+      action: "deleteSubscriptionFilter",
+      parameters: { logGroupName, filterName },
+      ignoreErrorCodesMatching: "ResourceNotFoundException",
+    },
+    policy: AwsCustomResourcePolicy.fromSdkCalls({
+      resources: [logGroupArn, iamArn],
+    }),
+  });
+  subCR.node.addDependency(invokePermission);
+
+  return subCR;
+}
