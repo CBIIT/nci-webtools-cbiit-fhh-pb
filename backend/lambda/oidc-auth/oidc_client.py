@@ -8,6 +8,10 @@ import time
 import base64
 import hashlib
 import secrets
+import logging
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 from typing import Dict, Any, Optional, List
 from urllib.parse import urlencode
 import urllib.request
@@ -53,7 +57,7 @@ class OIDCClient:
                 self._config = json.loads(response.read().decode())
             return self._config
         except urllib.error.URLError as e:
-            print(f"Failed to fetch OIDC config: {str(e)}")
+            logger.error(f"Failed to fetch OIDC config: {str(e)}")
             raise TimeoutError(f"OIDC discovery endpoint unreachable: {str(e)}")
 
     def get_jwks(self) -> Dict[str, Any]:
@@ -69,7 +73,7 @@ class OIDCClient:
                 self._jwks = json.loads(response.read().decode())
             return self._jwks
         except urllib.error.URLError as e:
-            print(f"Failed to fetch JWKS: {str(e)}")
+            logger.error(f"Failed to fetch JWKS: {str(e)}")
             raise TimeoutError(f"JWKS endpoint unreachable: {str(e)}")
 
     def get_userinfo(self, access_token: str) -> Dict[str, Any]:
@@ -87,7 +91,7 @@ class OIDCClient:
         userinfo_endpoint = config.get("userinfo_endpoint")
         
         if not userinfo_endpoint:
-            print("No userinfo_endpoint in OIDC config")
+            logger.warning("No userinfo_endpoint in OIDC config")
             return {}
         
         req = urllib.request.Request(
@@ -117,14 +121,14 @@ class OIDCClient:
                         return {}
                 
                 # Log the claims we received
-                print(f"UserInfo: {json.dumps(userinfo, indent=2)}")
+                logger.debug("UserInfo fetched successfully")
                 return userinfo
                         
         except urllib.error.URLError as e:
-            print(f"Failed to fetch userinfo: {str(e)}")
+            logger.error(f"Failed to fetch userinfo: {str(e)}")
             return {}
         except Exception as e:
-            print(f"Error fetching userinfo: {str(e)}")
+            logger.error(f"Error fetching userinfo: {str(e)}")
             return {}
 
     def generate_pkce_pair(self) -> tuple[str, str]:

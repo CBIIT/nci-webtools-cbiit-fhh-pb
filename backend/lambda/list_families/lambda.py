@@ -7,6 +7,16 @@ logger.setLevel(logging.INFO)
 logging.getLogger("botocore").setLevel(logging.WARNING)
 
 
+class _UserContextFilter(logging.Filter):
+    def filter(self, record):
+        record.usr_email = getattr(self, "email", "unknown")
+        return True
+
+
+_user_filter = _UserContextFilter()
+logger.addFilter(_user_filter)
+
+
 def lambda_handler(event, context):
     """AWS Lambda handler for API Gateway integration."""
 
@@ -23,10 +33,9 @@ def lambda_handler(event, context):
         }
 
     try:
-        # Extract user identity from authorizer context
+        # Inject user context into all log records
         authorizer = event.get("requestContext", {}).get("authorizer", {})
-        user_id = authorizer.get("userId", "unknown")
-        email = authorizer.get("email", "unknown")
+        _user_filter.email = authorizer.get("email", "unknown")
 
         # Validate path parameters
         study_id = event.get("pathParameters", {}).get("study_id")
@@ -37,19 +46,7 @@ def lambda_handler(event, context):
         # Get list of families for the study
         result = list_families(study_id)
 
-        logger.info(
-            json.dumps(
-                {
-                    "audit": "user_access",
-                    "usr.id": user_id,
-                    "usr.email": email,
-                    "http.method": "GET",
-                    "http.route": "/families/{study_id}",
-                    "resource": f"/families/{study_id}",
-                    "status": result["status"],
-                }
-            )
-        )
+        logger.info(f"GET /families/{study_id} -> {result['status']}")
 
         if result["status"] == "success":
             # Return the families array directly to match Flask behavior

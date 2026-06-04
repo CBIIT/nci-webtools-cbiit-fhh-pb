@@ -4,11 +4,16 @@ Handles the callback from IdP, exchanges code for tokens, and sets auth cookie.
 """
 
 import json
+import logging
 import secrets
 from typing import Dict, Any
 from oidc_client import OIDCClient
 from secrets_manager import get_tier
 from session_manager import create_session
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+logging.getLogger("botocore").setLevel(logging.WARNING)
 
 
 def parse_cookies(cookie_header: str) -> Dict[str, str]:
@@ -71,7 +76,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Extract state_id from OAuth state parameter
         # Format from Lambda@Edge: state:state_id
         if ":" not in state:
-            print(f"State format invalid, missing state_id: {state}")
+            logger.warning("Login failed: invalid state format")
             return {
                 "statusCode": 400,
                 "headers": {"Content-Type": "application/json"},
@@ -99,7 +104,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         try:
             response = table.get_item(Key={"session_id": f"oauth_state_{state_id}"})
             if "Item" not in response:
-                print(f"OAuth state not found in DynamoDB: oauth_state_{state_id}")
+                logger.warning("Login failed: OAuth state expired")
                 return {
                     "statusCode": 400,
                     "headers": {"Content-Type": "application/json"},
@@ -114,7 +119,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
             # Validate state matches what we stored
             if stored_state != db_stored_state:
-                print(f"State mismatch: received {stored_state}, expected {db_stored_state}")
+                logger.warning("Login failed: state mismatch (possible CSRF)")
                 return {
                     "statusCode": 400,
                     "headers": {"Content-Type": "application/json"},
@@ -125,7 +130,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             table.delete_item(Key={"session_id": f"oauth_state_{state_id}"})
 
         except Exception as e:
-            print(f"Error retrieving OAuth state from DynamoDB: {str(e)}")
+            logger.error(f"Login error: DynamoDB state retrieval failed: {str(e)}")
             return {
                 "statusCode": 500,
                 "headers": {"Content-Type": "application/json"},
@@ -170,7 +175,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Check group membership if REQUIRED_GROUPS is configured
         # Use merged claims which includes both ID token and UserInfo
         if not oidc.check_group_membership(merged_claims):
-            print(f"User {payload.get('sub')} lacks required group membership")
+            user_email_denied = merged_claims.get("email", "unknown")
+            logger.warning(f"Login denied: email={user_email_denied}, reason=group_membership")
 
             tier = get_tier()
             base_domain = f"https://pedigree-{tier}.cancer.gov"
@@ -192,9 +198,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Use ID token for authentication (contains user claims)
         auth_token = id_token
 
-        print(
-            f"Authenticated user {user_id}: email={user_email}"
-        )
+        logger.info(f"Login success: email={user_email}")
 
         # Store session in DynamoDB
         session_id = create_session(
@@ -253,7 +257,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
 
     except Exception as e:
-        print(f"Callback error: {str(e)}")
+        logger.error(f"Login error: {str(e)}")
         # Don't expose internal details in production
         return {
             "statusCode": 500,

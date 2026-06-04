@@ -3,9 +3,14 @@ Lambda authorizer for API Gateway OIDC token verification.
 Validates tokens and generates IAM policies based on group membership.
 """
 
+import logging
 from typing import Dict, Any
 from oidc_client import OIDCClient
 from session_manager import validate_session
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+logging.getLogger("botocore").setLevel(logging.WARNING)
 
 
 def parse_cookies(cookie_header: str) -> Dict[str, str]:
@@ -43,27 +48,27 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     try:
         # Extract session_id from cookie
         session_id = None
-        
+
         cookie_header = event.get("headers", {}).get("Cookie", "") or event.get("headers", {}).get("cookie", "")
         cookies = parse_cookies(cookie_header)
         session_id = cookies.get("session_id")
 
         if not session_id:
-            print("No session_id found in request")
+            logger.debug("No session_id found in request")
             raise Exception("Unauthorized")
 
         # Validate session from DynamoDB
         session_data = validate_session(session_id)
 
         if not session_data:
-            print(f"Invalid or expired session: {session_id}")
+            logger.debug("Invalid or expired session")
             raise Exception("Unauthorized")
 
         # Session is valid and contains user info
         user_id = session_data.get("user_id", "unknown")
         user_email = session_data.get("email", "")
         user_groups = session_data.get("groups", [])
-        
+
         # Generate allow policy with user context
         user_context = {
             "userId": user_id,
@@ -85,5 +90,5 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         return generate_policy(user_id, "Allow", resource, user_context)
 
     except Exception as e:
-        print(f"Authorization failed: {str(e)}")
+        logger.debug(f"Authorization failed: {str(e)}")
         raise Exception("Unauthorized")

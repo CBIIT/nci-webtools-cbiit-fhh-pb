@@ -8,6 +8,16 @@ logger.setLevel(logging.INFO)
 logging.getLogger("botocore").setLevel(logging.WARNING)
 
 
+class _UserContextFilter(logging.Filter):
+    def filter(self, record):
+        record.usr_email = getattr(self, "email", "unknown")
+        return True
+
+
+_user_filter = _UserContextFilter()
+logger.addFilter(_user_filter)
+
+
 def lambda_handler(event, context):
     """AWS Lambda handler for API Gateway integration."""
 
@@ -24,10 +34,9 @@ def lambda_handler(event, context):
         }
 
     try:
-        # Extract user identity from authorizer context
+        # Inject user context into all log records
         authorizer = event.get("requestContext", {}).get("authorizer", {})
-        user_id = authorizer.get("userId", "unknown")
-        email = authorizer.get("email", "unknown")
+        _user_filter.email = authorizer.get("email", "unknown")
 
         # Validate path parameters
         study_id = event.get("pathParameters", {}).get("study_id")
@@ -51,19 +60,7 @@ def lambda_handler(event, context):
         result = write_annotations(study_id, family_id, body)
         status_code = 200 if result["status"] == "success" else 500
 
-        logger.info(
-            json.dumps(
-                {
-                    "audit": "user_access",
-                    "usr.id": user_id,
-                    "usr.email": email,
-                    "http.method": "POST",
-                    "http.route": "/annotations/{study_id}/{family_id}",
-                    "resource": f"/annotations/{study_id}/{family_id}",
-                    "status": result["status"],
-                }
-            )
-        )
+        logger.info(f"POST /annotations/{study_id}/{family_id} -> {result['status']}")
 
         return {
             "statusCode": status_code,

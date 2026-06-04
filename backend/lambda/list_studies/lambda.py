@@ -7,6 +7,16 @@ logger.setLevel(logging.INFO)
 logging.getLogger("botocore").setLevel(logging.WARNING)
 
 
+class _UserContextFilter(logging.Filter):
+    def filter(self, record):
+        record.usr_email = getattr(self, "email", "unknown")
+        return True
+
+
+_user_filter = _UserContextFilter()
+logger.addFilter(_user_filter)
+
+
 def lambda_handler(event, context):
     """AWS Lambda handler for API Gateway integration."""
 
@@ -23,27 +33,14 @@ def lambda_handler(event, context):
         }
 
     try:
-        # Extract user identity from authorizer context
+        # Inject user context into all log records
         authorizer = event.get("requestContext", {}).get("authorizer", {})
-        user_id = authorizer.get("userId", "unknown")
-        email = authorizer.get("email", "unknown")
+        _user_filter.email = authorizer.get("email", "unknown")
 
         # Get list of studies
         result = list_studies()
 
-        logger.info(
-            json.dumps(
-                {
-                    "audit": "user_access",
-                    "usr.id": user_id,
-                    "usr.email": email,
-                    "http.method": "GET",
-                    "http.route": "/studies",
-                    "resource": "/studies",
-                    "status": result["status"],
-                }
-            )
-        )
+        logger.info(f"GET /studies -> {result['status']}")
 
         if result["status"] == "success":
             # Return the studies array directly to match Flask behavior
