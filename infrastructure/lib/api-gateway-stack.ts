@@ -83,8 +83,8 @@ export class ApiGatewayStack extends cdk.Stack {
         logGroup: authorizerLogGroup,
         loggingFormat: lambda.LoggingFormat.JSON,
         systemLogLevel: lambda.SystemLogLevel.WARN,
-        applicationLogLevel: lambda.ApplicationLogLevel.INFO,
-      }
+        applicationLogLevel: lambda.ApplicationLogLevel.DEBUG,
+      },
     );
     this.authorizerFunction.node.addDependency(authorizerLogGroupDep);
 
@@ -144,7 +144,7 @@ export class ApiGatewayStack extends cdk.Stack {
       logGroup: callbackLogGroup,
       loggingFormat: lambda.LoggingFormat.JSON,
       systemLogLevel: lambda.SystemLogLevel.WARN,
-      applicationLogLevel: lambda.ApplicationLogLevel.INFO,
+      applicationLogLevel: lambda.ApplicationLogLevel.DEBUG,
       environment: {
         SESSIONS_TABLE_NAME: props.sessionsTable.tableName,
       },

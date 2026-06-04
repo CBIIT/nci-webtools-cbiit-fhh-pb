@@ -85,7 +85,7 @@ export class LambdaWriteAnnotationsStack extends cdk.Stack {
         runtime: lambda.Runtime.PYTHON_3_13,
         handler: "lambda.lambda_handler",
         code: lambda.Code.fromAsset(
-          path.join(__dirname, "../../backend/lambda/write_annotations")
+          path.join(__dirname, "../../backend/lambda/write_annotations"),
         ),
         role: lambdaRole,
         timeout: cdk.Duration.minutes(2),
@@ -100,9 +100,9 @@ export class LambdaWriteAnnotationsStack extends cdk.Stack {
         retryAttempts: 2, // Number of retry attempts
         loggingFormat: lambda.LoggingFormat.JSON,
         systemLogLevel: lambda.SystemLogLevel.WARN,
-        applicationLogLevel: lambda.ApplicationLogLevel.INFO,
+        applicationLogLevel: lambda.ApplicationLogLevel.DEBUG,
         logGroup: logGroup,
-      }
+      },
     );
     this.lambdaFunction.node.addDependency(logGroupDep);
 

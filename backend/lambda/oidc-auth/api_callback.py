@@ -76,7 +76,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Extract state_id from OAuth state parameter
         # Format from Lambda@Edge: state:state_id
         if ":" not in state:
-            logger.warning("Login failed: invalid state format")
+            logger.info("Login failed: invalid state format")
             return {
                 "statusCode": 400,
                 "headers": {"Content-Type": "application/json"},
@@ -104,7 +104,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         try:
             response = table.get_item(Key={"session_id": f"oauth_state_{state_id}"})
             if "Item" not in response:
-                logger.warning("Login failed: OAuth state expired")
+                logger.info("Login failed: OAuth state expired")
                 return {
                     "statusCode": 400,
                     "headers": {"Content-Type": "application/json"},
@@ -119,7 +119,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
             # Validate state matches what we stored
             if stored_state != db_stored_state:
-                logger.warning("Login failed: state mismatch (possible CSRF)")
+                logger.info("Login failed: state mismatch (possible CSRF)")
                 return {
                     "statusCode": 400,
                     "headers": {"Content-Type": "application/json"},
@@ -130,7 +130,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             table.delete_item(Key={"session_id": f"oauth_state_{state_id}"})
 
         except Exception as e:
-            logger.error(f"Login error: DynamoDB state retrieval failed: {str(e)}")
+            logger.info(f"Login error: DynamoDB state retrieval failed: {str(e)}")
             return {
                 "statusCode": 500,
                 "headers": {"Content-Type": "application/json"},
@@ -176,7 +176,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Use merged claims which includes both ID token and UserInfo
         if not oidc.check_group_membership(merged_claims):
             user_email_denied = merged_claims.get("email", "unknown")
-            logger.warning(f"Login denied: email={user_email_denied}, reason=group_membership")
+            logger.info(f"Login denied: email={user_email_denied}, reason=group_membership")
 
             tier = get_tier()
             base_domain = f"https://pedigree-{tier}.cancer.gov"
@@ -257,7 +257,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
 
     except Exception as e:
-        logger.error(f"Login error: {str(e)}")
+        logger.info(f"Login error: {str(e)}")
         # Don't expose internal details in production
         return {
             "statusCode": 500,

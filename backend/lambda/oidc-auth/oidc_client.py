@@ -57,7 +57,7 @@ class OIDCClient:
                 self._config = json.loads(response.read().decode())
             return self._config
         except urllib.error.URLError as e:
-            logger.error(f"Failed to fetch OIDC config: {str(e)}")
+            logger.info(f"Failed to fetch OIDC config: {str(e)}")
             raise TimeoutError(f"OIDC discovery endpoint unreachable: {str(e)}")
 
     def get_jwks(self) -> Dict[str, Any]:
@@ -73,62 +73,59 @@ class OIDCClient:
                 self._jwks = json.loads(response.read().decode())
             return self._jwks
         except urllib.error.URLError as e:
-            logger.error(f"Failed to fetch JWKS: {str(e)}")
+            logger.info(f"Failed to fetch JWKS: {str(e)}")
             raise TimeoutError(f"JWKS endpoint unreachable: {str(e)}")
 
     def get_userinfo(self, access_token: str) -> Dict[str, Any]:
         """
         Fetch user info from the UserInfo endpoint.
         Many IdPs put email, name, groups here instead of in the ID token.
-        
+
         Args:
             access_token: The access token from token exchange
-            
+
         Returns:
             Dictionary containing user attributes from UserInfo endpoint
         """
         config = self.get_oidc_config()
         userinfo_endpoint = config.get("userinfo_endpoint")
-        
+
         if not userinfo_endpoint:
-            logger.warning("No userinfo_endpoint in OIDC config")
+            logger.info("No userinfo_endpoint in OIDC config")
             return {}
-        
-        req = urllib.request.Request(
-            userinfo_endpoint,
-            headers={"Authorization": f"Bearer {access_token}"}
-        )
-        
+
+        req = urllib.request.Request(userinfo_endpoint, headers={"Authorization": f"Bearer {access_token}"})
+
         try:
             with urllib.request.urlopen(req, timeout=self._http_timeout) as response:
-                raw_response = response.read().decode('utf-8')
-                
+                raw_response = response.read().decode("utf-8")
+
                 try:
                     # Try normal JSON parse first
                     userinfo = json.loads(raw_response)
                 except json.JSONDecodeError:
                     # Fix common escape issues (e.g., backslashes in LDAP DNs)
                     try:
-                        fixed_response = raw_response.replace('\\', '\\\\')
+                        fixed_response = raw_response.replace("\\", "\\\\")
                         # Preserve valid JSON escapes
-                        fixed_response = fixed_response.replace('\\\\n', '\\n')
-                        fixed_response = fixed_response.replace('\\\\r', '\\r')
-                        fixed_response = fixed_response.replace('\\\\t', '\\t')
-                        fixed_response = fixed_response.replace('\\\\\\\\', '\\\\')
+                        fixed_response = fixed_response.replace("\\\\n", "\\n")
+                        fixed_response = fixed_response.replace("\\\\r", "\\r")
+                        fixed_response = fixed_response.replace("\\\\t", "\\t")
+                        fixed_response = fixed_response.replace("\\\\\\\\", "\\\\")
                         fixed_response = fixed_response.replace('\\\\"', '\\"')
                         userinfo = json.loads(fixed_response)
                     except Exception:
                         return {}
-                
+
                 # Log the claims we received
-                logger.debug("UserInfo fetched successfully")
+                logger.info("UserInfo fetched successfully")
                 return userinfo
-                        
+
         except urllib.error.URLError as e:
-            logger.error(f"Failed to fetch userinfo: {str(e)}")
+            logger.info(f"Failed to fetch userinfo: {str(e)}")
             return {}
         except Exception as e:
-            logger.error(f"Error fetching userinfo: {str(e)}")
+            logger.info(f"Error fetching userinfo: {str(e)}")
             return {}
 
     def generate_pkce_pair(self) -> tuple[str, str]:
@@ -145,7 +142,7 @@ class OIDCClient:
         params = {
             "client_id": self.client_id,
             "response_type": "code",
-            "scope": "openid profile email member", 
+            "scope": "openid profile email member",
             "redirect_uri": self.callback_uri,
             "state": state,
             "code_challenge": code_challenge,
@@ -227,45 +224,43 @@ class OIDCClient:
             print(f"Token verification failed: {str(e)}")
             return None
 
-    def check_group_membership(
-        self, token_payload: Dict[str, Any], required_groups: Optional[str] = None
-    ) -> bool:
+    def check_group_membership(self, token_payload: Dict[str, Any], required_groups: Optional[str] = None) -> bool:
         """
         Check if user has required group membership based on 'member_of' claim.
         Both member_of and required_groups are comma-separated strings.
         At least one group from member_of must match one from required_groups.
-        
+
         Args:
             token_payload: Token claims containing member_of
             required_groups: Optional comma-separated string of required groups
-            
+
         Returns:
             True if user has at least one required group, False otherwise
         """
         # Get required_groups from secret if not provided
         if required_groups is None:
             required_groups = self._secret.get("REQUIRED_GROUPS", "")
-        
+
         # If no groups required, allow any authenticated user
         if not required_groups or not required_groups.strip():
             return True
-        
+
         # Get member_of claim (comma-separated string from UserInfo)
         member_of_str = token_payload.get("member_of", "")
-        
+
         if not member_of_str:
             print("No member_of claim found")
             return False
-        
+
         # Split both strings by comma and strip whitespace
         user_groups = [g.strip() for g in member_of_str.split(",") if g.strip()]
         required = [g.strip() for g in required_groups.split(",") if g.strip()]
-        
+
         # Check if at least one user group matches a required group
         matched = any(group in required for group in user_groups)
-        
+
         if not matched:
             print(f"No matching group membership found")
             return False
-        
+
         return matched

@@ -70,7 +70,7 @@ export class LambdaListFamiliesStack extends cdk.Stack {
       runtime: lambda.Runtime.PYTHON_3_13,
       handler: "lambda.lambda_handler",
       code: lambda.Code.fromAsset(
-        path.join(__dirname, "../../backend/lambda/list_families")
+        path.join(__dirname, "../../backend/lambda/list_families"),
       ),
       role: lambdaRole,
       timeout: cdk.Duration.minutes(1),
@@ -84,7 +84,7 @@ export class LambdaListFamiliesStack extends cdk.Stack {
       retryAttempts: 2,
       loggingFormat: lambda.LoggingFormat.JSON,
       systemLogLevel: lambda.SystemLogLevel.WARN,
-      applicationLogLevel: lambda.ApplicationLogLevel.INFO,
+      applicationLogLevel: lambda.ApplicationLogLevel.DEBUG,
       logGroup: logGroup,
     });
     this.lambdaFunction.node.addDependency(logGroupDep);

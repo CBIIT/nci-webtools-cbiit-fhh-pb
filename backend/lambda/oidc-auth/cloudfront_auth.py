@@ -68,7 +68,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Skip auth for /access-denied.html
         if uri == "/access-denied.html":
-            logger.debug("Skipping auth for access-denied page")
+            logger.info("Skipping auth for access-denied page")
             return request
 
         # Skip auth for /api/* paths (handled by API Gateway authorizer)
@@ -79,7 +79,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # This must happen BEFORE authentication so the SPA can load
         # Skip for static assets (they have file extensions)
         if not uri.startswith("/static/") and ("." not in uri or uri == "/"):
-            logger.debug(f"SPA rewrite: {uri} -> /index.html")
+            logger.info(f"SPA rewrite: {uri} -> /index.html")
             request["uri"] = "/index.html"
             uri = "/index.html"  # Update uri for subsequent checks
 
@@ -91,7 +91,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         cookie_header = headers.get("cookie", [{}])[0].get("value", "")
         cookies = parse_cookies(cookie_header)
     except Exception as e:
-        logger.error(f"Error parsing request: {str(e)}")
+        logger.info(f"Error parsing request: {str(e)}")
         # Return 503 with details if we can't even parse the request
         return {
             "status": "503",
@@ -120,11 +120,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 return request
             else:
                 # Invalid or expired session - clear cookie and redirect to login
-                logger.debug(f"Invalid or expired session")
+                logger.info("Invalid or expired session")
                 # Fall through to redirect to login below
 
         except Exception as e:
-            logger.error(f"Session validation error: {str(e)}")
+            logger.info(f"Session validation error: {str(e)}")
             # On session validation error, redirect to login (fail closed)
             # Fall through to redirect to login below
 
@@ -177,7 +177,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             },
         }
     except Exception as e:
-        logger.error(f"Error initiating login: {str(e)}")
+        logger.info(f"Error initiating login: {str(e)}")
         # Return error page if OIDC setup fails
         return {
             "status": "503",

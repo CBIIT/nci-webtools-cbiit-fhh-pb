@@ -54,14 +54,14 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         session_id = cookies.get("session_id")
 
         if not session_id:
-            logger.debug("No session_id found in request")
+            logger.info("No session_id found in request")
             raise Exception("Unauthorized")
 
         # Validate session from DynamoDB
         session_data = validate_session(session_id)
 
         if not session_data:
-            logger.debug("Invalid or expired session")
+            logger.info("Invalid or expired session")
             raise Exception("Unauthorized")
 
         # Session is valid and contains user info
@@ -90,5 +90,5 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         return generate_policy(user_id, "Allow", resource, user_context)
 
     except Exception as e:
-        logger.debug(f"Authorization failed: {str(e)}")
+        logger.info(f"Authorization failed: {str(e)}")
         raise Exception("Unauthorized")
