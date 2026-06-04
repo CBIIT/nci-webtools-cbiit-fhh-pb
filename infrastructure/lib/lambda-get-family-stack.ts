@@ -81,6 +81,9 @@ export class LambdaGetFamilyStack extends cdk.Stack {
       reservedConcurrentExecutions: 10,
       maxEventAge: cdk.Duration.minutes(1),
       retryAttempts: 2,
+      loggingFormat: lambda.LoggingFormat.JSON,
+      systemLogLevel: lambda.SystemLogLevel.WARN,
+      applicationLogLevel: lambda.ApplicationLogLevel.INFO,
       logGroup: logGroup,
     });
     this.lambdaFunction.node.addDependency(logGroupDep);

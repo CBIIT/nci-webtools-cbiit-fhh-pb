@@ -98,6 +98,9 @@ export class LambdaWriteAnnotationsStack extends cdk.Stack {
         reservedConcurrentExecutions: 5, // Limit concurrent executions
         maxEventAge: cdk.Duration.minutes(1), // Maximum event age
         retryAttempts: 2, // Number of retry attempts
+        loggingFormat: lambda.LoggingFormat.JSON,
+        systemLogLevel: lambda.SystemLogLevel.WARN,
+        applicationLogLevel: lambda.ApplicationLogLevel.INFO,
         logGroup: logGroup,
       }
     );

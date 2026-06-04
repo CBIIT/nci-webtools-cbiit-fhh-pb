@@ -13,7 +13,7 @@ def list_families(study_id, bucket_name=None):
         if not bucket_name:
             raise ValueError("Bucket name not provided and DATA_BUCKET environment variable not set")
 
-        logger.info(f"Listing families from S3: s3://{bucket_name}/processed/{study_id}/")
+        logger.debug(f"Listing families from S3: s3://{bucket_name}/processed/{study_id}/")
 
         s3_client = boto3.client("s3")
 

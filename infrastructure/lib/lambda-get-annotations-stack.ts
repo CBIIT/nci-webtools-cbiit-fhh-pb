@@ -82,6 +82,9 @@ export class LambdaGetAnnotationsStack extends cdk.Stack {
         DATA_BUCKET: props.dataBucket.bucketName,
         TIER: tier,
       },
+      loggingFormat: lambda.LoggingFormat.JSON,
+      systemLogLevel: lambda.SystemLogLevel.WARN,
+      applicationLogLevel: lambda.ApplicationLogLevel.INFO,
       logGroup: logGroup,
     });
     this.lambdaFunction.node.addDependency(logGroupDep);
