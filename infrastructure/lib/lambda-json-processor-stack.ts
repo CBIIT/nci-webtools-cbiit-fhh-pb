@@ -23,7 +23,7 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
   constructor(
     scope: Construct,
     id: string,
-    props: LambdaJsonProcessorStackProps
+    props: LambdaJsonProcessorStackProps,
   ) {
     super(scope, id, props);
 
@@ -34,7 +34,7 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
       assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
       managedPolicies: [
         iam.ManagedPolicy.fromAwsManagedPolicyName(
-          "service-role/AWSLambdaBasicExecutionRole"
+          "service-role/AWSLambdaBasicExecutionRole",
         ),
       ],
     });
@@ -54,7 +54,7 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
           `arn:aws:s3:::${dataBucketName}`,
           `arn:aws:s3:::${dataBucketName}/*`,
         ],
-      })
+      }),
     );
 
     const forwarderArn = resolveDatadogForwarderArn(this, tier);
@@ -64,14 +64,14 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
       { logGroupName: `/aws/lambda/nci-cbiit-fhhpb-jsonprocessor-${tier}` },
       tier,
       "lambda",
-      { component: "json-processor" }
+      { component: "json-processor" },
     );
     subscribeLogGroupToDatadogForwarder(
       this,
       "JsonProcessor",
       logGroup,
       forwarderArn,
-      logGroupDep
+      logGroupDep,
     );
 
     // Create Lambda function
@@ -82,7 +82,7 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
       runtime: lambda.Runtime.PYTHON_3_13,
       handler: "lambda_function.lambda_handler",
       code: lambda.Code.fromAsset(
-        path.join(__dirname, "../../backend/lambda/json-processor")
+        path.join(__dirname, "../../backend/lambda/json-processor"),
       ),
       role: lambdaRole,
       timeout: cdk.Duration.minutes(5),
@@ -96,6 +96,9 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
       maxEventAge: cdk.Duration.minutes(1), // Maximum event age
       retryAttempts: 2, // Number of retry attempts
       logGroup: logGroup,
+      loggingFormat: lambda.LoggingFormat.JSON,
+      systemLogLevel: lambda.SystemLogLevel.WARN,
+      applicationLogLevel: lambda.ApplicationLogLevel.INFO,
     });
     this.lambdaFunction.node.addDependency(logGroupDep);
 
@@ -107,7 +110,7 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
       {
         prefix: "raw/",
         suffix: ".json",
-      }
+      },
     );
 
     // Add tags to Lambda function

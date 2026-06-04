@@ -149,6 +149,9 @@ export class CloudFrontS3Stack extends cdk.Stack {
         }),
         timeout: cdk.Duration.seconds(5),
         memorySize: 128,
+        loggingFormat: lambda.LoggingFormat.JSON,
+        systemLogLevel: lambda.SystemLogLevel.WARN,
+        applicationLogLevel: lambda.ApplicationLogLevel.INFO,
       });
 
       this.edgeFunction.addToRolePolicy(
