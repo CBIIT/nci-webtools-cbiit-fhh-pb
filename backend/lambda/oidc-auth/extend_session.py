@@ -4,8 +4,14 @@ Extends the current session by 1 hour from now.
 """
 
 import json
+from aws_lambda_powertools import Logger
+from aws_lambda_powertools.logging import correlation_paths
+from aws_lambda_powertools.logging.formatters.datadog import DatadogLogFormatter
 from typing import Dict, Any
 from session_manager import validate_session, extend_session
+
+logger = Logger(service="fhhpb", logger_formatter=DatadogLogFormatter())
+logger.append_keys(component="extend-session")
 
 
 def parse_cookies(cookie_header: str) -> Dict[str, str]:
@@ -19,6 +25,9 @@ def parse_cookies(cookie_header: str) -> Dict[str, str]:
     return cookies
 
 
+@logger.inject_lambda_context(
+    correlation_id_path=correlation_paths.API_GATEWAY_REST, clear_state=True
+)
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Handle session extension request.
@@ -26,7 +35,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     try:
         # Get session_id from cookie
-        cookie_header = event.get("headers", {}).get("Cookie", "") or event.get("headers", {}).get("cookie", "")
+        cookie_header = event.get("headers", {}).get("Cookie", "") or event.get(
+            "headers", {}
+        ).get("cookie", "")
         cookies = parse_cookies(cookie_header)
         session_id = cookies.get("session_id")
 
@@ -52,9 +63,14 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "body": json.dumps({"error": "Session invalid or expired"}),
             }
 
+        _user_filter_email = session_data.get("email", "unknown")
+        logger.append_keys(
+            email=_user_filter_email, user_id=session_data.get("user_id", "unknown")
+        )
+
         # Extend session by 1 hour (3600 seconds)
         success = extend_session(session_id, additional_seconds=3600)
-        
+
         if success:
             return {
                 "statusCode": 200,
@@ -62,10 +78,12 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     "Content-Type": "application/json",
                     "Access-Control-Allow-Origin": "*",
                 },
-                "body": json.dumps({
-                    "message": "Session extended successfully",
-                    "extended_by_seconds": 3600
-                }),
+                "body": json.dumps(
+                    {
+                        "message": "Session extended successfully",
+                        "extended_by_seconds": 3600,
+                    }
+                ),
             }
         else:
             return {
@@ -78,7 +96,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             }
 
     except Exception as e:
-        print(f"Extend session error: {str(e)}")
+        logger.error(f"Extend session error: {str(e)}")
         return {
             "statusCode": 500,
             "headers": {
@@ -87,4 +105,3 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             },
             "body": json.dumps({"error": "Failed to extend session"}),
         }
-

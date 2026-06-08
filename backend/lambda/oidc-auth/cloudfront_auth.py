@@ -5,16 +5,16 @@ OAuth callback is handled by API Gateway via CloudFront at /api/login
 """
 
 import base64
-import logging
 import secrets
+from aws_lambda_powertools import Logger
+from aws_lambda_powertools.logging.formatters.datadog import DatadogLogFormatter
 from typing import Dict, Any
 from oidc_client import OIDCClient
 from secrets_manager import get_tier
 from session_manager import validate_session
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-logging.getLogger("botocore").setLevel(logging.WARNING)
+logger = Logger(service="fhhpb", logger_formatter=DatadogLogFormatter())
+logger.append_keys(component="cloudfront-auth")
 
 
 def parse_cookies(cookie_header: str) -> Dict[str, str]:
@@ -48,6 +48,7 @@ def create_cookie(
     return cookie
 
 
+@logger.inject_lambda_context(clear_state=True)
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Lambda@Edge handler for viewer-request.
@@ -113,10 +114,17 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
             if session_data:
                 # Valid session, allow request
+                logger.append_keys(email=session_data.get("email", "unknown"))
                 # Add user info to request headers for downstream use
-                request["headers"]["x-auth-user"] = [{"value": session_data.get("user_id", "")}]
-                request["headers"]["x-auth-email"] = [{"value": session_data.get("email", "")}]
-                request["headers"]["x-auth-groups"] = [{"value": ",".join(session_data.get("groups", []))}]
+                request["headers"]["x-auth-user"] = [
+                    {"value": session_data.get("user_id", "")}
+                ]
+                request["headers"]["x-auth-email"] = [
+                    {"value": session_data.get("email", "")}
+                ]
+                request["headers"]["x-auth-groups"] = [
+                    {"value": ",".join(session_data.get("groups", []))}
+                ]
                 return request
             else:
                 # Invalid or expired session - clear cookie and redirect to login
@@ -133,8 +141,16 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         oidc = OIDCClient()
 
         # Generate PKCE and nonce for secure auth flow
-        state = base64.urlsafe_b64encode(secrets.token_bytes(16)).decode("utf-8").rstrip("=")
-        nonce = base64.urlsafe_b64encode(secrets.token_bytes(16)).decode("utf-8").rstrip("=")
+        state = (
+            base64.urlsafe_b64encode(secrets.token_bytes(16))
+            .decode("utf-8")
+            .rstrip("=")
+        )
+        nonce = (
+            base64.urlsafe_b64encode(secrets.token_bytes(16))
+            .decode("utf-8")
+            .rstrip("=")
+        )
         code_verifier, code_challenge = oidc.generate_pkce_pair()
 
         # Generate unique state_id for DynamoDB storage
@@ -167,6 +183,10 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Format: state:state_id
         combined_state = f"{state}:{state_id}"
         auth_url = oidc.get_authorization_url(combined_state, code_challenge, nonce)
+
+        logger.info(
+            f"Login redirect: initiating OIDC auth flow, original_url={original_url}"
+        )
 
         return {
             "status": "302",

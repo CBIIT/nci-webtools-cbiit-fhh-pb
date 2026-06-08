@@ -11,7 +11,9 @@ def get_annotations(study_id, family_id, bucket_name=None):
     try:
         bucket_name = bucket_name or os.environ.get("DATA_BUCKET")
         if not bucket_name:
-            raise ValueError("Bucket name not provided and DATA_BUCKET environment variable not set")
+            raise ValueError(
+                "Bucket name not provided and DATA_BUCKET environment variable not set"
+            )
 
         s3_key = f"annotations/{study_id}/{family_id}.annotations.json"
         logger.debug(f"Reading from S3: s3://{bucket_name}/{s3_key}")
@@ -19,11 +21,15 @@ def get_annotations(study_id, family_id, bucket_name=None):
         response = boto3.client("s3").get_object(Bucket=bucket_name, Key=s3_key)
         data = response["Body"].read().decode("utf-8")
 
-        logger.debug(f"Successfully retrieved annotations for study_id: {study_id}, family_id: {family_id}")
+        logger.debug(
+            f"Successfully retrieved annotations for study_id: {study_id}, family_id: {family_id}"
+        )
         return {"status": "success", "data": data}
 
     except boto3.client("s3").exceptions.NoSuchKey:
-        error_msg = f"Annotations not found for study_id: {study_id}, family_id: {family_id}"
+        error_msg = (
+            f"Annotations not found for study_id: {study_id}, family_id: {family_id}"
+        )
         logger.warning(error_msg)
         return {"status": "not_found", "message": error_msg}
     except Exception as e:

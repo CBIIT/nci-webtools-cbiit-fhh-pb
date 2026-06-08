@@ -94,7 +94,9 @@ class OIDCClient:
             logger.info("No userinfo_endpoint in OIDC config")
             return {}
 
-        req = urllib.request.Request(userinfo_endpoint, headers={"Authorization": f"Bearer {access_token}"})
+        req = urllib.request.Request(
+            userinfo_endpoint, headers={"Authorization": f"Bearer {access_token}"}
+        )
 
         try:
             with urllib.request.urlopen(req, timeout=self._http_timeout) as response:
@@ -130,13 +132,21 @@ class OIDCClient:
 
     def generate_pkce_pair(self) -> tuple[str, str]:
         """Generate PKCE code verifier and challenge."""
-        code_verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode("utf-8").rstrip("=")
+        code_verifier = (
+            base64.urlsafe_b64encode(secrets.token_bytes(32))
+            .decode("utf-8")
+            .rstrip("=")
+        )
         code_challenge = (
-            base64.urlsafe_b64encode(hashlib.sha256(code_verifier.encode()).digest()).decode("utf-8").rstrip("=")
+            base64.urlsafe_b64encode(hashlib.sha256(code_verifier.encode()).digest())
+            .decode("utf-8")
+            .rstrip("=")
         )
         return code_verifier, code_challenge
 
-    def get_authorization_url(self, state: str, code_challenge: str, nonce: str = None) -> str:
+    def get_authorization_url(
+        self, state: str, code_challenge: str, nonce: str = None
+    ) -> str:
         """Generate authorization URL for login redirect."""
         config = self.get_oidc_config()
         params = {
@@ -166,7 +176,9 @@ class OIDCClient:
 
         body = urlencode(data).encode()
         req = urllib.request.Request(
-            config["token_endpoint"], data=body, headers={"Content-Type": "application/x-www-form-urlencoded"}
+            config["token_endpoint"],
+            data=body,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
 
         with urllib.request.urlopen(req, timeout=self._http_timeout) as response:
@@ -183,7 +195,9 @@ class OIDCClient:
             key_id = unverified_header.get("kid")
             key = next((k for k in jwks["keys"] if k.get("kid") == key_id), None)
             if not key:
-                print("No matching key found in JWKS")
+                logger.warning(
+                    "Token verification failed: no matching key found in JWKS"
+                )
                 return None
 
             # Construct public key
@@ -202,29 +216,31 @@ class OIDCClient:
 
             # Additional expiration check with grace period (JWT library handles this with leeway)
             if payload.get("exp", 0) < (time.time() - 60):
-                print("Token expired beyond grace period")
+                logger.warning("Token verification failed: expired beyond grace period")
                 return None
 
             # Verify nonce if provided (replay attack prevention)
             if nonce and payload.get("nonce") != nonce:
-                print("Nonce mismatch")
+                logger.warning("Token verification failed: nonce mismatch")
                 return None
 
             return payload
         except jwt.ExpiredSignatureError:
-            print("Token signature expired")
+            logger.warning("Token verification failed: signature expired")
             return None
         except jwt.InvalidAudienceError:
-            print("Invalid audience")
+            logger.warning("Token verification failed: invalid audience")
             return None
         except jwt.InvalidIssuerError:
-            print("Invalid issuer")
+            logger.warning("Token verification failed: invalid issuer")
             return None
         except Exception as e:
-            print(f"Token verification failed: {str(e)}")
+            logger.warning(f"Token verification failed: {str(e)}")
             return None
 
-    def check_group_membership(self, token_payload: Dict[str, Any], required_groups: Optional[str] = None) -> bool:
+    def check_group_membership(
+        self, token_payload: Dict[str, Any], required_groups: Optional[str] = None
+    ) -> bool:
         """
         Check if user has required group membership based on 'member_of' claim.
         Both member_of and required_groups are comma-separated strings.
@@ -249,7 +265,7 @@ class OIDCClient:
         member_of_str = token_payload.get("member_of", "")
 
         if not member_of_str:
-            print("No member_of claim found")
+            logger.warning("Group membership check failed: no member_of claim found")
             return False
 
         # Split both strings by comma and strip whitespace
@@ -260,7 +276,9 @@ class OIDCClient:
         matched = any(group in required for group in user_groups)
 
         if not matched:
-            print(f"No matching group membership found")
+            logger.warning(
+                f"Group membership check failed: no matching group found (user_groups={user_groups})"
+            )
             return False
 
         return matched

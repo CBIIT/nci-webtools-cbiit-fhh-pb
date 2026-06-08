@@ -31,7 +31,9 @@ def get_tier() -> str:
     return "dev"  # Default fallback
 
 
-def get_secret(secret_name: Optional[str] = None, region_name: str = "us-east-1") -> Dict[str, Any]:
+def get_secret(
+    secret_name: Optional[str] = None, region_name: str = "us-east-1"
+) -> Dict[str, Any]:
     """
     Fetch secret from AWS Secrets Manager with in-memory caching.
 

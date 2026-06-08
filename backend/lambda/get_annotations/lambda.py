@@ -1,22 +1,16 @@
 import json
-import logging
+from aws_lambda_powertools import Logger
+from aws_lambda_powertools.logging import correlation_paths
+from aws_lambda_powertools.logging.formatters.datadog import DatadogLogFormatter
 from get_annotations import get_annotations
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-logging.getLogger("botocore").setLevel(logging.WARNING)
+logger = Logger(service="fhhpb", logger_formatter=DatadogLogFormatter())
+logger.append_keys(component="get-annotations")
 
 
-class _UserContextFilter(logging.Filter):
-    def filter(self, record):
-        record.usr_email = getattr(self, "email", "unknown")
-        return True
-
-
-_user_filter = _UserContextFilter()
-logger.addFilter(_user_filter)
-
-
+@logger.inject_lambda_context(
+    correlation_id_path=correlation_paths.API_GATEWAY_REST, clear_state=True
+)
 def lambda_handler(event, context):
     """AWS Lambda handler for API Gateway integration."""
 
@@ -34,16 +28,24 @@ def lambda_handler(event, context):
 
     try:
         # Inject user context into all log records
-        authorizer = event.get("requestContext", {}).get("authorizer", {})
-        _user_filter.email = authorizer.get("email", "unknown")
+        request_context = event.get("requestContext", {})
+        authorizer = request_context.get("authorizer", {})
+        identity = request_context.get("identity", {})
+        logger.append_keys(
+            user_id=authorizer.get("userId", "unknown"),
+            email=authorizer.get("email", "unknown"),
+            source_ip=identity.get("sourceIp", "unknown"),
+        )
 
         # Validate path parameters
         study_id = event.get("pathParameters", {}).get("study_id")
         family_id = event.get("pathParameters", {}).get("family_id")
 
         if not study_id:
+            logger.warning("Missing study_id in path parameters")
             return json_response(400, {"error": "Missing study_id in path parameters"})
         if not family_id:
+            logger.warning("Missing family_id in path parameters")
             return json_response(400, {"error": "Missing family_id in path parameters"})
 
         # Get annotations from S3
@@ -70,4 +72,6 @@ def lambda_handler(event, context):
 
     except Exception as e:
         logger.error(f"Lambda handler error: {str(e)}")
-        return json_response(500, {"status": "error", "message": f"Lambda handler error: {str(e)}"})
+        return json_response(
+            500, {"status": "error", "message": f"Lambda handler error: {str(e)}"}
+        )
