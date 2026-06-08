@@ -11,10 +11,10 @@ import secrets
 from typing import Dict, Any, Optional
 import boto3
 from botocore.exceptions import ClientError
+from aws_lambda_powertools import Logger
 from secrets_manager import get_tier
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+logger = Logger(child=True)
 logging.getLogger("botocore").setLevel(logging.WARNING)
 
 # Global DynamoDB client (reused across Lambda invocations)

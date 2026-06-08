@@ -12,6 +12,7 @@ import {
   resolveDatadogForwarderArn,
   subscribeLogGroupToDatadogForwarder,
 } from "./utils/datadog-logging";
+import { getPowertoolsLayer } from "./utils/powertools-layer";
 
 export interface LambdaJsonProcessorStackProps extends cdk.StackProps {
   dataBucket: s3.Bucket;
@@ -75,6 +76,7 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
     );
 
     // Create Lambda function
+    const powertoolsLayer = getPowertoolsLayer(this, "PowertoolsLayer");
     this.lambdaFunction = new lambda.Function(this, "JsonProcessorFunction", {
       functionName: `nci-cbiit-fhhpb-jsonprocessor-${tier}`,
       description:
@@ -84,12 +86,14 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
       code: lambda.Code.fromAsset(
         path.join(__dirname, "../../backend/lambda/json-processor"),
       ),
+      layers: [powertoolsLayer],
       role: lambdaRole,
       timeout: cdk.Duration.minutes(5),
       memorySize: 512,
       environment: {
         DATA_BUCKET: dataBucketName,
         TIER: tier,
+        POWERTOOLS_SERVICE_NAME: `${tier}-fhh-pb-lambda`,
       },
       // Add retry configuration
       reservedConcurrentExecutions: 10, // Limit concurrent executions

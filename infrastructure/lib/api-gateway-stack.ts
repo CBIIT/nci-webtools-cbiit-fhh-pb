@@ -13,6 +13,7 @@ import {
   subscribeLogGroupToDatadogForwarder,
   subscribeLogGroupToDatadogForwarderWhenReady,
 } from "./utils/datadog-logging";
+import { getPowertoolsLayer } from "./utils/powertools-layer";
 
 export interface ApiGatewayStackProps extends cdk.StackProps {
   listStudiesFunction: lambda.Function;
@@ -36,6 +37,7 @@ export class ApiGatewayStack extends cdk.Stack {
     const tier = process.env.TIER || "dev";
     const secretName = `${tier}/fhhpb/oidc-config`;
     const forwarderArn = resolveDatadogForwarderArn(this, tier);
+    const powertoolsLayer = getPowertoolsLayer(this, "PowertoolsLayer");
 
     const {
       logGroup: authorizerLogGroup,
@@ -78,12 +80,16 @@ export class ApiGatewayStack extends cdk.Stack {
             ],
           },
         }),
+        layers: [powertoolsLayer],
         timeout: cdk.Duration.seconds(10),
         memorySize: 256,
         logGroup: authorizerLogGroup,
         loggingFormat: lambda.LoggingFormat.JSON,
         systemLogLevel: lambda.SystemLogLevel.WARN,
         applicationLogLevel: lambda.ApplicationLogLevel.DEBUG,
+        environment: {
+          POWERTOOLS_SERVICE_NAME: `${tier}-fhh-pb-lambda`,
+        },
       },
     );
     this.authorizerFunction.node.addDependency(authorizerLogGroupDep);
@@ -139,6 +145,7 @@ export class ApiGatewayStack extends cdk.Stack {
           ],
         },
       }),
+      layers: [powertoolsLayer],
       timeout: cdk.Duration.seconds(10),
       memorySize: 256,
       logGroup: callbackLogGroup,
@@ -147,6 +154,7 @@ export class ApiGatewayStack extends cdk.Stack {
       applicationLogLevel: lambda.ApplicationLogLevel.DEBUG,
       environment: {
         SESSIONS_TABLE_NAME: props.sessionsTable.tableName,
+        POWERTOOLS_SERVICE_NAME: `${tier}-fhh-pb-lambda`,
       },
     });
     this.callbackFunction.node.addDependency(callbackLogGroupDep);
@@ -243,11 +251,13 @@ export class ApiGatewayStack extends cdk.Stack {
           ],
         },
       }),
+      layers: [powertoolsLayer],
       timeout: cdk.Duration.seconds(10),
       memorySize: 256,
       logGroup: logoutLogGroup,
       environment: {
         SESSIONS_TABLE_NAME: props.sessionsTable.tableName,
+        POWERTOOLS_SERVICE_NAME: `${tier}-fhh-pb-lambda`,
       },
     });
     logoutFunction.node.addDependency(logoutLogGroupDep);
@@ -272,11 +282,13 @@ export class ApiGatewayStack extends cdk.Stack {
           ],
         },
       }),
+      layers: [powertoolsLayer],
       timeout: cdk.Duration.seconds(10),
       memorySize: 256,
       logGroup: extendSessionLogGroup,
       environment: {
         SESSIONS_TABLE_NAME: props.sessionsTable.tableName,
+        POWERTOOLS_SERVICE_NAME: `${tier}-fhh-pb-lambda`,
       },
     });
     extendSessionFunction.node.addDependency(extendSessionLogGroupDep);

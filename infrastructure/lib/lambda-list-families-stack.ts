@@ -11,6 +11,7 @@ import {
   resolveDatadogForwarderArn,
   subscribeLogGroupToDatadogForwarder,
 } from "./utils/datadog-logging";
+import { getPowertoolsLayer } from "./utils/powertools-layer";
 
 export interface LambdaListFamiliesStackProps extends cdk.StackProps {
   dataBucket: s3.Bucket;
@@ -65,6 +66,7 @@ export class LambdaListFamiliesStack extends cdk.Stack {
     );
 
     // Create Lambda function
+    const powertoolsLayer = getPowertoolsLayer(this, "PowertoolsLayer");
     this.lambdaFunction = new lambda.Function(this, "ListFamiliesFunction", {
       functionName: `nci-cbiit-fhhpb-listfamilies-${tier}`,
       runtime: lambda.Runtime.PYTHON_3_13,
@@ -72,12 +74,14 @@ export class LambdaListFamiliesStack extends cdk.Stack {
       code: lambda.Code.fromAsset(
         path.join(__dirname, "../../backend/lambda/list_families"),
       ),
+      layers: [powertoolsLayer],
       role: lambdaRole,
       timeout: cdk.Duration.minutes(1),
       memorySize: 256,
       environment: {
         DATA_BUCKET: props.dataBucket.bucketName,
         TIER: tier,
+        POWERTOOLS_SERVICE_NAME: `${tier}-fhh-pb-lambda`,
       },
       reservedConcurrentExecutions: 10,
       maxEventAge: cdk.Duration.minutes(1),

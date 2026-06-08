@@ -9,7 +9,7 @@ from typing import Dict, Any
 from oidc_client import OIDCClient
 from session_manager import validate_session
 
-logger = Logger(service="fhhpb", logger_formatter=DatadogLogFormatter())
+logger = Logger(logger_formatter=DatadogLogFormatter())
 logger.append_keys(component="api-authorizer")
 
 

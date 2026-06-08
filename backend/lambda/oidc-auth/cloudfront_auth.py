@@ -5,7 +5,15 @@ OAuth callback is handled by API Gateway via CloudFront at /api/login
 """
 
 import base64
+import os
 import secrets
+
+# Lambda@Edge cannot use custom env vars; derive service from function name
+# and set POWERTOOLS_SERVICE_NAME before importing modules that use Logger(child=True)
+_fn_name = os.environ.get("AWS_LAMBDA_FUNCTION_NAME", "")
+_tier = _fn_name.split("-")[0] if _fn_name else "unknown"
+os.environ.setdefault("POWERTOOLS_SERVICE_NAME", f"{_tier}-fhh-pb-lambda")
+
 from aws_lambda_powertools import Logger
 from aws_lambda_powertools.logging.formatters.datadog import DatadogLogFormatter
 from typing import Dict, Any
@@ -13,7 +21,7 @@ from oidc_client import OIDCClient
 from secrets_manager import get_tier
 from session_manager import validate_session
 
-logger = Logger(service="fhhpb", logger_formatter=DatadogLogFormatter())
+logger = Logger(logger_formatter=DatadogLogFormatter())
 logger.append_keys(component="cloudfront-auth")
 
 

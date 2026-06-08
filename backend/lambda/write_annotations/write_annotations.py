@@ -1,9 +1,8 @@
 import boto3
 import os
-import logging
+from aws_lambda_powertools import Logger
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+logger = Logger(child=True)
 
 
 def write_annotations(study_id, family_id, data_str, bucket_name=None):

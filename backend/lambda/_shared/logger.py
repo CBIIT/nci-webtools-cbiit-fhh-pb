@@ -19,17 +19,18 @@ from aws_lambda_powertools import Logger
 from aws_lambda_powertools.logging import correlation_paths
 from aws_lambda_powertools.logging.formatters.datadog import DatadogLogFormatter
 
-SERVICE_NAME = ""  # use service name from datadog tags
-
 
 def create_logger(component: str = "") -> Logger:
     """
     Create a pre-configured Logger instance with Datadog-compatible formatting.
 
+    Service name is read from POWERTOOLS_SERVICE_NAME environment variable
+    (set in CDK). Do not hardcode service names in handler code.
+
     Args:
         component: Optional component name appended to log context (e.g. "get-annotations").
     """
-    logger = Logger(service=SERVICE_NAME, logger_formatter=DatadogLogFormatter())
+    logger = Logger(logger_formatter=DatadogLogFormatter())
     if component:
         logger.append_keys(component=component)
     return logger

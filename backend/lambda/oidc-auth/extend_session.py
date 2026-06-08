@@ -10,7 +10,7 @@ from aws_lambda_powertools.logging.formatters.datadog import DatadogLogFormatter
 from typing import Dict, Any
 from session_manager import validate_session, extend_session
 
-logger = Logger(service="fhhpb", logger_formatter=DatadogLogFormatter())
+logger = Logger(logger_formatter=DatadogLogFormatter())
 logger.append_keys(component="extend-session")
 
 

@@ -8,10 +8,9 @@ import time
 import base64
 import hashlib
 import secrets
-import logging
+from aws_lambda_powertools import Logger
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+logger = Logger(child=True)
 from typing import Dict, Any, Optional, List
 from urllib.parse import urlencode
 import urllib.request

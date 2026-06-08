@@ -11,6 +11,7 @@ import {
   resolveDatadogForwarderArn,
   subscribeLogGroupToDatadogForwarder,
 } from "./utils/datadog-logging";
+import { getPowertoolsLayer } from "./utils/powertools-layer";
 
 export interface LambdaWriteAnnotationsStackProps extends cdk.StackProps {
   dataBucket: s3.Bucket;
@@ -77,6 +78,7 @@ export class LambdaWriteAnnotationsStack extends cdk.Stack {
     );
 
     // Create Lambda function
+    const powertoolsLayer = getPowertoolsLayer(this, "PowertoolsLayer");
     this.lambdaFunction = new lambda.Function(
       this,
       "WriteAnnotationsFunction",
@@ -87,12 +89,14 @@ export class LambdaWriteAnnotationsStack extends cdk.Stack {
         code: lambda.Code.fromAsset(
           path.join(__dirname, "../../backend/lambda/write_annotations"),
         ),
+        layers: [powertoolsLayer],
         role: lambdaRole,
         timeout: cdk.Duration.minutes(2),
         memorySize: 256,
         environment: {
           DATA_BUCKET: props.dataBucket.bucketName,
           TIER: tier,
+          POWERTOOLS_SERVICE_NAME: `${tier}-fhh-pb-lambda`,
         },
         // Add retry configuration
         reservedConcurrentExecutions: 5, // Limit concurrent executions

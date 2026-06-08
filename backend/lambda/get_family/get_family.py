@@ -1,9 +1,8 @@
 import boto3
 import os
-import logging
+from aws_lambda_powertools import Logger
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+logger = Logger(child=True)
 
 
 def get_family(study_id, family_id, bucket_name=None):

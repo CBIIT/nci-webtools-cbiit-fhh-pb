@@ -13,7 +13,7 @@ from oidc_client import OIDCClient
 from secrets_manager import get_tier
 from session_manager import create_session
 
-logger = Logger(service="fhhpb", logger_formatter=DatadogLogFormatter())
+logger = Logger(logger_formatter=DatadogLogFormatter())
 logger.append_keys(component="oidc-callback")
 
 

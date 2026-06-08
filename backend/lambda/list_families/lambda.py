@@ -4,7 +4,7 @@ from aws_lambda_powertools.logging import correlation_paths
 from aws_lambda_powertools.logging.formatters.datadog import DatadogLogFormatter
 from list_families import list_families
 
-logger = Logger(service="fhhpb", logger_formatter=DatadogLogFormatter())
+logger = Logger(logger_formatter=DatadogLogFormatter())
 logger.append_keys(component="list-families")
 
 

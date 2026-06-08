@@ -11,7 +11,7 @@ from typing import Dict, Any
 from secrets_manager import get_tier
 from session_manager import revoke_session, revoke_user_sessions
 
-logger = Logger(service="fhhpb", logger_formatter=DatadogLogFormatter())
+logger = Logger(logger_formatter=DatadogLogFormatter())
 logger.append_keys(component="logout")
 
 
