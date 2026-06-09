@@ -11,6 +11,8 @@ import secrets
 # Lambda@Edge cannot use custom env vars; derive service from function name
 # and set POWERTOOLS_SERVICE_NAME before importing modules that use Logger(child=True)
 _fn_name = os.environ.get("AWS_LAMBDA_FUNCTION_NAME", "")
+if "." in _fn_name:
+    _fn_name = _fn_name.split(".", 1)[1]
 _tier = _fn_name.split("-")[0] if _fn_name else "unknown"
 os.environ.setdefault("POWERTOOLS_SERVICE_NAME", f"{_tier}-fhh-pb-lambda")
 
