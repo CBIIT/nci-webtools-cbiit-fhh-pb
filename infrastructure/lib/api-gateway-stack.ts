@@ -86,7 +86,7 @@ export class ApiGatewayStack extends cdk.Stack {
         logGroup: authorizerLogGroup,
         loggingFormat: lambda.LoggingFormat.JSON,
         systemLogLevel: lambda.SystemLogLevel.WARN,
-        applicationLogLevel: lambda.ApplicationLogLevel.DEBUG,
+        applicationLogLevel: lambda.ApplicationLogLevel.INFO,
         environment: {
           POWERTOOLS_SERVICE_NAME: `${tier}-fhh-pb-lambda`,
         },
@@ -151,7 +151,7 @@ export class ApiGatewayStack extends cdk.Stack {
       logGroup: callbackLogGroup,
       loggingFormat: lambda.LoggingFormat.JSON,
       systemLogLevel: lambda.SystemLogLevel.WARN,
-      applicationLogLevel: lambda.ApplicationLogLevel.DEBUG,
+      applicationLogLevel: lambda.ApplicationLogLevel.INFO,
       environment: {
         SESSIONS_TABLE_NAME: props.sessionsTable.tableName,
         POWERTOOLS_SERVICE_NAME: `${tier}-fhh-pb-lambda`,

@@ -15,7 +15,7 @@ def write_annotations(study_id, family_id, data_str, bucket_name=None):
             )
 
         s3_key = f"annotations/{study_id}/{family_id}.annotations.json"
-        logger.debug(f"Writing to S3: s3://{bucket_name}/{s3_key}")
+        logger.info(f"Writing to S3: s3://{bucket_name}/{s3_key}")
 
         boto3.client("s3").put_object(
             Bucket=bucket_name,
@@ -24,9 +24,7 @@ def write_annotations(study_id, family_id, data_str, bucket_name=None):
             ContentType="application/json",
         )
 
-        logger.debug(
-            f"Successfully wrote annotations for study_id: {study_id}, family_id: {family_id}"
-        )
+        logger.info(f"Successfully wrote annotations for study_id: {study_id}, family_id: {family_id}")
         return {"status": "success", "message": "Annotations written successfully"}
 
     except Exception as e:

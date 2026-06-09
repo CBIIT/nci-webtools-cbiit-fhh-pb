@@ -14,7 +14,7 @@ def list_studies(bucket_name=None):
                 "Bucket name not provided and DATA_BUCKET environment variable not set"
             )
 
-        logger.debug(f"Listing studies from S3: s3://{bucket_name}/processed/")
+        logger.info(f"Listing studies from S3: s3://{bucket_name}/processed/")
 
         s3_client = boto3.client("s3")
 

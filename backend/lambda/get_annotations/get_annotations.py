@@ -15,14 +15,12 @@ def get_annotations(study_id, family_id, bucket_name=None):
             )
 
         s3_key = f"annotations/{study_id}/{family_id}.annotations.json"
-        logger.debug(f"Reading from S3: s3://{bucket_name}/{s3_key}")
+        logger.info(f"Reading from S3: s3://{bucket_name}/{s3_key}")
 
         response = boto3.client("s3").get_object(Bucket=bucket_name, Key=s3_key)
         data = response["Body"].read().decode("utf-8")
 
-        logger.debug(
-            f"Successfully retrieved annotations for study_id: {study_id}, family_id: {family_id}"
-        )
+        logger.info(f"Successfully retrieved annotations for study_id: {study_id}, family_id: {family_id}")
         return {"status": "success", "data": data}
 
     except boto3.client("s3").exceptions.NoSuchKey:

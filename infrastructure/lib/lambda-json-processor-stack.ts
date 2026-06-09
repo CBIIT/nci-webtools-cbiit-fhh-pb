@@ -102,7 +102,7 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
       logGroup: logGroup,
       loggingFormat: lambda.LoggingFormat.JSON,
       systemLogLevel: lambda.SystemLogLevel.WARN,
-      applicationLogLevel: lambda.ApplicationLogLevel.DEBUG,
+      applicationLogLevel: lambda.ApplicationLogLevel.INFO,
     });
     this.lambdaFunction.node.addDependency(logGroupDep);
 

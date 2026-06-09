@@ -88,7 +88,7 @@ export class LambdaListFamiliesStack extends cdk.Stack {
       retryAttempts: 2,
       loggingFormat: lambda.LoggingFormat.JSON,
       systemLogLevel: lambda.SystemLogLevel.WARN,
-      applicationLogLevel: lambda.ApplicationLogLevel.DEBUG,
+      applicationLogLevel: lambda.ApplicationLogLevel.INFO,
       logGroup: logGroup,
     });
     this.lambdaFunction.node.addDependency(logGroupDep);
