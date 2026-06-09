@@ -51,6 +51,10 @@ export class CloudFrontS3Stack extends cdk.Stack {
     this.bucket = new s3.Bucket(this, "FrontendBucket", {
       bucketName: `nci-cbiit-fhhpb-website-${tier}`,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      bucketKeyEnabled: true,
+      blockedEncryptionTypes: [s3.BlockedEncryptionType.SSE_C],
+      enforceSSL: true,
       // removalPolicy: cdk.RemovalPolicy.DESTROY, // For development - change for production
       // autoDeleteObjects: true, // For development - change for production
     });

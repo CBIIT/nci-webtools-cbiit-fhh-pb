@@ -49,7 +49,6 @@ export class LambdaWriteAnnotationsStack extends cdk.Stack {
         effect: iam.Effect.ALLOW,
         actions: [
           "s3:PutObject",
-          "s3:PutObjectAcl",
           "s3:GetObject",
           "s3:ListBucket",
         ],
