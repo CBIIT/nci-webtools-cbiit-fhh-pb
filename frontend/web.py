@@ -2,6 +2,7 @@ from flask import Flask, request, send_from_directory, render_template, jsonify
 import os
 import json
 import requests
+from datetime import datetime
 from urllib.parse import urljoin
 
 app = Flask(__name__)
@@ -99,6 +100,66 @@ def list_families(study_id):
     # Fall back to local directory listing
     return jsonify(os.listdir(os.path.join(PROCESSED_FOLDER, study_id)))
 
+
+@app.route("/families/<study_id>", methods=["POST"])
+def create_family(study_id):
+    payload = request.get_json(silent=True) or {}
+    family_id = (payload.get("family_id") or "").strip()
+    proband_id = (payload.get("proband_id") or "").strip()
+    proband_name = (payload.get("proband_name") or "").strip()
+
+    if not study_id:
+        return jsonify({"error": "study_id is required"}), 400
+    if not family_id:
+        return jsonify({"error": "family_id is required"}), 400
+    if not proband_id:
+        return jsonify({"error": "proband_id is required"}), 400
+
+    for value in (study_id, family_id, proband_id):
+        if "/" in value or "\\" in value or ".." in value:
+            return jsonify({"error": "invalid id value"}), 400
+
+    study_dir = os.path.join(PROCESSED_FOLDER, study_id)
+    os.makedirs(study_dir, exist_ok=True)
+
+    filename_json = family_id + ".json"
+    filepath_json = os.path.join(study_dir, filename_json)
+    filename_processed = family_id + ".processed.json"
+    filepath_processed = os.path.join(study_dir, filename_processed)
+
+    if os.path.exists(filepath_json) or os.path.exists(filepath_processed):
+        return jsonify({"error": "family file already exists"}), 409
+
+    family_data = {
+        "general": {
+            "study": study_id,
+            "proband": proband_id,
+            "family_classification": "",
+            "family_genetic_status": "",
+            "last_updated": datetime.utcnow().isoformat(),
+        },
+        "people": {
+            proband_id: {
+                "name": proband_name,
+                "born": None,
+                "deceased": False,
+                "deathdate": None,
+                "father": None,
+                "mother": None,
+                "demographics": {
+                    "gender": "Unknown"
+                },
+                "diseases": [],
+                "procedures": []
+            }
+        }
+    }
+
+    with open(filepath_json, "w") as output_file:
+        json.dump(family_data, output_file, indent=2)
+
+    return jsonify({"response": "OK", "study_id": study_id, "family_id": family_id, "file": filename_json})
+
 @app.route("/studies")
 def list_studies():
     # Try API Gateway first if configured
@@ -110,6 +171,25 @@ def list_studies():
     return jsonify(os.listdir(os.path.join(PROCESSED_FOLDER)))
 
 
+@app.route("/studies", methods=["POST"])
+def create_study():
+    payload = request.get_json(silent=True) or {}
+    study_id = (payload.get("study_id") or "").strip()
+
+    if not study_id:
+        return jsonify({"error": "study_id is required"}), 400
+
+    if "/" in study_id or "\\" in study_id or ".." in study_id:
+        return jsonify({"error": "invalid study_id"}), 400
+
+    processed_study_dir = os.path.join(PROCESSED_FOLDER, study_id)
+    annotations_study_dir = os.path.join(ANNOTATIONS_FOLDER, study_id)
+    os.makedirs(processed_study_dir, exist_ok=True)
+    os.makedirs(annotations_study_dir, exist_ok=True)
+
+    return jsonify({"response": "OK", "study_id": study_id})
+
+
 @app.route("/family/<study_id>/<family_id>")
 def get_family_api_gateway(study_id, family_id):
     # Try API Gateway first if configured
@@ -119,9 +199,40 @@ def get_family_api_gateway(study_id, family_id):
 
     # Fall back to local file serving
     study_name = study_id;
-    filename = family_id + ".processed.json"
+    processed_filename = family_id + ".processed.json"
+    json_filename = family_id + ".json"
+    study_folder = os.path.join(PROCESSED_FOLDER, study_name)
+
+    if os.path.exists(os.path.join(study_folder, processed_filename)):
+        filename = processed_filename
+    else:
+        filename = json_filename
+
     print ("Reading local file: " + PROCESSED_FOLDER + "/" + study_name + "/" + filename)
-    return send_from_directory(os.path.join(PROCESSED_FOLDER, study_name), filename)
+    return send_from_directory(study_folder, filename)
+
+
+@app.route("/family/<study_id>/<family_id>", methods=["POST"])
+def save_family_json(study_id, family_id):
+    payload = request.get_json(silent=True)
+    if payload is None:
+        return jsonify({"error": "invalid JSON payload"}), 400
+
+    for value in (study_id, family_id):
+        if "/" in value or "\\" in value or ".." in value:
+            return jsonify({"error": "invalid id value"}), 400
+
+    study_dir = os.path.join(PROCESSED_FOLDER, study_id)
+    os.makedirs(study_dir, exist_ok=True)
+
+    json_path = os.path.join(study_dir, family_id + ".json")
+    processed_path = os.path.join(study_dir, family_id + ".processed.json")
+    target_path = json_path if os.path.exists(json_path) or not os.path.exists(processed_path) else processed_path
+
+    with open(target_path, "w") as output_file:
+        json.dump(payload, output_file, indent=2)
+
+    return jsonify({"response": "OK", "study_id": study_id, "family_id": family_id})
 
 
 @app.route("/annotations/<study_id>/<family_id>", methods=["POST"])

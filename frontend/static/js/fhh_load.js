@@ -44,6 +44,60 @@ export async function ensureConfigLoaded() {
   return configPromise;
 }
 
+export async function create_study_directory(study_id) {
+  const trimmed_study_id = (study_id || "").trim();
+  if (!trimmed_study_id) {
+    throw new Error("Study ID is required");
+  }
+
+  const response = await fetch(build_api_url("/studies"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({ study_id: trimmed_study_id }),
+  });
+
+  if (!response.ok) {
+    const error_text = await response.text();
+    throw new Error(error_text || `Failed to create study (${response.status})`);
+  }
+
+  return await response.json();
+}
+
+export async function create_family_file(study_id, family_id, proband_id, proband_name) {
+  const trimmed_study_id = (study_id || "").trim();
+  const trimmed_family_id = (family_id || "").trim();
+  const trimmed_proband_id = (proband_id || "").trim();
+  const trimmed_proband_name = (proband_name || "").trim();
+
+  if (!trimmed_study_id) throw new Error("Study ID is required");
+  if (!trimmed_family_id) throw new Error("Family ID is required");
+  if (!trimmed_proband_id) throw new Error("Proband ID is required");
+
+  const response = await fetch(build_api_url(`/families/${trimmed_study_id}`), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      family_id: trimmed_family_id,
+      proband_id: trimmed_proband_id,
+      proband_name: trimmed_proband_name,
+    }),
+  });
+
+  if (!response.ok) {
+    const error_text = await response.text();
+    throw new Error(error_text || `Failed to create family (${response.status})`);
+  }
+
+  return await response.json();
+}
+
 async function loadConfigOnce() {
   try {
     const response = await fetch("/config/lfss.json");
@@ -76,7 +130,7 @@ export async function check_for_studies() {
   const studies = await get_study_list(build_api_url("/studies"));
   console.log(studies);
   return studies;
-} 
+}
 
 export async function check_for_families(study_id) {
   console.log("Checking for families...");
@@ -188,37 +242,57 @@ async function get_study_list(url) {
  * Loads family data, annotations, and configuration
  * @param {string} study_id - The study identifier (S3/filesystem folder name)
  * @param {string} family_id - The family identifier
- * @param {string} config_id - Optional configuration ID (defaults to 'basic')
+ * @param {string} study_id - Study identifier
+ * @param {string} config_id - Optional configuration ID (defaults to study_id, then lfss)
  * @returns {Promise<[Object, Object, Object]>} Array of [data, annotations, config]
  */
+<<<<<<< Updated upstream
 export async function load_config_and_data(study_id, family_id, config_id) {
   console.log("Study:" + study_id + " Family:" + family_id + " Config:" + config_id);
+=======
+export async function load_config_and_data(family_id, study_id, config_id) {
+  console.log("Family:" + family_id + " study: " + study_id + " config: " + config_id);
+>>>>>>> Stashed changes
   if (!family_id) {
     console.warn("No family ID provided");
     return;
   }
-  if (!config_id) {
-    console.log("No config ID provided, defaulting to 'basic'");
-  }
+  const selected_study_id = (study_id || "lfss").trim();
+  const selected_config_id = (config_id || selected_study_id || "lfss").trim();
 
+<<<<<<< Updated upstream
   await ensureConfigLoaded();
 
   const pedigree_file = build_api_url("/family/" + study_id + "/" + family_id);
   const annotations_file = build_api_url("/annotations/" + study_id + "/" + family_id);
   const config_file = `/config/${config_id || "basic"}.json`;
+=======
+  const pedigree_file = build_api_url("/family/" + selected_study_id + "/" + family_id);
+  const annotations_file = build_api_url("/annotations/" + selected_study_id + "/" + family_id);
+  const config_file = `/config/${selected_config_id}.json`;
+>>>>>>> Stashed changes
 
   loaded_study_id = study_id;
   loaded_family_id = family_id;
+  loaded_study_id = selected_study_id;
   try {
-    const [pedigree_response, annotations_response, config_response] =
+    const [pedigree_response, annotations_response, primary_config_response] =
       await Promise.all([
         fetch(pedigree_file),
         fetch(annotations_file),
         fetch(config_file),
       ]);
 
-    if (!pedigree_response.ok || !config_response.ok) {
-      throw new Error("One or more requests failed");
+    if (!pedigree_response.ok) {
+      throw new Error(`Family request failed (${pedigree_response.status})`);
+    }
+
+    let config_response = primary_config_response;
+    if (!config_response.ok && selected_config_id !== "lfss") {
+      config_response = await fetch("/config/lfss.json");
+    }
+    if (!config_response.ok) {
+      throw new Error(`Config request failed (${config_response.status})`);
     }
 
     const annotations = annotations_response.ok
@@ -249,7 +323,11 @@ export async function load_config_and_data(study_id, family_id, config_id) {
 export function save_positions_and_annotations(data) {
   const proband_id = data.general?.proband;
   const family_id = loaded_family_id;
+<<<<<<< Updated upstream
   const study_id = loaded_study_id;
+=======
+  const study_id = loaded_study_id || "lfss";
+>>>>>>> Stashed changes
   console.log("saving Annotations: " + study_id + "/" + family_id);
 
   const people_positions = Object.fromEntries(
@@ -260,6 +338,32 @@ export function save_positions_and_annotations(data) {
   );
 
   save_file(study_id, family_id, { positions: people_positions });
+}
+
+export async function save_family_json(data) {
+  const family_id = loaded_family_id;
+  const study_id = loaded_study_id || "lfss";
+
+  if (!family_id) {
+    throw new Error("No family is currently loaded");
+  }
+
+  const site_url = build_api_url("/family/" + study_id + "/" + family_id);
+  const response = await fetch(site_url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const error_text = await response.text();
+    throw new Error(error_text || `Failed to save family (${response.status})`);
+  }
+
+  return await response.json();
 }
 
 /**

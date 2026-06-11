@@ -13,7 +13,8 @@
         Special Actions:<br/>
         <BUTTON id='log-button'>LOG</BUTTON>
         <BUTTON id='clear-alert-button'>Clear Alerts</BUTTON>
-        <br/><button id="save-button"> Save Annotations </button>
+        <br/><button id="save-family-button" style="display:none;"> Save Family </button>
+        <button id="save-button"> Save Annotations </button>
 
       </div>
       <div class="file-block">
@@ -27,6 +28,10 @@
           <OPTION> </OPTION>
           <OPTION> This is where we list the pedigrees </OPTION>
         </SELECT>
+        <div id="build-mode-actions" class="build-mode-actions" style="display:none;">
+          <button id="new-study-button" type="button">New Study</button>
+          <button id="new-family-button" type="button">New Family</button>
+        </div>
       </div>
       <div class="radio-block"> Action Mode: <br />
         <input type="radio" id="details" name="action_choice" value="details" checked="checked">
