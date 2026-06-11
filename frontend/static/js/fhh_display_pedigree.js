@@ -226,125 +226,25 @@ action_mode_radio_elems.forEach((radio_elem) => {
   });
 });
 
-let build_mode_actions_elem = document.getElementById("build-mode-actions");
-
-function update_build_mode_actions_visibility() {
-  if (!build_mode_actions_elem) return;
-  const is_build_mode = config?.build_mode === true;
-  if (save_family_elem) save_family_elem.style.display = is_build_mode ? "inline-block" : "none";
-  build_mode_actions_elem.style.display = is_build_mode ? "flex" : "none";
-}
-
-let new_study_button_elem = document.getElementById("new-study-button");
-if (new_study_button_elem) {
-  new_study_button_elem.addEventListener("click", async function () {
-    const entered_study_id = window.prompt("Enter new study ID");
-    if (entered_study_id === null) return;
-
-    const study_id = entered_study_id.trim();
-    if (!study_id) {
-      window.alert("Study ID is required.");
-      return;
-    }
-
-    try {
-      await create_study_directory(study_id);
-      await check_for_studies();
-      study_select.value = study_id;
-      check_for_families(study_id);
-    } catch (error) {
-      console.error("Error creating study:", error);
-      window.alert("Unable to create study. " + (error?.message || ""));
-    }
-  });
-}
-
-let new_family_button_elem = document.getElementById("new-family-button");
-if (new_family_button_elem) {
-  new_family_button_elem.addEventListener("click", async function () {
-    const selected_study = study_select?.value?.trim();
-    if (!selected_study) {
-      window.alert("Please select a study first.");
-      return;
-    }
-
-    const entered_family_id = window.prompt("Enter Family ID");
-    if (entered_family_id === null) return;
-    const family_id = entered_family_id.trim();
-    if (!family_id) {
-      window.alert("Family ID is required.");
-      return;
-    }
-
-    const entered_proband_id = window.prompt("Enter Proband ID");
-    if (entered_proband_id === null) return;
-    const proband_id = entered_proband_id.trim();
-    if (!proband_id) {
-      window.alert("Proband ID is required.");
-      return;
-    }
-
-    const entered_proband_name = window.prompt("Enter Proband Name");
-    if (entered_proband_name === null) return;
-    const proband_name = entered_proband_name.trim();
-
-    try {
-      await create_family_file(selected_study, family_id, proband_id, proband_name);
-      await check_for_families(selected_study);
-      family_select.value = family_id;
-      family_select.dispatchEvent(new Event("change"));
-    } catch (error) {
-      console.error("Error creating family:", error);
-      window.alert("Unable to create family. " + (error?.message || ""));
-    }
-  });
-}
-
-let action_mode_radio_elems = document.querySelectorAll('input[name="action_choice"]');
-let current_action_mode = "details";
-
-function get_checked_action_radio_value() {
-  const checked_radio = document.querySelector('input[name="action_choice"]:checked');
-  if (!checked_radio) return null;
-  return checked_radio.value;
-}
-
-function set_current_action_mode(mode) {
-  current_action_mode = mode;
-}
-
-function is_pedigree_build_mode() {
-  return current_action_mode == "details" && config?.build_mode === true;
-}
-
-set_current_action_mode(get_checked_action_radio_value() || "details");
-
-action_mode_radio_elems.forEach((radio_elem) => {
-  radio_elem.addEventListener("change", function () {
-    set_current_action_mode(radio_elem.value);
-  });
-});
-
 
 document.addEventListener("DOMContentLoaded", async function () {
   try {
-    await ensureConfigLoaded();
+    const loadedConfig = await ensureConfigLoaded();
+    if (loadedConfig) {
+      config = loadedConfig;
+      update_build_mode_actions_visibility();
+    }
     
     const urlParams = new URLSearchParams(window.location.search);
     const family = urlParams.get("family");
     console.log("Family: " + family);
-    load_initial_config().then((initial_config) => {
-      if (initial_config) {
-        config = initial_config;
-        update_build_mode_actions_visibility();
-      }
-    });
     check_for_families("lfss");
     check_for_studies();
 
     let filename = null;
     if (family) {
       filename = family + ".json";
+    }
     const study = urlParams.get("study");
     console.log("Study: " + study + " Family: " + family);
 

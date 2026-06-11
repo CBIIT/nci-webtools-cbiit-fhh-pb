@@ -242,17 +242,11 @@ async function get_study_list(url) {
  * Loads family data, annotations, and configuration
  * @param {string} study_id - The study identifier (S3/filesystem folder name)
  * @param {string} family_id - The family identifier
- * @param {string} study_id - Study identifier
  * @param {string} config_id - Optional configuration ID (defaults to study_id, then lfss)
  * @returns {Promise<[Object, Object, Object]>} Array of [data, annotations, config]
  */
-<<<<<<< Updated upstream
 export async function load_config_and_data(study_id, family_id, config_id) {
   console.log("Study:" + study_id + " Family:" + family_id + " Config:" + config_id);
-=======
-export async function load_config_and_data(family_id, study_id, config_id) {
-  console.log("Family:" + family_id + " study: " + study_id + " config: " + config_id);
->>>>>>> Stashed changes
   if (!family_id) {
     console.warn("No family ID provided");
     return;
@@ -260,21 +254,12 @@ export async function load_config_and_data(family_id, study_id, config_id) {
   const selected_study_id = (study_id || "lfss").trim();
   const selected_config_id = (config_id || selected_study_id || "lfss").trim();
 
-<<<<<<< Updated upstream
-  await ensureConfigLoaded();
-
-  const pedigree_file = build_api_url("/family/" + study_id + "/" + family_id);
-  const annotations_file = build_api_url("/annotations/" + study_id + "/" + family_id);
-  const config_file = `/config/${config_id || "basic"}.json`;
-=======
   const pedigree_file = build_api_url("/family/" + selected_study_id + "/" + family_id);
   const annotations_file = build_api_url("/annotations/" + selected_study_id + "/" + family_id);
   const config_file = `/config/${selected_config_id}.json`;
->>>>>>> Stashed changes
 
-  loaded_study_id = study_id;
-  loaded_family_id = family_id;
   loaded_study_id = selected_study_id;
+  loaded_family_id = family_id;
   try {
     const [pedigree_response, annotations_response, primary_config_response] =
       await Promise.all([
@@ -323,11 +308,7 @@ export async function load_config_and_data(family_id, study_id, config_id) {
 export function save_positions_and_annotations(data) {
   const proband_id = data.general?.proband;
   const family_id = loaded_family_id;
-<<<<<<< Updated upstream
-  const study_id = loaded_study_id;
-=======
   const study_id = loaded_study_id || "lfss";
->>>>>>> Stashed changes
   console.log("saving Annotations: " + study_id + "/" + family_id);
 
   const people_positions = Object.fromEntries(
