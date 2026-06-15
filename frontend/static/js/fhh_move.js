@@ -95,7 +95,6 @@ function stop_free_move(e) {
   let diff_x = e.pageX - original_x;
   let diff_y = e.pageY - original_y;
 
-  console.log(e.target.id);
 
   free_move = false;
 }

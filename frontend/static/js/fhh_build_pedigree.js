@@ -1,10 +1,9 @@
 
-var family_tree = [];
+let family_tree = [];
 
-var data = {};
-var furthest_right = 0;
-var furthest_left = 0;
-//var gen = 1;
+let data = {};
+let furthest_right = 0;
+let furthest_left = 0;
 
 
 export function set_data (d) {
@@ -23,7 +22,6 @@ export function get_config (d) {
 
 export function get_generation_count() {
   const generation_count = get_youngest_generation() - get_oldest_generation();
-  console.log( (get_youngest_generation()-1) + "<->" + (get_oldest_generation()-1) + ":" + generation_count );
   return generation_count + 1; // Add one for the proband row
 }
 
@@ -122,6 +120,12 @@ function add_unique(array, value) {
 
 export function find_all_partners(person_id) {
   if (!person_id) return [];
+  if (!data["people"][person_id]) {
+    console.log ("Person found but no data: [" + person_id + "]");
+    return [];
+  }
+
+
   let partners = [];
 
   let children = find_all_children(person_id);
@@ -133,6 +137,10 @@ export function find_all_partners(person_id) {
     if (father_id && father_id != person_id && !partners.includes(father_id)) add_unique(partners,father_id);
     if (mother_id && mother_id != person_id && !partners.includes(mother_id)) add_unique(partners,mother_id);
 
+    if (!data["people"][person_id]) {
+      console.log ("Person not found: [" + child_id + "] " + person_id);
+      break;
+    }
     const gen = data["people"][person_id].gen;
     if (!mother_id) {
       const placeholder_id = create_placeholder_partner(person_id, gen, "unknown", "mother");
@@ -152,12 +160,10 @@ export function find_all_partners(person_id) {
 ///////////////////////////////////////
 
 export function  build_entire_family_tree (proband_id) {
-  console.log(furthest_left);
   family_tree = [];
 
   organize_parents(proband_id, 0, "proband");
 
-  console.log(family_tree);
   console.log (data);
 
   set_locations(family_tree);
@@ -167,6 +173,8 @@ export function  build_entire_family_tree (proband_id) {
 
 function organize_parents(person_id, gen, side) {
   if (person_id == null || person_id == "") return;
+  if (!data["people"][person_id]) return [];
+
   let person = data["people"][person_id];
 
   organize_children(person_id, gen + 1, side);
@@ -374,7 +382,6 @@ export function check_for_overlaps(tree) {
     for (const x in gen_loc_list) {
       const compare_gen_loc = gen_loc_list[x];
       if (gen_loc_equal(gen_loc, compare_gen_loc)) {
-        console.log("Found overlap");
         overlap[gen_loc.id] = gen_loc;
         overlap[compare_gen_loc.id] = compare_gen_loc;
       }

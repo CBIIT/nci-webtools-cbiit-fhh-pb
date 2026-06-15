@@ -69,12 +69,17 @@ def get_annotations(study_id, family_id):
     # Try API Gateway first if configured
     api_response = proxy_to_api_gateway(f"annotations/{study_id}/{family_id}", "GET")
     if api_response is not None:
+        if api_response.status_code == 404:
+            return jsonify({"positions": {}}), 200
         return jsonify(api_response.json()), api_response.status_code
 
     # Fall back to local file serving
     filename = family_id + ".annotations.json"
-    app.logger.info(ANNOTATIONS_FOLDER + "/" + filename)
-    return send_from_directory(os.path.join(ANNOTATIONS_FOLDER, study_id), filename)
+    study_annotations_dir = os.path.join(ANNOTATIONS_FOLDER, study_id)
+    annotation_path = os.path.join(study_annotations_dir, filename)
+    if not os.path.exists(annotation_path):
+        return jsonify({"positions": {}}), 200
+    return send_from_directory(study_annotations_dir, filename)
 
 
 @app.route("/config/<config_name>")
@@ -257,4 +262,9 @@ def write_annotations_api_gateway(study_id,family_id):
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    config_debug_mode = _app_config.get("debug_mode")
+    if isinstance(config_debug_mode, bool):
+        debug_mode = config_debug_mode
+    else:
+        debug_mode = os.getenv("FLASK_ENV", "development").lower() == "development"
+    app.run(debug=debug_mode)

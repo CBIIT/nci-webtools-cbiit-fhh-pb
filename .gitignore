@@ -1,8 +1,11 @@
 node_modules
 .DS_Store
+*.bak
 processed/
 frontend/build/*
 data
 
 infrastructure/cdk.context.json
 __pycache__/
+frontend/cert.pem
+frontend/key.pem
