@@ -54,14 +54,12 @@ export function get_config() {
 let study_select = document.getElementById("study_select");
 study_select.addEventListener("change", function (event) {
   study_name = event.target.value;
-  console.log("Selected study ID:", study_name);
   check_for_families(study_name);
 });
 
 let family_select = document.getElementById("families_select");
 family_select.addEventListener("change", function (event) {
   if (!study_name) {
-    console.warn("No study selected");
     return;
   }
   
@@ -91,12 +89,10 @@ clear_alert_elem.addEventListener("click", function () {
 
 let log_elem = document.getElementById("log-button");
 log_elem.addEventListener("click", function () {
-  console.log(data);
 });
 
 let save_elem = document.getElementById("save-button");
 save_elem.addEventListener("click", function () {
-  console.log("Clicked on Save for Family");
 
   save_positions_and_annotations(data);
 });
@@ -237,7 +233,6 @@ document.addEventListener("DOMContentLoaded", async function () {
     
     const urlParams = new URLSearchParams(window.location.search);
     const family = urlParams.get("family");
-    console.log("Family: " + family);
     check_for_families("lfss");
     check_for_studies();
 
@@ -246,7 +241,6 @@ document.addEventListener("DOMContentLoaded", async function () {
       filename = family + ".json";
     }
     const study = urlParams.get("study");
-    console.log("Study: " + study + " Family: " + family);
 
     const studies = await check_for_studies();
 
@@ -269,7 +263,6 @@ document.addEventListener("DOMContentLoaded", async function () {
         annotations = a;
         config = c;
         update_build_mode_actions_visibility();
-        console.log("Loaded family from URL param: " + filename);
           show_all_blocks();
           show_summary_block();
           set_study_summary();
@@ -311,13 +304,10 @@ function add_placeholder_children() {
 }
 
 export function display_pedigree() {
-  console.log(data);
-  console.log(annotations);
   set_data(data);
   other_alerts = {};
 
   reset_furthest_locations();
-  console.log(get_furthest_left());
   const proband_id = data.general?.proband;
 
   if (!proband_id) {
@@ -330,7 +320,6 @@ export function display_pedigree() {
   draw_frame();
   draw_family_tree(family_tree);
 
-  console.log(family_tree);
   add_alert_bar();
 }
 
@@ -431,14 +420,8 @@ function draw_frame() {
   const num_generations = get_generation_count();
   const oldest_generation = get_oldest_generation();
 
-  console.log(
-    "WIDTH (" + total_width + "): " + furthest_left + " <-> " + furthest_right
-  );
-  console.log("HEIGHT:" + num_generations);
-
   center_offset.x = config.margin + -furthest_left * config.h_spacing;
   center_offset.y = config.margin + -oldest_generation * config.v_spacing;
-  console.log("CENTER: " + center_offset.x + "," + center_offset.y);
 
   const width_of_svg = 2 * config.margin + total_width * config.h_spacing;
   const height_of_svg = 2 * config.margin + num_generations * config.v_spacing;
@@ -477,7 +460,6 @@ export function create_svg(width, height) {
 ///////////////////////////////////////////////
 
 function draw_family_tree(family_tree) {
-  console.log("draw_family_tree");
 
   ``;
   for (const person_id in data["people"]) {
@@ -571,11 +553,6 @@ function draw_person(person_id) {
 function draw_person_connectors(person_id) {
   //  console.log(person_id);
   const person = data["people"][person_id];
-
-  if (person.mother == null && person.father != null)
-    console.log("Missing Mother for " + person_id);
-  if (person.father == null && person.mother != null)
-    console.log("Missing Father for " + person_id);
 
   if (person) draw_connector(person_id, person.mother, person.father);
 }
@@ -887,94 +864,27 @@ async function edit_demographics_of_person(person_id) {
 }
 
 function show_add_diagnosis_dialog() {
-  return new Promise((resolve) => {
-    const dialog = document.createElement("dialog");
-    dialog.classList.add("edit-dialog");
+  const diagnosis_fields = [
+    { key: "code", label: "Code", type: "text" },
+    { key: "shorthand", label: "Shorthand", type: "text" },
+    { key: "age_of_diagnosis", label: "Age at Diagnosis", type: "text" },
+    { key: "date_of_diagnosis", label: "Date of Diagnosis", type: "date" },
+    { key: "laterality", label: "Laterality", type: "text" },
+    { key: "d_num", label: "Diagnosis #", type: "text" },
+  ];
 
-    const form = document.createElement("form");
-    form.classList.add("edit-dialog-form");
-    form.method = "dialog";
-
-    const title = document.createElement("h3");
-    title.textContent = "Add Diagnosis";
-    form.appendChild(title);
-
-    const fields = [
-      { key: "code", label: "Code", type: "text" },
-      { key: "shorthand", label: "Shorthand", type: "text" },
-      { key: "age_of_diagnosis", label: "Age at Diagnosis", type: "text" },
-      { key: "date_of_diagnosis", label: "Date of Diagnosis", type: "date" },
-      { key: "laterality", label: "Laterality", type: "text" },
-      { key: "d_num", label: "Diagnosis #", type: "text" },
-    ];
-
-    const inputs = {};
-    fields.forEach((field) => {
-      const row = document.createElement("label");
-      row.classList.add("edit-dialog-row");
-
-      const label = document.createElement("span");
-      label.textContent = field.label;
-
-      const input = document.createElement("input");
-      input.type = field.type;
-      input.name = field.key;
-
-      row.appendChild(label);
-      row.appendChild(input);
-      form.appendChild(row);
-      inputs[field.key] = input;
-    });
-
-    const actions = document.createElement("div");
-    actions.classList.add("edit-dialog-actions");
-
-    const cancel_button = document.createElement("button");
-    cancel_button.type = "button";
-    cancel_button.textContent = "Cancel";
-
-    const save_button = document.createElement("button");
-    save_button.type = "button";
-    save_button.textContent = "Add";
-
-    actions.appendChild(cancel_button);
-    actions.appendChild(save_button);
-    form.appendChild(actions);
-    dialog.appendChild(form);
-    document.body.appendChild(dialog);
-
-    cancel_button.addEventListener("click", function () {
-      dialog.close();
-      dialog.remove();
-      resolve(null);
-    });
-
-    save_button.addEventListener("click", function () {
-      const diagnosis = {
-        code: inputs.code.value.trim(),
-        shorthand: inputs.shorthand.value.trim(),
-        age_of_diagnosis: inputs.age_of_diagnosis.value.trim(),
-        date_of_diagnosis: inputs.date_of_diagnosis.value,
-        laterality: inputs.laterality.value.trim(),
-        d_num: inputs.d_num.value.trim(),
-      };
-
+  return show_item_dialog({
+    title: "Add Diagnosis",
+    submit_text: "Add",
+    fields: diagnosis_fields,
+    initial_values: {},
+    validate: (diagnosis, inputs) => {
       if (!diagnosis.code && !diagnosis.shorthand) {
         inputs.code.focus();
-        return;
+        return false;
       }
-
-      dialog.close();
-      dialog.remove();
-      resolve(diagnosis);
-    });
-
-    dialog.addEventListener("cancel", function () {
-      dialog.remove();
-      resolve(null);
-    });
-
-    dialog.showModal();
+      return true;
+    },
   });
 }
 
@@ -994,95 +904,27 @@ async function add_diagnosis_to_person(person_id) {
 }
 
 function show_edit_diagnosis_dialog(existing_diagnosis) {
-  return new Promise((resolve) => {
-    const dialog = document.createElement("dialog");
-    dialog.classList.add("edit-dialog");
+  const diagnosis_fields = [
+    { key: "code", label: "Code", type: "text" },
+    { key: "shorthand", label: "Shorthand", type: "text" },
+    { key: "age_of_diagnosis", label: "Age at Diagnosis", type: "text" },
+    { key: "date_of_diagnosis", label: "Date of Diagnosis", type: "date" },
+    { key: "laterality", label: "Laterality", type: "text" },
+    { key: "d_num", label: "Diagnosis #", type: "text" },
+  ];
 
-    const form = document.createElement("form");
-    form.classList.add("edit-dialog-form");
-    form.method = "dialog";
-
-    const title = document.createElement("h3");
-    title.textContent = "Edit Diagnosis";
-    form.appendChild(title);
-
-    const fields = [
-      { key: "code", label: "Code", type: "text" },
-      { key: "shorthand", label: "Shorthand", type: "text" },
-      { key: "age_of_diagnosis", label: "Age at Diagnosis", type: "text" },
-      { key: "date_of_diagnosis", label: "Date of Diagnosis", type: "date" },
-      { key: "laterality", label: "Laterality", type: "text" },
-      { key: "d_num", label: "Diagnosis #", type: "text" },
-    ];
-
-    const inputs = {};
-    fields.forEach((field) => {
-      const row = document.createElement("label");
-      row.classList.add("edit-dialog-row");
-
-      const label = document.createElement("span");
-      label.textContent = field.label;
-
-      const input = document.createElement("input");
-      input.type = field.type;
-      input.name = field.key;
-      input.value = existing_diagnosis[field.key] || "";
-
-      row.appendChild(label);
-      row.appendChild(input);
-      form.appendChild(row);
-      inputs[field.key] = input;
-    });
-
-    const actions = document.createElement("div");
-    actions.classList.add("edit-dialog-actions");
-
-    const cancel_button = document.createElement("button");
-    cancel_button.type = "button";
-    cancel_button.textContent = "Cancel";
-
-    const save_button = document.createElement("button");
-    save_button.type = "button";
-    save_button.textContent = "Save";
-
-    actions.appendChild(cancel_button);
-    actions.appendChild(save_button);
-    form.appendChild(actions);
-    dialog.appendChild(form);
-    document.body.appendChild(dialog);
-
-    cancel_button.addEventListener("click", function () {
-      dialog.close();
-      dialog.remove();
-      resolve(null);
-    });
-
-    save_button.addEventListener("click", function () {
-      const diagnosis = {
-        code: inputs.code.value.trim(),
-        shorthand: inputs.shorthand.value.trim(),
-        age_of_diagnosis: inputs.age_of_diagnosis.value.trim(),
-        date_of_diagnosis: inputs.date_of_diagnosis.value,
-        laterality: inputs.laterality.value.trim(),
-        d_num: inputs.d_num.value.trim(),
-      };
-
+  return show_item_dialog({
+    title: "Edit Diagnosis",
+    submit_text: "Save",
+    fields: diagnosis_fields,
+    initial_values: existing_diagnosis || {},
+    validate: (diagnosis, inputs) => {
       if (!diagnosis.code && !diagnosis.shorthand) {
         inputs.code.focus();
-        return;
+        return false;
       }
-
-      dialog.close();
-      dialog.remove();
-      resolve(diagnosis);
-    });
-
-    dialog.addEventListener("cancel", function () {
-      dialog.remove();
-      resolve(null);
-    });
-
-    dialog.showModal();
+      return true;
+    },
   });
 }
 
@@ -1118,90 +960,25 @@ function remove_diagnosis_from_person(person_id, diagnosis_index) {
 }
 
 function show_add_procedure_dialog() {
-  return new Promise((resolve) => {
-    const dialog = document.createElement("dialog");
-    dialog.classList.add("edit-dialog");
+  const procedure_fields = [
+    { key: "code", label: "Code", type: "text" },
+    { key: "shorthand", label: "Shorthand", type: "text" },
+    { key: "date_of_procedure", label: "Date of Procedure", type: "date" },
+    { key: "proc_num", label: "Procedure #", type: "text" },
+  ];
 
-    const form = document.createElement("form");
-    form.classList.add("edit-dialog-form");
-    form.method = "dialog";
-
-    const title = document.createElement("h3");
-    title.textContent = "Add Procedure";
-    form.appendChild(title);
-
-    const fields = [
-      { key: "code", label: "Code", type: "text" },
-      { key: "shorthand", label: "Shorthand", type: "text" },
-      { key: "date_of_procedure", label: "Date of Procedure", type: "date" },
-      { key: "proc_num", label: "Procedure #", type: "text" },
-    ];
-
-    const inputs = {};
-    fields.forEach((field) => {
-      const row = document.createElement("label");
-      row.classList.add("edit-dialog-row");
-
-      const label = document.createElement("span");
-      label.textContent = field.label;
-
-      const input = document.createElement("input");
-      input.type = field.type;
-      input.name = field.key;
-
-      row.appendChild(label);
-      row.appendChild(input);
-      form.appendChild(row);
-      inputs[field.key] = input;
-    });
-
-    const actions = document.createElement("div");
-    actions.classList.add("edit-dialog-actions");
-
-    const cancel_button = document.createElement("button");
-    cancel_button.type = "button";
-    cancel_button.textContent = "Cancel";
-
-    const save_button = document.createElement("button");
-    save_button.type = "button";
-    save_button.textContent = "Add";
-
-    actions.appendChild(cancel_button);
-    actions.appendChild(save_button);
-    form.appendChild(actions);
-    dialog.appendChild(form);
-    document.body.appendChild(dialog);
-
-    cancel_button.addEventListener("click", function () {
-      dialog.close();
-      dialog.remove();
-      resolve(null);
-    });
-
-    save_button.addEventListener("click", function () {
-      const procedure = {
-        code: inputs.code.value.trim(),
-        shorthand: inputs.shorthand.value.trim(),
-        date_of_procedure: inputs.date_of_procedure.value,
-        proc_num: inputs.proc_num.value.trim(),
-      };
-
+  return show_item_dialog({
+    title: "Add Procedure",
+    submit_text: "Add",
+    fields: procedure_fields,
+    initial_values: {},
+    validate: (procedure, inputs) => {
       if (!procedure.code && !procedure.shorthand) {
         inputs.code.focus();
-        return;
+        return false;
       }
-
-      dialog.close();
-      dialog.remove();
-      resolve(procedure);
-    });
-
-    dialog.addEventListener("cancel", function () {
-      dialog.remove();
-      resolve(null);
-    });
-
-    dialog.showModal();
+      return true;
+    },
   });
 }
 
@@ -1221,6 +998,37 @@ async function add_procedure_to_person(person_id) {
 }
 
 function show_edit_procedure_dialog(existing_procedure) {
+  const procedure_fields = [
+    { key: "code", label: "Code", type: "text" },
+    { key: "shorthand", label: "Shorthand", type: "text" },
+    { key: "date_of_procedure", label: "Date of Procedure", type: "date" },
+    { key: "proc_num", label: "Procedure #", type: "text" },
+  ];
+
+  return show_item_dialog({
+    title: "Edit Procedure",
+    submit_text: "Save",
+    fields: procedure_fields,
+    initial_values: existing_procedure || {},
+    validate: (procedure, inputs) => {
+      if (!procedure.code && !procedure.shorthand) {
+        inputs.code.focus();
+        return false;
+      }
+      return true;
+    },
+  });
+}
+
+function show_item_dialog(options) {
+  const {
+    title,
+    submit_text,
+    fields,
+    initial_values,
+    validate,
+  } = options;
+
   return new Promise((resolve) => {
     const dialog = document.createElement("dialog");
     dialog.classList.add("edit-dialog");
@@ -1229,16 +1037,9 @@ function show_edit_procedure_dialog(existing_procedure) {
     form.classList.add("edit-dialog-form");
     form.method = "dialog";
 
-    const title = document.createElement("h3");
-    title.textContent = "Edit Procedure";
-    form.appendChild(title);
-
-    const fields = [
-      { key: "code", label: "Code", type: "text" },
-      { key: "shorthand", label: "Shorthand", type: "text" },
-      { key: "date_of_procedure", label: "Date of Procedure", type: "date" },
-      { key: "proc_num", label: "Procedure #", type: "text" },
-    ];
+    const title_elem = document.createElement("h3");
+    title_elem.textContent = title;
+    form.appendChild(title_elem);
 
     const inputs = {};
     fields.forEach((field) => {
@@ -1251,7 +1052,7 @@ function show_edit_procedure_dialog(existing_procedure) {
       const input = document.createElement("input");
       input.type = field.type;
       input.name = field.key;
-      input.value = existing_procedure[field.key] || "";
+      input.value = initial_values[field.key] || "";
 
       row.appendChild(label);
       row.appendChild(input);
@@ -1268,7 +1069,7 @@ function show_edit_procedure_dialog(existing_procedure) {
 
     const save_button = document.createElement("button");
     save_button.type = "button";
-    save_button.textContent = "Save";
+    save_button.textContent = submit_text;
 
     actions.appendChild(cancel_button);
     actions.appendChild(save_button);
@@ -1283,21 +1084,19 @@ function show_edit_procedure_dialog(existing_procedure) {
     });
 
     save_button.addEventListener("click", function () {
-      const procedure = {
-        code: inputs.code.value.trim(),
-        shorthand: inputs.shorthand.value.trim(),
-        date_of_procedure: inputs.date_of_procedure.value,
-        proc_num: inputs.proc_num.value.trim(),
-      };
+      const item = {};
+      fields.forEach((field) => {
+        const value = inputs[field.key].value;
+        item[field.key] = field.type == "date" ? value : value.trim();
+      });
 
-      if (!procedure.code && !procedure.shorthand) {
-        inputs.code.focus();
+      if (!validate(item, inputs)) {
         return;
       }
 
       dialog.close();
       dialog.remove();
-      resolve(procedure);
+      resolve(item);
     });
 
     dialog.addEventListener("cancel", function () {
@@ -2197,7 +1996,6 @@ function add_clicking_to_element(el, person_id) {
       set_study_summary();
       set_details_of_person(person_id);
 
-      console.log(data["people"][person_id]);
     } else if (selectedValue == "free") {
       start_free_move(e);
     } else if (selectedValue == "slide") {
@@ -2304,7 +2102,6 @@ function draw_unknown(person_id) {
 }
 
 function draw_slash(person_id) {
-  console.log("draw_slash for " + person_id);
   if (!data["people"][person_id]) return;
   let person = data["people"][person_id];
 
@@ -2339,7 +2136,6 @@ function draw_connector(person_id, mother_id, father_id) {
     let father_loc = get_center(father);
 
     if ( Number.isNaN(mother_loc.x) || Number.isNaN(mother_loc.y) || Number.isNaN(father_loc.x) || Number.isNaN(father_loc.y) ) {
-      console.log("NaN in connector for " + person_id);
       return;
     }
 
@@ -2551,7 +2347,6 @@ function draw_diamond(s, x, y) {
   points += x + "," + (y + s / 2) + " ";
   points += x - s / 2 + "," + y;
 
-  console.log("Points:" + points);
 
   let diamondElem = document.createElementNS(svgns, "polygon");
   diamondElem.setAttribute("points", points);
@@ -2569,7 +2364,6 @@ function draw_triangle(x1, y1, x2, y2, x3, y3) {
   points += x2 + "," + y2 + " ";
   points += x3 + "," + y3;
 
-  console.log("Points:" + points);
 
   let triangleElem = document.createElementNS(svgns, "polygon");
   triangleElem.setAttribute("points", points);
@@ -2609,7 +2403,7 @@ function trimAfterCharacter(str, char) {
   }
 }
 
-function set_other_alert(person_id, message) {
+export function set_other_alert(person_id, message) {
   other_alerts[person_id] = message;
 }
 
@@ -2626,9 +2420,7 @@ function check_quadrant_tr(person_id) {
       const valid_codes = config.quadrants.top_right?.codes || [];
       for (const disease of person.diseases) {
         if (!disease.code) { set_other_alert(person_id, "has null diseases"); continue; }
-        console.log(person);
         const code = trimAfterCharacter(disease.code, "-");
-        console.log("For " + person_id + " checking disease code " + code);
         if (valid_codes.includes(code)) {
           return code;
         }
@@ -2649,7 +2441,6 @@ function check_quadrant_tl(person_id) {
       for (const disease of person.diseases) {
         if (!disease.code) { set_other_alert(person_id, "has null diseases"); continue; }
         const code = trimAfterCharacter(disease.code, "-");
-        console.log("For " + person_id + " checking disease code " + code);
         if (valid_codes.includes(code)) {
           return code;
         }
@@ -2666,11 +2457,9 @@ function check_quadrant_bl(person_id) {
   if (bottom_left_type == "disease") {
     if (person.diseases && person.diseases.length > 0) {
       const valid_codes = config.quadrants.bottom_left?.codes || [];
-      console.log(valid_codes);
       for (const disease of person.diseases) {
         if (!disease.code) { set_other_alert(person_id, "has null diseases"); continue; }
         const code = trimAfterCharacter(disease.code, "-");
-        console.log("For " + person_id + " checking disease code " + code);
         if (valid_codes.includes(code)) {
           return code;
         }
@@ -2687,11 +2476,9 @@ function check_quadrant_br(person_id) {
   if (bottom_right_type == "disease") {
     if (person.diseases && person.diseases.length > 0) {
       const valid_codes = config.quadrants.bottom_right?.codes || [];
-      console.log(valid_codes);
       for (const disease of person.diseases) {
         if (!disease.code) { set_other_alert(person_id, "has null diseases"); continue; }
         const code = trimAfterCharacter(disease.code, "-");
-        console.log("For " + person_id + " checking disease code " + code);
         if (valid_codes.includes(code)) {
           return code;
         }
@@ -2701,7 +2488,6 @@ function check_quadrant_br(person_id) {
 }
 
 function draw_quadrants_male(person_id) {
-  console.log("draw_quadrants_male");
 
   let el;
   const size = config.size / 2;
@@ -2735,7 +2521,6 @@ function draw_quadrants_female(person_id) {
   if (el) {
 
   }
-  console.log("draw_quadrants_female");
 }
 
 function draw_arc_90(person_id, center_x, center_y, radius, quadrant, color) {
@@ -2773,7 +2558,6 @@ function draw_arc_90(person_id, center_x, center_y, radius, quadrant, color) {
 
 
 function draw_quadrants_unknown(person_id) {
-  console.log("draw_quadrants_unknown");
 }
 
 

@@ -26,9 +26,7 @@ function build_api_url(endpoint) {
 function initializeApiConfig(config) {
   if (config?.api?.baseUrl) {
     apiConfig.baseUrl = config.api.baseUrl;
-    console.log("API base URL configured:", apiConfig.baseUrl);
   } else {
-    console.log("No API base URL configured, using relative paths");
   }
 }
 
@@ -104,15 +102,12 @@ async function loadConfigOnce() {
     if (response.ok) {
       configData = await response.json();
       initializeApiConfig(configData);
-      console.log("Initial config loaded:", configData);
       return configData;
     } else {
-      console.log("Could not load config, using defaults");
       configData = { api: { baseUrl: "" } };
       return configData;
     }
   } catch (error) {
-    console.log("Error loading config, using defaults:", error);
     configData = { api: { baseUrl: "" } };
     return configData;
   }
@@ -125,18 +120,14 @@ export function resetConfig() {
 }
 
 export async function check_for_studies() { 
-  console.log("Checking for studies...");
   await ensureConfigLoaded();
   const studies = await get_study_list(build_api_url("/studies"));
-  console.log(studies);
   return studies;
 }
 
 export async function check_for_families(study_id) {
-  console.log("Checking for families...");
   await ensureConfigLoaded();
   const familes = await get_family_list(build_api_url("/families/" + study_id));
-  console.log(familes);
 }
 
 /**
@@ -183,10 +174,6 @@ export function load_studies_into_select(file_list) {
     option.text = file_list[i2];
     select.add(option);
   }
-}
-
-export function load_file() {
-  alert("Boo");
 }
 
 /**
@@ -246,9 +233,7 @@ async function get_study_list(url) {
  * @returns {Promise<[Object, Object, Object]>} Array of [data, annotations, config]
  */
 export async function load_config_and_data(study_id, family_id, config_id) {
-  console.log("Study:" + study_id + " Family:" + family_id + " Config:" + config_id);
   if (!family_id) {
-    console.warn("No family ID provided");
     return;
   }
   const selected_study_id = (study_id || "lfss").trim();
@@ -284,9 +269,7 @@ export async function load_config_and_data(study_id, family_id, config_id) {
       ? await annotations_response.json()
       : null;
     if (!annotations) {
-      console.log(
-        "No annotations file found. This is expected for families that haven't been annotated."
-      );
+        "No annotations file found. This is expected for families that haven't been annotated.";
     }
 
     const data = await pedigree_response.json();
@@ -309,7 +292,6 @@ export function save_positions_and_annotations(data) {
   const proband_id = data.general?.proband;
   const family_id = loaded_family_id;
   const study_id = loaded_study_id || "lfss";
-  console.log("saving Annotations: " + study_id + "/" + family_id);
 
   const people_positions = Object.fromEntries(
     Object.entries(data.people).map(([person_id, person]) => [
@@ -367,7 +349,6 @@ async function save_file(study_id, family_id, annotations) {
     });
 
     const responseData = await response.json();
-    console.log("Success:", responseData);
     return responseData;
   } catch (error) {
     console.error("Error during fetch:", error);

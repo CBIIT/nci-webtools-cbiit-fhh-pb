@@ -4,6 +4,7 @@
   },
   "dataDir": "../data",
   "build_mode": true,
+  "debug_mode": true,
   "study_name": "Li-Fraumeni Syndrome (LFSS)",
   "default_color": "lightyellow",
   "style": "compact",

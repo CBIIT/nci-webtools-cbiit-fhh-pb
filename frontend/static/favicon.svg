@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Pedigree favicon">
+  <rect x="0" y="0" width="64" height="64" fill="#e7e7e7"/>
+
+  <rect x="10" y="8" width="14" height="14" fill="none" stroke="#000" stroke-width="1.2"/>
+  <circle cx="44" cy="15" r="7" fill="none" stroke="#000" stroke-width="1.2"/>
+
+  <rect x="3" y="39" width="14" height="14" fill="none" stroke="#000" stroke-width="1.2"/>
+  <circle cx="30" cy="47" r="7" fill="none" stroke="#000" stroke-width="1.2"/>
+  <rect x="47" y="39" width="14" height="14" fill="none" stroke="#000" stroke-width="1.2"/>
+
+  <line x1="24" y1="15" x2="37" y2="15" stroke="#000" stroke-width="1.2" stroke-linecap="square"/>
+  <line x1="30" y1="15" x2="30" y2="31" stroke="#000" stroke-width="1.2" stroke-linecap="square"/>
+  <line x1="10" y1="31" x2="52" y2="31" stroke="#000" stroke-width="1.2" stroke-linecap="square"/>
+  <line x1="10" y1="31" x2="10" y2="39" stroke="#000" stroke-width="1.2" stroke-linecap="square"/>
+  <line x1="30" y1="31" x2="30" y2="40" stroke="#000" stroke-width="1.2" stroke-linecap="square"/>
+  <line x1="52" y1="31" x2="52" y2="39" stroke="#000" stroke-width="1.2" stroke-linecap="square"/>
+</svg>
