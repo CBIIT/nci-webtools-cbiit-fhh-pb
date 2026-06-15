@@ -1,5 +1,6 @@
 import boto3
 import os
+from botocore.exceptions import ClientError
 from aws_lambda_powertools import Logger
 
 logger = Logger(child=True)
@@ -23,12 +24,16 @@ def get_family(study_id, family_id, bucket_name=None):
         logger.info(f"Successfully retrieved family data for study_id: {study_id}, family_id: {family_id}")
         return {"status": "success", "data": data}
 
-    except boto3.client("s3").exceptions.NoSuchKey:
-        error_msg = (
-            f"Family data not found for study_id: {study_id}, family_id: {family_id}"
-        )
-        logger.warning(error_msg)
-        return {"status": "not_found", "message": error_msg}
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "NoSuchKey":
+            error_msg = (
+                f"Family data not found for study_id: {study_id}, family_id: {family_id}"
+            )
+            logger.warning(error_msg)
+            return {"status": "not_found", "message": error_msg}
+        error_msg = f"Error retrieving family data for study_id {study_id}, family_id {family_id}: {str(e)}"
+        logger.error(error_msg)
+        return {"status": "error", "message": error_msg}
     except Exception as e:
         error_msg = f"Error retrieving family data for study_id {study_id}, family_id {family_id}: {str(e)}"
         logger.error(error_msg)

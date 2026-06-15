@@ -5,7 +5,7 @@ Uses AWS Lambda Powertools Logger with DatadogLogFormatter for structured
 JSON output compatible with Datadog log ingestion.
 
 Usage:
-    from logger import create_logger, inject_user_context
+    from _shared.logger import create_logger, inject_user_context
 
     logger = create_logger("my-component")
 

@@ -26,11 +26,12 @@ def test_write_annotations_function():
     s3_client.create_bucket(Bucket=bucket_name)
 
     # Test data
+    study_id = "test_study_001"
     family_id = "test_family_123"
     test_data = '{"annotations": [{"id": 1, "note": "test annotation"}]}'
 
     # Call the function
-    result = write_annotations(family_id, test_data, bucket_name)
+    result = write_annotations(study_id, family_id, test_data, bucket_name)
 
     # Verify the result
     assert result["status"] == "success"
@@ -38,7 +39,7 @@ def test_write_annotations_function():
 
     # Verify the file was written to S3
     response = s3_client.get_object(
-        Bucket=bucket_name, Key=f"annotations/{family_id}.annotations.json"
+        Bucket=bucket_name, Key=f"annotations/{study_id}/{family_id}.annotations.json"
     )
     stored_data = response["Body"].read().decode("utf-8")
     assert stored_data == test_data
@@ -46,12 +47,13 @@ def test_write_annotations_function():
 
 def test_write_annotations_missing_bucket():
     """Test write_annotations function with missing bucket name."""
+    study_id = "test_study_001"
     family_id = "test_family_123"
     test_data = '{"annotations": []}'
 
     # Mock environment to not have DATA_BUCKET
     with patch.dict(os.environ, {}, clear=True):
-        result = write_annotations(family_id, test_data)
+        result = write_annotations(study_id, family_id, test_data)
 
         assert result["status"] == "error"
         assert "Bucket name not provided" in result["message"]
@@ -61,7 +63,7 @@ def test_lambda_handler_success():
     """Test the lambda_handler with a successful request."""
     # Mock event from API Gateway
     event = {
-        "pathParameters": {"family_id": "test_family_456"},
+        "pathParameters": {"study_id": "test_study_001", "family_id": "test_family_456"},
         "body": '{"annotations": [{"id": 2, "note": "another test"}]}',
         "isBase64Encoded": False,
     }
@@ -86,13 +88,13 @@ def test_lambda_handler_success():
 
         # Verify write_annotations was called with correct parameters
         mock_write.assert_called_once_with(
-            "test_family_456", '{"annotations": [{"id": 2, "note": "another test"}]}'
+            "test_study_001", "test_family_456", '{"annotations": [{"id": 2, "note": "another test"}]}'
         )
 
 
 def test_lambda_handler_missing_family_id():
     """Test lambda_handler with missing family_id."""
-    event = {"pathParameters": {}, "body": '{"annotations": []}'}
+    event = {"pathParameters": {"study_id": "test_study_001"}, "body": '{"annotations": []}'}
 
     context = MagicMock()
 
@@ -105,7 +107,7 @@ def test_lambda_handler_missing_family_id():
 
 def test_lambda_handler_missing_body():
     """Test lambda_handler with missing body."""
-    event = {"pathParameters": {"family_id": "test_family"}, "body": None}
+    event = {"pathParameters": {"study_id": "test_study_001", "family_id": "test_family"}, "body": None}
 
     context = MagicMock()
 
@@ -124,7 +126,7 @@ def test_lambda_handler_base64_encoded():
     encoded_body = base64.b64encode(original_body.encode("utf-8")).decode("utf-8")
 
     event = {
-        "pathParameters": {"family_id": "test_family_789"},
+        "pathParameters": {"study_id": "test_study_001", "family_id": "test_family_789"},
         "body": encoded_body,
         "isBase64Encoded": True,
     }
@@ -137,13 +139,13 @@ def test_lambda_handler_base64_encoded():
         result = lambda_module.lambda_handler(event, context)
 
         assert result["statusCode"] == 200
-        mock_write.assert_called_once_with("test_family_789", original_body)
+        mock_write.assert_called_once_with("test_study_001", "test_family_789", original_body)
 
 
 def test_lambda_handler_error_response():
     """Test lambda_handler when write_annotations returns an error."""
     event = {
-        "pathParameters": {"family_id": "error_family"},
+        "pathParameters": {"study_id": "test_study_001", "family_id": "error_family"},
         "body": '{"annotations": []}',
     }
 
