@@ -1,9 +1,8 @@
 import boto3
 import os
-import logging
+from aws_lambda_powertools import Logger
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+logger = Logger(child=True)
 
 
 def list_families(study_id, bucket_name=None):
@@ -11,7 +10,9 @@ def list_families(study_id, bucket_name=None):
     try:
         bucket_name = bucket_name or os.environ.get("DATA_BUCKET")
         if not bucket_name:
-            raise ValueError("Bucket name not provided and DATA_BUCKET environment variable not set")
+            raise ValueError(
+                "Bucket name not provided and DATA_BUCKET environment variable not set"
+            )
 
         logger.info(f"Listing families from S3: s3://{bucket_name}/processed/{study_id}/")
 
@@ -23,7 +24,11 @@ def list_families(study_id, bucket_name=None):
 
         while True:
             page_count += 1
-            params = {"Bucket": bucket_name, "Prefix": f"processed/{study_id}/", "Delimiter": "/"}
+            params = {
+                "Bucket": bucket_name,
+                "Prefix": f"processed/{study_id}/",
+                "Delimiter": "/",
+            }
 
             # Add continuation token if this is not the first page
             if continuation_token:
@@ -45,9 +50,13 @@ def list_families(study_id, bucket_name=None):
                 break
 
             continuation_token = response.get("NextContinuationToken")
-            logger.info(f"Fetched page {page_count}, {len(family_ids)} families so far...")
+            logger.info(
+                f"Fetched page {page_count}, {len(family_ids)} families so far..."
+            )
 
-        logger.info(f"Found {len(family_ids)} families for study {study_id} across {page_count} page(s)")
+        logger.info(
+            f"Found {len(family_ids)} families for study {study_id} across {page_count} page(s)"
+        )
         return {"status": "success", "families": family_ids}
 
     except Exception as e:

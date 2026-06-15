@@ -16,10 +16,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-#DEL
+# DEL
 lookup_processed = {
-    'Li-Fraumeni Syndrome': 'lfss',
+    "Li-Fraumeni Syndrome": "lfss",
 }
+
 
 class JSONProcessor:
     """
@@ -31,7 +32,7 @@ class JSONProcessor:
     """
 
     def __init__(self):
-        #self.proband = None
+        # self.proband = None
         self.general = defaultdict(dict)
         self.people = defaultdict(dict)
 
@@ -88,7 +89,7 @@ class JSONProcessor:
             raise ValueError(f"Path is not a file: {file_path}")
 
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 print(f"[INFO] Successfully loaded JSON from: {file_path}")
                 return data
@@ -102,7 +103,9 @@ class JSONProcessor:
             print(f"[ERROR] Unexpected error loading {file_path}: {e}")
             raise
 
-    def save_json(self, data: Dict[str, Any], output_path: Union[str, Path], indent: int = 2) -> None:
+    def save_json(
+        self, data: Dict[str, Any], output_path: Union[str, Path], indent: int = 2
+    ) -> None:
         """
         Save data to JSON file with pretty formatting.
 
@@ -121,7 +124,7 @@ class JSONProcessor:
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
-            with open(output_path, 'w', encoding='utf-8') as f:
+            with open(output_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=indent, ensure_ascii=False)
             print(f"[INFO] JSON successfully written to: {output_path}")
 
@@ -142,101 +145,118 @@ class JSONProcessor:
         Returns:
             Structured person data dictionary
         """
-        person_id = record.get('Merge1[Subject]', '')
+        person_id = record.get("Merge1[Subject]", "")
         if not person_id:
             raise ValueError("Record missing required Subject ID")
 
         # Extract basic information
-        first_name = record.get('Merge1[participant.first_name]', '')
-        last_name = record.get('Merge1[participant.last_name]', '')
+        first_name = record.get("Merge1[participant.first_name]", "")
+        last_name = record.get("Merge1[participant.last_name]", "")
         full_name = f"{first_name} {last_name}".strip()
 
         # Build person structure
         person_data = {
-            'name': full_name,
-            'born': record.get('DEMO[BRTHDAT_RAW]', ''),
-            'deceased': record.get('DEMO[DTHDAT_RAW]', ''),
-            'father': record.get('CORE[FPT_ID3]', ''),
-            'mother': record.get('CORE[MPT_ID3]', ''),
-            'pedigree_symbol': record.get('Merge2[Pedigree_Symbol]', ''),
-            'demographics': self._extract_demographics(record),
-            'partners': [],
-            'diseases': [],
-            'procedures': []
+            "name": full_name,
+            "born": record.get("DEMO[BRTHDAT_RAW]", ""),
+            "deceased": record.get("DEMO[DTHDAT_RAW]", ""),
+            "father": record.get("CORE[FPT_ID3]", ""),
+            "mother": record.get("CORE[MPT_ID3]", ""),
+            "pedigree_symbol": record.get("Merge2[Pedigree_Symbol]", ""),
+            "demographics": self._extract_demographics(record),
+            "partners": [],
+            "diseases": [],
+            "procedures": [],
         }
 
         return person_id, person_data
 
     def _extract_demographics(self, record: Dict[str, Any]) -> Dict[str, Any]:
         """Extract demographic information from record."""
-        return {
-            'gender': record.get('DEMO[SEX_OLD]', '')
-        }
+        return {"gender": record.get("DEMO[SEX_OLD]", "")}
 
     def _extract_partner_data(self, record: Dict[str, Any]) -> Dict[str, Any]:
         """Extract partner/spouse information from record."""
         return {
-            'spouse_id': record.get('CORE[Value]', ''),
-            'spouse_num': record.get('CORE[SPOUSE Num]', '')
+            "spouse_id": record.get("CORE[Value]", ""),
+            "spouse_num": record.get("CORE[SPOUSE Num]", ""),
         }
 
-    def _extract_cancer_disease(self, record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _extract_cancer_disease(
+        self, record: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
         """Extract cancer disease information from record."""
-        code = record.get('Subject_cancer[CANCER.ICD03]', '')
+        code = record.get("Subject_cancer[CANCER.ICD03]", "")
         if not code:
             return None
 
-        disease_num = record.get('Subject_cancer[CANCER.NUM]', '')
+        disease_num = record.get("Subject_cancer[CANCER.NUM]", "")
         med_code, shorthand = self._parse_medical_code(code)
 
         return {
-            'shorthand': shorthand,
-            'code': med_code,
-            'laterality': str(record.get('Subject_cancer[CANCER.PRM_TUMOR_LATERAL_TP_STD]', '')),
-            'diagnosis_method': record.get('Subject_cancer[CANCER.PATH_ACQ_METH_TP]', ''),
-            'age_of_diagnosis': str(record.get('Subject_cancer[CANCER.AGE_AT_DIAGNOSIS]', '')),
-            'date_of_diagnosis': record.get('Subject_cancer[CANCER.DX_DT]', ''),
-            'd_num': f"C{disease_num}" if disease_num else ''
+            "shorthand": shorthand,
+            "code": med_code,
+            "laterality": str(
+                record.get("Subject_cancer[CANCER.PRM_TUMOR_LATERAL_TP_STD]", "")
+            ),
+            "diagnosis_method": record.get(
+                "Subject_cancer[CANCER.PATH_ACQ_METH_TP]", ""
+            ),
+            "age_of_diagnosis": str(
+                record.get("Subject_cancer[CANCER.AGE_AT_DIAGNOSIS]", "")
+            ),
+            "date_of_diagnosis": record.get("Subject_cancer[CANCER.DX_DT]", ""),
+            "d_num": f"C{disease_num}" if disease_num else "",
         }
 
-    def _extract_non_cancer_disease(self, record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _extract_non_cancer_disease(
+        self, record: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
         """Extract non-cancer disease information from record."""
-        code = record.get('Subject non cancer[N_CANCER.CD10_CD]', '')
+        code = record.get("Subject non cancer[N_CANCER.CD10_CD]", "")
         if not code:
             return None
 
-        disease_num = record.get('Subject non cancer[N_CANCER.NUMBER]', '')
+        disease_num = record.get("Subject non cancer[N_CANCER.NUMBER]", "")
         med_code, shorthand = self._parse_medical_code(code)
 
         return {
-            'shorthand': shorthand,
-            'code': med_code,
-            'laterality': str(record.get('Subject non cancer[N_CANCER.PRM_TUMOR_LATERAL_TP_STD]', '')),
-            'diagnosis_method': record.get('Subject non cancer[N_CANCER.PATH_ACQ_METH_TP]', ''),
-            'age_of_diagnosis': str(record.get('Subject non cancer[N_CANCER.AGE_AT_DIAGNOSIS]', '')),
-            'date_of_diagnosis': record.get('Subject non cancer[N_CANCER.BX_DT]', ''),
-            'd_num': f"D{disease_num}" if disease_num else ''
+            "shorthand": shorthand,
+            "code": med_code,
+            "laterality": str(
+                record.get("Subject non cancer[N_CANCER.PRM_TUMOR_LATERAL_TP_STD]", "")
+            ),
+            "diagnosis_method": record.get(
+                "Subject non cancer[N_CANCER.PATH_ACQ_METH_TP]", ""
+            ),
+            "age_of_diagnosis": str(
+                record.get("Subject non cancer[N_CANCER.AGE_AT_DIAGNOSIS]", "")
+            ),
+            "date_of_diagnosis": record.get("Subject non cancer[N_CANCER.BX_DT]", ""),
+            "d_num": f"D{disease_num}" if disease_num else "",
         }
 
     def _extract_procedure(self, record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Extract procedure information from record."""
-        code = record.get('Subject procedure[PRTRT.ICD_9_STD]', '')
+        code = record.get("Subject procedure[PRTRT.ICD_9_STD]", "")
         if not code:
             return None
 
-        proc_num = record.get('Subject procedure[PRTRT.NUMBER]', '')
+        proc_num = record.get("Subject procedure[PRTRT.NUMBER]", "")
         med_code, shorthand = self._parse_medical_code(code)
 
         return {
-            'shorthand': shorthand,
-            'code': med_code,
-            'age_at_procedure': record.get('Subject procedure[PRTRT.DERIV_PRSN_AGE]', ''),
-            'date_of_procedure': record.get('Subject procedure[PRTRT.PRSTDAT]', ''),
-            'proc_num': f"P{proc_num}" if proc_num else ''
+            "shorthand": shorthand,
+            "code": med_code,
+            "age_at_procedure": record.get(
+                "Subject procedure[PRTRT.DERIV_PRSN_AGE]", ""
+            ),
+            "date_of_procedure": record.get("Subject procedure[PRTRT.PRSTDAT]", ""),
+            "proc_num": f"P{proc_num}" if proc_num else "",
         }
 
-    def _add_unique_item(self, items_list: List[Dict], new_item: Dict,
-                         unique_key: str) -> None:
+    def _add_unique_item(
+        self, items_list: List[Dict], new_item: Dict, unique_key: str
+    ) -> None:
         """
         Add item to list if it doesn't already exist based on unique key.
 
@@ -245,8 +265,9 @@ class JSONProcessor:
             new_item: Item to potentially add
             unique_key: Key to check for uniqueness
         """
-        if not any(item.get(unique_key) == new_item.get(unique_key)
-                   for item in items_list):
+        if not any(
+            item.get(unique_key) == new_item.get(unique_key) for item in items_list
+        ):
             items_list.append(new_item)
 
     def _parse_medical_code(self, text):
@@ -268,20 +289,20 @@ class JSONProcessor:
         text = text.strip()
 
         if not text:
-            return 'NOCODE', 'NOTITLE'
+            return "NOCODE", "NOTITLE"
 
         # A code is any single token of letters, digits, and dots
-        CODE = r'[A-Z0-9.]+'
+        CODE = r"[A-Z0-9.]+"
 
-        m = re.match(rf'^({CODE})\s*-\s*(.+)$', text, re.IGNORECASE)
+        m = re.match(rf"^({CODE})\s*-\s*(.+)$", text, re.IGNORECASE)
         if m:
             return m.group(1), m.group(2).strip()
 
-        m = re.match(rf'^({CODE})$', text, re.IGNORECASE)
+        m = re.match(rf"^({CODE})$", text, re.IGNORECASE)
         if m:
-            return m.group(1), 'NOTITLE'
+            return m.group(1), "NOTITLE"
 
-        return 'NOCODE', text
+        return "NOCODE", text
 
     def process_records(self, records: List[Dict[str, Any]]) -> None:
         """
@@ -298,30 +319,38 @@ class JSONProcessor:
 
         # Set study, proband, family classification, and family genetic status as the first person in the input file
         try:
-            self.general["study"] = records[0]['Merge1[project]']
+            self.general["study"] = records[0]["Merge1[project]"]
             print(f"[INFO] Processing study: {self.general['study']}")
         except (KeyError, IndexError):
             raise ValueError("Cannot determine proband from first record")
         try:
-            self.general["proband"] = records[0]['Merge1[Subject]']
-            #self.proband = self.general["proband"] #records[0]['Merge1[Subject]']
+            self.general["proband"] = records[0]["Merge1[Subject]"]
+            # self.proband = self.general["proband"] #records[0]['Merge1[Subject]']
             print(f"[INFO] Processing proband: {self.general['proband']}")
         except (KeyError, IndexError):
             raise ValueError("Cannot determine proband from first record")
         try:
-            self.general["family_classification"] = records[0]['Merge2[family_classification]']
-            print(f"[INFO] Processing family classification: {self.general['family_classification']}")
+            self.general["family_classification"] = records[0][
+                "Merge2[family_classification]"
+            ]
+            print(
+                f"[INFO] Processing family classification: {self.general['family_classification']}"
+            )
         except (KeyError, IndexError):
             self.general["family_classification"] = "NO-FAMILY-CLASSIFICATION"
             print(f"[WARNING] Cannot determine family classification from first record")
-            #raise ValueError("Cannot determine family classification from first record")
+            # raise ValueError("Cannot determine family classification from first record")
         try:
-            self.general["family_genetic_status"] = records[0]['Merge2[family_genetic_status]']
-            print(f"[INFO] Processing family genetic status: {self.general['family_genetic_status']}")
+            self.general["family_genetic_status"] = records[0][
+                "Merge2[family_genetic_status]"
+            ]
+            print(
+                f"[INFO] Processing family genetic status: {self.general['family_genetic_status']}"
+            )
         except (KeyError, IndexError):
             self.general["family_genetic_status"] = "NO-FAMILY-GENETIC-STATUS"
             print(f"[WARNING] Cannot determine family genetic status from first record")
-            #raise ValueError("Cannot determine family genetic status from first record")
+            # raise ValueError("Cannot determine family genetic status from first record")
 
         # Process each record
         for i, record in enumerate(records):
@@ -334,38 +363,30 @@ class JSONProcessor:
 
                 # Add partner information
                 partner_data = self._extract_partner_data(record)
-                if partner_data.get('spouse_num'):
+                if partner_data.get("spouse_num"):
                     self._add_unique_item(
-                        self.people[person_id]['partners'],
-                        partner_data,
-                        'spouse_num'
+                        self.people[person_id]["partners"], partner_data, "spouse_num"
                     )
 
                 # Add cancer disease if present
                 cancer_disease = self._extract_cancer_disease(record)
-                if cancer_disease and cancer_disease.get('d_num'):
+                if cancer_disease and cancer_disease.get("d_num"):
                     self._add_unique_item(
-                        self.people[person_id]['diseases'],
-                        cancer_disease,
-                        'd_num'
+                        self.people[person_id]["diseases"], cancer_disease, "d_num"
                     )
 
                 # Add non-cancer disease if present
                 non_cancer_disease = self._extract_non_cancer_disease(record)
-                if non_cancer_disease and non_cancer_disease.get('d_num'):
+                if non_cancer_disease and non_cancer_disease.get("d_num"):
                     self._add_unique_item(
-                        self.people[person_id]['diseases'],
-                        non_cancer_disease,
-                        'd_num'
+                        self.people[person_id]["diseases"], non_cancer_disease, "d_num"
                     )
 
                 # Add procedure if present
                 procedure = self._extract_procedure(record)
-                if procedure and procedure.get('proc_num'):
+                if procedure and procedure.get("proc_num"):
                     self._add_unique_item(
-                        self.people[person_id]['procedures'],
-                        procedure,
-                        'proc_num'
+                        self.people[person_id]["procedures"], procedure, "proc_num"
                     )
 
             except Exception as e:
@@ -373,11 +394,15 @@ class JSONProcessor:
                 continue
 
         # clean up so empty records are not present (thus reducing file-size)
-        if True: # compress
+        if True:  # compress
             for person_id, person_data in self.people.items():
                 try:
                     # clear out empty records (e.g., deceased)
-                    self.people[person_id] = {k: v for k, v in person_data.items() if v not in (None, '', [], {}, ())}
+                    self.people[person_id] = {
+                        k: v
+                        for k, v in person_data.items()
+                        if v not in (None, "", [], {}, ())
+                    }
                 except Exception as e:
                     print(f"[WARNING] Error cleaning record {person_id}: {e}")
                     continue
@@ -394,10 +419,10 @@ class JSONProcessor:
 
         return {
             #'proband': self.proband,
-            'general': dict(self.general),
-            'people': dict(self.people)  # Convert defaultdict to regular dict
+            "general": dict(self.general),
+            "people": dict(self.people),  # Convert defaultdict to regular dict
         }
-    
+
     @staticmethod
     def safe_get(data, *keys, default="<missing>"):
         """Safely retrieve nested keys, returning default if any key is missing."""
@@ -407,7 +432,7 @@ class JSONProcessor:
                 return default
             current = current[key]
         return current
-    
+
     @staticmethod
     def sanitize_folder_name(name: str, max_length: int = 20, default="other") -> str:
         """
@@ -436,6 +461,7 @@ class JSONProcessor:
         # Fallback if empty (e.g., input was all invalid chars)
         return name.upper() or default.upper()
 
+
 def parse_json(file_path: str) -> Optional[Dict[str, Any]]:
     """
     Load and parse a JSON file.
@@ -447,7 +473,7 @@ def parse_json(file_path: str) -> Optional[Dict[str, Any]]:
          dict or None: Parse JSON object, or None if an error occurred.
     """
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             return json.load(f)
     except json.JSONDecodeError as e:
         print(f"[Error] Failed to decode JSON: {e}")
@@ -459,6 +485,7 @@ def parse_json(file_path: str) -> Optional[Dict[str, Any]]:
         print(f"[Error] Unexpected error: {e}")
     return None
 
+
 def write_json_to_file(data: Dict[str, Any], output_path: str, indent: int = 2) -> None:
     """
     Write a JSON object to a file with pretty formatting.
@@ -469,11 +496,12 @@ def write_json_to_file(data: Dict[str, Any], output_path: str, indent: int = 2) 
     :return:
     """
     try:
-        with open(output_path, 'w', encoding='utf-8') as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=indent)
         print(f"[Info] JSON written to {output_path}")
     except Exception as e:
         print(f"[Error] Failed to write JSON: {e}")
+
 
 def build_friendly_json_file(json_obj: Dict[str, Any], output_path: str) -> None:
     """
@@ -485,21 +513,31 @@ def build_friendly_json_file(json_obj: Dict[str, Any], output_path: str) -> None
     """
     write_json_to_file(json_obj, output_path)
 
-def build_json_file(proband: str, general: Dict[str, str], people: Dict[str, Any], output_path: str, indent: int = 2) -> None:
-    d = defaultdict(dict)
-    #d['proband'] = proband
-    d['general'] = general
-    d['people'] = people
 
-    with open(output_path, 'w', encoding = 'utf-8') as jsonf:
-        jsonString = json.dumps(d, indent = indent)
+def build_json_file(
+    proband: str,
+    general: Dict[str, str],
+    people: Dict[str, Any],
+    output_path: str,
+    indent: int = 2,
+) -> None:
+    d = defaultdict(dict)
+    # d['proband'] = proband
+    d["general"] = general
+    d["people"] = people
+
+    with open(output_path, "w", encoding="utf-8") as jsonf:
+        jsonString = json.dumps(d, indent=indent)
         jsonf.write(jsonString)
     print(f"[Info] JSON written to {output_path}")
+
 
 # Optional main section for command-line execution
 def main():
     if len(sys.argv) != 5:
-        print("Usage: python json2json.py <directory> <input_file> <reference_file> <output_file>")
+        print(
+            "Usage: python json2json.py <directory> <input_file> <reference_file> <output_file>"
+        )
         print("  directory: Base directory containing input files")
         print("  input_file: Original input JSON file")
         print("  reference_file: Reference output JSON file")
@@ -514,7 +552,7 @@ def main():
         # Construct file paths
         input_path = base_path / "raw/" / input_file
         reference_path = base_path / "formatted/" / reference_file
-        #output_path = Path.cwd() / output_file
+        # output_path = Path.cwd() / output_file
         output_path = base_path / "processed/" / output_file
 
         print(f"[INFO] Base directory: {base_path}")
@@ -535,7 +573,9 @@ def main():
             reference_data = processor.load_json(reference_path)
             # Save formatted copies for debugging
             processor.save_json(input_data, base_path / "debug/" / "debug_input.json")
-            processor.save_json(reference_data, base_path / "debug/" / "debug_reference.json")
+            processor.save_json(
+                reference_data, base_path / "debug/" / "debug_reference.json"
+            )
         except Exception as e:
             print(f"[WARNING] Could not load reference file: {e}")
 
@@ -546,8 +586,10 @@ def main():
         output_data = processor.get_output_data()
 
         # Determine destination folder based on study
-        study_name = JSONProcessor.safe_get(output_data, 'general', 'study', default="not_found")
-        #dst_folder = lookup_processed.get(study_name, "study_unknown")
+        study_name = JSONProcessor.safe_get(
+            output_data, "general", "study", default="not_found"
+        )
+        # dst_folder = lookup_processed.get(study_name, "study_unknown")
         dst_folder = JSONProcessor.sanitize_folder_name(study_name, 20, "study_unknown")
 
         # Save output JSON
@@ -557,11 +599,12 @@ def main():
         print(f"[INFO] Processing complete!")
         print(f"[INFO] Processed {len(input_data)} records")
         print(f"[INFO] Generated data for {len(processor.people)} people")
-        #print(f"[INFO] Proband: {processor.proband}")
+        # print(f"[INFO] Proband: {processor.proband}")
 
     except Exception as e:
         print(f"[ERROR] Processing failed: {e}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

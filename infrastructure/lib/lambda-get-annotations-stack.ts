@@ -11,6 +11,7 @@ import {
   resolveDatadogForwarderArn,
   subscribeLogGroupToDatadogForwarder,
 } from "./utils/datadog-logging";
+import { getPowertoolsLayer } from "./utils/powertools-layer";
 
 export interface LambdaGetAnnotationsStackProps extends cdk.StackProps {
   dataBucket: s3.Bucket;
@@ -68,20 +69,26 @@ export class LambdaGetAnnotationsStack extends cdk.Stack {
     );
 
     // Create Lambda function
+    const powertoolsLayer = getPowertoolsLayer(this, "PowertoolsLayer");
     this.lambdaFunction = new lambda.Function(this, "GetAnnotationsFunction", {
       functionName: `nci-cbiit-fhhpb-getannotations-${tier}`,
       runtime: lambda.Runtime.PYTHON_3_13,
       handler: "lambda.lambda_handler",
       code: lambda.Code.fromAsset(
-        path.join(__dirname, "../../backend/lambda/get_annotations")
+        path.join(__dirname, "../../backend/lambda/get_annotations"),
       ),
+      layers: [powertoolsLayer],
       role: lambdaRole,
       timeout: cdk.Duration.minutes(1),
       memorySize: 256,
       environment: {
         DATA_BUCKET: props.dataBucket.bucketName,
         TIER: tier,
+        POWERTOOLS_SERVICE_NAME: `${tier}-fhh-pb-lambda`,
       },
+      loggingFormat: lambda.LoggingFormat.JSON,
+      systemLogLevel: lambda.SystemLogLevel.WARN,
+      applicationLogLevel: lambda.ApplicationLogLevel.INFO,
       logGroup: logGroup,
     });
     this.lambdaFunction.node.addDependency(logGroupDep);

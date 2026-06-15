@@ -1,9 +1,8 @@
 import boto3
 import os
-import logging
+from aws_lambda_powertools import Logger
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+logger = Logger(child=True)
 
 
 def list_studies(bucket_name=None):
@@ -11,7 +10,9 @@ def list_studies(bucket_name=None):
     try:
         bucket_name = bucket_name or os.environ.get("DATA_BUCKET")
         if not bucket_name:
-            raise ValueError("Bucket name not provided and DATA_BUCKET environment variable not set")
+            raise ValueError(
+                "Bucket name not provided and DATA_BUCKET environment variable not set"
+            )
 
         logger.info(f"Listing studies from S3: s3://{bucket_name}/processed/")
 
@@ -44,7 +45,9 @@ def list_studies(bucket_name=None):
                 break
 
             continuation_token = response.get("NextContinuationToken")
-            logger.info(f"Fetched page {page_count}, {len(study_ids)} studies so far...")
+            logger.info(
+                f"Fetched page {page_count}, {len(study_ids)} studies so far..."
+            )
 
         logger.info(f"Found {len(study_ids)} studies across {page_count} page(s)")
         return {"status": "success", "studies": study_ids}

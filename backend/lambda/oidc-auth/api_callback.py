@@ -5,10 +5,16 @@ Handles the callback from IdP, exchanges code for tokens, and sets auth cookie.
 
 import json
 import secrets
+from aws_lambda_powertools import Logger
+from aws_lambda_powertools.logging import correlation_paths
+from aws_lambda_powertools.logging.formatters.datadog import DatadogLogFormatter
 from typing import Dict, Any
 from oidc_client import OIDCClient
 from secrets_manager import get_tier
 from session_manager import create_session
+
+logger = Logger(logger_formatter=DatadogLogFormatter())
+logger.append_keys(component="oidc-callback")
 
 
 def parse_cookies(cookie_header: str) -> Dict[str, str]:
@@ -42,12 +48,20 @@ def create_cookie(
     return cookie
 
 
+@logger.inject_lambda_context(
+    correlation_id_path=correlation_paths.API_GATEWAY_REST, clear_state=True
+)
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Handle OIDC callback from IdP.
     Exchange authorization code for tokens and set authentication cookie.
     """
     try:
+        # Log source IP for audit trail
+        request_context = event.get("requestContext", {})
+        identity = request_context.get("identity", {})
+        logger.append_keys(source_ip=identity.get("sourceIp", "unknown"))
+
         # Parse query parameters
         query_params = event.get("queryStringParameters", {}) or {}
         code = query_params.get("code")
@@ -55,10 +69,13 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         error = query_params.get("error")
 
         if error:
+            logger.info(f"Login failed: IdP returned error={error}")
             return {
                 "statusCode": 400,
                 "headers": {"Content-Type": "application/json"},
-                "body": json.dumps({"error": "Authentication failed", "details": error}),
+                "body": json.dumps(
+                    {"error": "Authentication failed", "details": error}
+                ),
             }
 
         if not code or not state:
@@ -71,7 +88,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Extract state_id from OAuth state parameter
         # Format from Lambda@Edge: state:state_id
         if ":" not in state:
-            print(f"State format invalid, missing state_id: {state}")
+            logger.info("Login failed: invalid state format")
             return {
                 "statusCode": 400,
                 "headers": {"Content-Type": "application/json"},
@@ -99,7 +116,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         try:
             response = table.get_item(Key={"session_id": f"oauth_state_{state_id}"})
             if "Item" not in response:
-                print(f"OAuth state not found in DynamoDB: oauth_state_{state_id}")
+                logger.info("Login failed: OAuth state expired")
                 return {
                     "statusCode": 400,
                     "headers": {"Content-Type": "application/json"},
@@ -114,18 +131,20 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
             # Validate state matches what we stored
             if stored_state != db_stored_state:
-                print(f"State mismatch: received {stored_state}, expected {db_stored_state}")
+                logger.info("Login failed: state mismatch (possible CSRF)")
                 return {
                     "statusCode": 400,
                     "headers": {"Content-Type": "application/json"},
-                    "body": json.dumps({"error": "State mismatch - possible CSRF attack"}),
+                    "body": json.dumps(
+                        {"error": "State mismatch - possible CSRF attack"}
+                    ),
                 }
 
             # Delete the OAuth state after retrieval (one-time use)
             table.delete_item(Key={"session_id": f"oauth_state_{state_id}"})
 
         except Exception as e:
-            print(f"Error retrieving OAuth state from DynamoDB: {str(e)}")
+            logger.info(f"Login error: DynamoDB state retrieval failed: {str(e)}")
             return {
                 "statusCode": 500,
                 "headers": {"Content-Type": "application/json"},
@@ -165,12 +184,19 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Extract member_of from merged claims (comma-separated string from UserInfo)
         member_of_str = merged_claims.get("member_of", "")
-        user_groups = [g.strip() for g in member_of_str.split(",") if g.strip()] if member_of_str else []
+        user_groups = (
+            [g.strip() for g in member_of_str.split(",") if g.strip()]
+            if member_of_str
+            else []
+        )
 
         # Check group membership if REQUIRED_GROUPS is configured
         # Use merged claims which includes both ID token and UserInfo
         if not oidc.check_group_membership(merged_claims):
-            print(f"User {payload.get('sub')} lacks required group membership")
+            user_email_denied = merged_claims.get("email", "unknown")
+            logger.info(
+                f"Login denied: email={user_email_denied}, user_id={merged_claims.get('sub', 'unknown')}, reason=group_membership"
+            )
 
             tier = get_tier()
             base_domain = f"https://pedigree-{tier}.cancer.gov"
@@ -187,13 +213,14 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Use merged_claims to get email/name from UserInfo if not in ID token
         user_id = merged_claims.get("sub", "")
         user_email = merged_claims.get("email", "")
+        logger.append_keys(user_id=user_id, email=user_email)
         expires_in = tokens.get("expires_in", 3600)
 
         # Use ID token for authentication (contains user claims)
         auth_token = id_token
 
-        print(
-            f"Authenticated user {user_id}: email={user_email}"
+        logger.info(
+            f"Login success: email={user_email}, user_id={user_id}, groups={user_groups}"
         )
 
         # Store session in DynamoDB
@@ -218,7 +245,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         tier = get_tier()
         base_domain = f"https://pedigree-{tier}.cancer.gov"
         redirect_url = (
-            f"{base_domain}{original_url}" if original_url.startswith("/") else f"{base_domain}/{original_url}"
+            f"{base_domain}{original_url}"
+            if original_url.startswith("/")
+            else f"{base_domain}/{original_url}"
         )
         cookie_domain = ".cancer.gov"  # Shared domain for CloudFront and API subdomain
 
@@ -253,7 +282,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
 
     except Exception as e:
-        print(f"Callback error: {str(e)}")
+        logger.info(f"Login error: {str(e)}")
         # Don't expose internal details in production
         return {
             "statusCode": 500,
