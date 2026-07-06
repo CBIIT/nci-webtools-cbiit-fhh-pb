@@ -6,6 +6,19 @@
   <script src="{{ url_for('static', filename='js/fhh_move.js') }}" type="module"></script>
   <script src="{{ url_for('static', filename='js/fhh_session_timeout.js') }}" type="module"></script>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/pedigree.css') }}">
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-K1Y1MRNYJW"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { dataLayer.push(arguments); }
+    gtag('js', new Date());
+
+    gtag('config', 'G-K1Y1MRNYJW', {
+      page_location: window.location.origin + window.location.pathname,
+      page_path: window.location.pathname,
+      page_referrer: (document.referrer || '').split('?')[0],
+    });
+  </script>
 
 <TITLE> Pedigree Drawing </TITLE>
 <BODY>
