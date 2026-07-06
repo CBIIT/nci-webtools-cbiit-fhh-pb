@@ -3,7 +3,7 @@
  * Warns users before their auth session expires and allows extending without a page refresh.
  */
 
-import { ensureConfigLoaded } from "./fhh_load.js";
+import { ensureConfigLoaded, build_api_url } from "./fhh_load.js";
 
 const DEFAULT_WARNING_SECONDS = 300;
 const COUNTDOWN_INTERVAL_MS = 1000;
@@ -13,20 +13,11 @@ let countdownIntervalId = null;
 let expiresAtEpoch = 0;
 let serverTimeOffsetSeconds = 0;
 let warningSeconds = DEFAULT_WARNING_SECONDS;
-let apiBaseUrl = "";
 
 const modalOverlay = () => document.getElementById("session-timeout-overlay");
 const countdownElement = () => document.getElementById("session-timeout-countdown");
 const extendButton = () => document.getElementById("session-extend-button");
 const logoutButton = () => document.getElementById("session-logout-button");
-
-function build_api_url(endpoint) {
-  if (!apiBaseUrl) return endpoint;
-
-  const cleanEndpoint = endpoint.startsWith("/") ? endpoint.slice(1) : endpoint;
-  const baseUrl = apiBaseUrl.endsWith("/") ? apiBaseUrl : `${apiBaseUrl}/`;
-  return baseUrl + cleanEndpoint;
-}
 
 function get_current_time_seconds() {
   return Math.floor(Date.now() / 1000) + serverTimeOffsetSeconds;
