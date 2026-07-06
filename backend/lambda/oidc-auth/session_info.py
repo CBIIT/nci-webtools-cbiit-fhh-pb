@@ -65,7 +65,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     "expires_at": expires_at,
                     "server_time": current_time,
                     "remaining_seconds": remaining_seconds,
-                    "email": session_data.get("email", ""),
                 }
             ),
         }
