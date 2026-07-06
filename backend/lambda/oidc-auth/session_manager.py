@@ -257,7 +257,7 @@ def update_session_activity(session_id: str) -> bool:
         return False
 
 
-def extend_session(session_id: str, additional_seconds: int = 3600) -> bool:
+def extend_session(session_id: str, additional_seconds: int = 3600) -> Optional[int]:
     """
     Extend a session expiration time.
 
@@ -266,7 +266,7 @@ def extend_session(session_id: str, additional_seconds: int = 3600) -> bool:
         additional_seconds: Additional time to add to expiration
 
     Returns:
-        True if extended successfully, False otherwise
+        New expires_at epoch timestamp if extended successfully, None otherwise
     """
     try:
         table = get_table()
@@ -274,10 +274,10 @@ def extend_session(session_id: str, additional_seconds: int = 3600) -> bool:
         # Get current session
         response = table.get_item(Key={"session_id": session_id})
         if "Item" not in response:
-            return False
+            return None
 
         session = response["Item"]
-        new_expires_at = session.get("expires_at", 0) + additional_seconds
+        new_expires_at = int(session.get("expires_at", 0)) + additional_seconds
         new_ttl = new_expires_at
 
         table.update_item(
@@ -289,11 +289,11 @@ def extend_session(session_id: str, additional_seconds: int = 3600) -> bool:
         logger.info(
             f"Session extended: session_id={session_id[:8]}..., additional_seconds={additional_seconds}"
         )
-        return True
+        return new_expires_at
 
     except ClientError as e:
         logger.error(f"Error extending session: {str(e)}")
-        return False
+        return None
 
 
 def get_user_sessions(user_id: str, active_only: bool = True) -> list:
