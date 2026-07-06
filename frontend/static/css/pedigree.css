@@ -302,3 +302,82 @@
   min-height: 18px;
   margin-top: 4px;
 }
+
+.session-timeout-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.45);
+}
+
+.session-timeout-dialog {
+  background-color: #fff;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  max-width: 480px;
+  width: calc(100% - 32px);
+  padding: 28px 32px;
+  font-family: sans-serif, Arial;
+  text-align: center;
+}
+
+.session-timeout-dialog h2 {
+  margin: 0 0 12px;
+  color: #d32f2f;
+  font-size: 1.35rem;
+}
+
+.session-timeout-dialog p {
+  color: #555;
+  line-height: 1.5;
+  margin: 10px 0;
+}
+
+.session-timeout-countdown-label {
+  font-size: 1.1rem;
+  font-weight: bold;
+}
+
+#session-timeout-countdown {
+  font-variant-numeric: tabular-nums;
+  color: #d32f2f;
+}
+
+.session-timeout-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 24px;
+  flex-wrap: wrap;
+}
+
+.session-timeout-actions button {
+  background-color: #1976d2;
+  color: #fff;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.session-timeout-actions button:hover {
+  background-color: #1565c0;
+}
+
+.session-timeout-actions button.secondary {
+  background-color: #757575;
+}
+
+.session-timeout-actions button.secondary:hover {
+  background-color: #616161;
+}
+
+.session-timeout-actions button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}

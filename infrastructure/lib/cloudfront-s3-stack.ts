@@ -243,6 +243,7 @@ export class CloudFrontS3Stack extends cdk.Stack {
                 cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
               cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
               originRequestPolicy: apiOriginRequestPolicy,
+              allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
             },
           },
         }),

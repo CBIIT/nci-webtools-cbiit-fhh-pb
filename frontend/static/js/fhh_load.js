@@ -9,7 +9,7 @@ let configData = null;
  * @param {string} endpoint - The API endpoint path
  * @returns {string} Complete URL or relative path if no base URL configured
  */
-function build_api_url(endpoint) {
+export function build_api_url(endpoint) {
   if (!apiConfig.baseUrl) return endpoint;
 
   const cleanEndpoint = endpoint.startsWith("/") ? endpoint.slice(1) : endpoint;

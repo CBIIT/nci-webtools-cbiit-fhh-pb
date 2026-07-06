@@ -2,6 +2,9 @@
   "api": {
     "baseUrl": ""
   },
+  "session": {
+    "warningSeconds": 300
+  },
   "dataDir": "../data",
   "build_mode": true,
   "debug_mode": true,
