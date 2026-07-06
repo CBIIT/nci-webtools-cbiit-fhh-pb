@@ -12,8 +12,12 @@
     window.dataLayer = window.dataLayer || [];
     function gtag() { dataLayer.push(arguments); }
     gtag('js', new Date());
-    
-    gtag('config', 'G-K1Y1MRNYJW');
+
+    gtag('config', 'G-K1Y1MRNYJW', {
+      page_location: window.location.origin + window.location.pathname,
+      page_path: window.location.pathname,
+      page_referrer: (document.referrer || '').split('?')[0],
+    });
   </script>
 
 <TITLE> Pedigree Drawing </TITLE>
