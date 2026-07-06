@@ -282,7 +282,8 @@ def extend_session(session_id: str, additional_seconds: int = 3600) -> Optional[
 
         table.update_item(
             Key={"session_id": session_id},
-            UpdateExpression="SET expires_at = :expires, ttl = :ttl",
+            UpdateExpression="SET expires_at = :expires, #ttl = :ttl",
+            ExpressionAttributeNames={"#ttl": "ttl"},
             ExpressionAttributeValues={":expires": new_expires_at, ":ttl": new_ttl},
         )
 
