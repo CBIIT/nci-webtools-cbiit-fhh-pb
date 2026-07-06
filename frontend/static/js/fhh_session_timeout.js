@@ -57,6 +57,7 @@ function show_modal() {
   update_countdown_display();
   overlay.style.display = "flex";
   overlay.setAttribute("aria-hidden", "false");
+  extendButton()?.focus();
 
   if (countdownIntervalId !== null) {
     clearInterval(countdownIntervalId);
