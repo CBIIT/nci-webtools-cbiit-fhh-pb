@@ -178,8 +178,10 @@ async function init_session_timeout() {
 
   try {
     const config = await ensureConfigLoaded();
-    apiBaseUrl = config?.api?.baseUrl || "";
-    warningSeconds = config?.session?.warningSeconds ?? DEFAULT_WARNING_SECONDS;
+    const configuredWarning = config?.session?.warningSeconds;
+    warningSeconds = Number.isFinite(configuredWarning)
+      ? configuredWarning
+      : DEFAULT_WARNING_SECONDS;
 
     const sessionInfo = await fetch_session_info();
     if (!sessionInfo || typeof sessionInfo.remaining_seconds !== "number") {
