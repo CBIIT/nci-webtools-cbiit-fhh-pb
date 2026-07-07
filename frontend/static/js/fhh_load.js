@@ -96,7 +96,7 @@ export async function create_family_file(study_id, family_id, proband_id, proban
 
 async function loadConfigOnce() {
   try {
-    const response = await fetch("/config/lfss.json");
+    const response = await fetch(`/config/${DEFAULT_CONFIG_ID}.json`);
     if (response.ok) {
       configData = await response.json();
       initializeApiConfig(configData);
