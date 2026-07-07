@@ -12,9 +12,9 @@ app.config["JSONIFY_PRETTYPRINT_REGULAR"] = True  # Explicitly enable pretty-pri
 CONFIG_FOLDER = os.path.join(app.root_path, "config")
 
 def get_app_config():
-    """Load application configuration from config/lfss.json"""
+    """Load application configuration from config/default.json"""
     try:
-        config_path = os.path.join(CONFIG_FOLDER, "lfss.json")
+        config_path = os.path.join(CONFIG_FOLDER, "default.json")
         with open(config_path, "r") as f:
             return json.load(f)
     except Exception as e:

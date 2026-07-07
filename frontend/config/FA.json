@@ -1,0 +1,76 @@
+{
+  "api": {
+    "baseUrl": "/api"
+  },
+  "session": {
+    "warningSeconds": 300
+  },
+  "dataDir": "../data",
+  "build_mode": true,
+  "debug_mode": true,
+  "study_name": "Fanconi Anemia (FA)",
+  "default_color": "lightyellow",
+  "style": "compact",
+  "margin": 100,
+  "size": 50,
+  "h_padding": 200,
+  "v_padding": 30,
+  "h_spacing": 120,
+  "v_spacing": 200,
+  "quadrants": {
+    "top_right": {
+      "name": "Fanconi COIs",
+      "color": "blue",
+      "type": "disease",
+      "codes": [
+        "D126",
+        "D239",
+        "D485",
+        "D6103",
+        "D6109",
+        "K1321",
+        "K1329B",
+        "K1329C",
+        "K1329P",
+        "K1379",
+        "K227",
+        "K6282",
+        "N602",
+        "N60891",
+        "N60892",
+        "N870",
+        "N871",
+        "N879",
+        "N890",
+        "N891",
+        "N893",
+        "N900",
+        "N901",
+        "N903",
+        "R85610",
+        "R876"
+      ],
+      "children_of": []
+    },
+    "bottom_right": {
+      "name": "Cancers",
+      "color": "red",
+      "type": "cancer",
+      "codes": [],
+      "children_of": [
+        "C"
+      ]
+    }
+  },
+  "code_matching": {
+    "normalize": {
+      "trim": true,
+      "uppercase": true,
+      "remove_decimals": true
+    },
+    "match_order": [
+      "exact_normalized_code",
+      "children_of_prefix"
+    ]
+  }
+}

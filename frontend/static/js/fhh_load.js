@@ -3,6 +3,7 @@ let loaded_study_id = null;
 let loaded_family_id = null;
 let configPromise = null;
 let configData = null;
+const DEFAULT_CONFIG_ID = "default";
 
 /**
  * Builds API URL by combining base URL with endpoint
@@ -24,10 +25,7 @@ export function build_api_url(endpoint) {
  * @param {Object} config - Configuration object containing API settings
  */
 function initializeApiConfig(config) {
-  if (config?.api?.baseUrl) {
-    apiConfig.baseUrl = config.api.baseUrl;
-  } else {
-  }
+  apiConfig.baseUrl = config?.api?.baseUrl || "";
 }
 
 export async function ensureConfigLoaded() {
@@ -98,7 +96,7 @@ export async function create_family_file(study_id, family_id, proband_id, proban
 
 async function loadConfigOnce() {
   try {
-    const response = await fetch("/config/lfss.json");
+    const response = await fetch(`/config/${DEFAULT_CONFIG_ID}.json`);
     if (response.ok) {
       configData = await response.json();
       initializeApiConfig(configData);
@@ -111,6 +109,29 @@ async function loadConfigOnce() {
     configData = { api: { baseUrl: "" } };
     return configData;
   }
+}
+
+async function loadStudyConfig(study_id, applyApiConfig = false) {
+  const selected_config_id = (study_id || "").trim();
+  let config_response = await fetch(`/config/${selected_config_id}.json`);
+
+  if (!config_response.ok && selected_config_id !== DEFAULT_CONFIG_ID) {
+    config_response = await fetch(`/config/${DEFAULT_CONFIG_ID}.json`);
+  }
+
+  if (!config_response.ok) {
+    throw new Error(`Config request failed (${config_response.status})`);
+  }
+
+  const config = await config_response.json();
+  if (applyApiConfig) {
+    initializeApiConfig(config);
+  }
+  return config;
+}
+
+export async function load_study_config(study_id) {
+  return loadStudyConfig(study_id, false);
 }
 
 export function resetConfig() {
@@ -237,32 +258,22 @@ export async function load_config_and_data(study_id, family_id, config_id) {
     return;
   }
   const selected_study_id = (study_id || "lfss").trim();
-  const selected_config_id = (config_id || selected_study_id || "lfss").trim();
+  const selected_config_id = (config_id || selected_study_id || DEFAULT_CONFIG_ID).trim();
 
   const pedigree_file = build_api_url("/family/" + selected_study_id + "/" + family_id);
   const annotations_file = build_api_url("/annotations/" + selected_study_id + "/" + family_id);
-  const config_file = `/config/${selected_config_id}.json`;
 
   loaded_study_id = selected_study_id;
   loaded_family_id = family_id;
   try {
-    const [pedigree_response, annotations_response, primary_config_response] =
+    const [pedigree_response, annotations_response] =
       await Promise.all([
         fetch(pedigree_file),
         fetch(annotations_file),
-        fetch(config_file),
       ]);
 
     if (!pedigree_response.ok) {
       throw new Error(`Family request failed (${pedigree_response.status})`);
-    }
-
-    let config_response = primary_config_response;
-    if (!config_response.ok && selected_config_id !== "lfss") {
-      config_response = await fetch("/config/lfss.json");
-    }
-    if (!config_response.ok) {
-      throw new Error(`Config request failed (${config_response.status})`);
     }
 
     const annotations = annotations_response.ok
@@ -273,9 +284,7 @@ export async function load_config_and_data(study_id, family_id, config_id) {
     }
 
     const data = await pedigree_response.json();
-    const config = await config_response.json();
-
-    initializeApiConfig(config);
+    const config = await loadStudyConfig(selected_config_id, false);
 
     return [data, annotations, config];
   } catch (error) {

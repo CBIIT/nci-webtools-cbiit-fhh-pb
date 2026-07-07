@@ -1,0 +1,20 @@
+{
+  "api": {
+    "baseUrl": ""
+  },
+  "session": {
+    "warningSeconds": 300
+  },
+  "dataDir": "../data",
+  "build_mode": true,
+  "debug_mode": true,
+  "study_name": "Default Study",
+  "default_color": "lightyellow",
+  "style": "compact",
+  "margin": 100,
+  "size": 50,
+  "h_padding": 200,
+  "v_padding": 30,
+  "h_spacing": 120,
+  "v_spacing": 200
+}

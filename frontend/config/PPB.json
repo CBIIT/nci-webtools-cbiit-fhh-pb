@@ -1,0 +1,148 @@
+{
+  "api": {
+    "baseUrl": "/api"
+  },
+  "session": {
+    "warningSeconds": 300
+  },
+  "dataDir": "../data",
+  "build_mode": true,
+  "debug_mode": true,
+  "study_name": "Pleuropulmonary Blastoma / DICER1 Spectrum (PPB/DICER)",
+  "default_color": "lightyellow",
+  "style": "compact",
+  "margin": 100,
+  "size": 50,
+  "h_padding": 200,
+  "v_padding": 30,
+  "h_spacing": 120,
+  "v_spacing": 200,
+  "quadrants": {
+    "top_right": {
+      "name": "PPB",
+      "color": "blue",
+      "type": "cancer",
+      "codes": [
+        "89730",
+        "89731",
+        "89733",
+        "C340",
+        "C341",
+        "C342",
+        "C343",
+        "C348",
+        "C349",
+        "C384",
+        "C389"
+      ],
+      "children_of": []
+    },
+    "bottom_right": {
+      "name": "Cancers",
+      "color": "red",
+      "type": "cancer",
+      "codes": [
+        "80103",
+        "80703",
+        "80903",
+        "81403",
+        "81603",
+        "87203",
+        "95903",
+        "95913",
+        "96503",
+        "98003",
+        "98233",
+        "98353",
+        "98613"
+      ],
+      "children_of": [
+        "C"
+      ]
+    },
+    "bottom_left": {
+      "name": "Non-Cancers",
+      "color": "yellow",
+      "type": "disease",
+      "codes": [
+        "D126",
+        "D131",
+        "D1430",
+        "D24X",
+        "D259",
+        "D3190",
+        "D332",
+        "D34X",
+        "D352",
+        "D6851",
+        "D6893",
+        "D869",
+        "E039",
+        "E041",
+        "E042",
+        "E059",
+        "E063",
+        "E069",
+        "E079",
+        "E282",
+        "H269",
+        "H355",
+        "H471",
+        "J189",
+        "J339",
+        "J439",
+        "J90X",
+        "J939",
+        "J984",
+        "K635",
+        "K740",
+        "K7460",
+        "M856",
+        "N281",
+        "N649",
+        "N800",
+        "N801",
+        "N832",
+        "N8320",
+        "N879",
+        "Q753",
+        "Q8501",
+        "Q998"
+      ],
+      "children_of": []
+    },
+    "top_left": {
+      "name": "DICER Spectrum Disorders",
+      "color": "purple",
+      "type": "disease",
+      "codes": [
+        "86311",
+        "86313",
+        "89003",
+        "8959",
+        "89590",
+        "89591",
+        "89593",
+        "95013",
+        "C499",
+        "C569",
+        "C629",
+        "C649",
+        "C694",
+        "D140"
+      ],
+      "children_of": []
+    }
+  },
+  "code_matching": {
+    "normalize": {
+      "trim": true,
+      "uppercase": true,
+      "remove_decimals": true
+    },
+    "match_order": [
+      "exact_normalized_code",
+      "children_of_prefix"
+    ]
+  }
+}
