@@ -1,0 +1,118 @@
+{
+  "api": {
+    "baseUrl": "/api"
+  },
+  "session": {
+    "warningSeconds": 300
+  },
+  "dataDir": "../data",
+  "build_mode": true,
+  "debug_mode": true,
+  "study_name": "Inherited Bone Marrow Failure Syndrome (IBMFS)",
+  "default_color": "lightyellow",
+  "style": "compact",
+  "margin": 100,
+  "size": 50,
+  "h_padding": 200,
+  "v_padding": 30,
+  "h_spacing": 120,
+  "v_spacing": 200,
+  "quadrants": {
+    "top_right": {
+      "name": "IBMFS",
+      "color": "blue",
+      "type": "disease",
+      "codes": [
+        "D6101",
+        "D6102",
+        "D6103",
+        "D6480",
+        "D6942",
+        "D700",
+        "H3500",
+        "Q8280",
+        "Q8281",
+        "Q8282",
+        "Q8283",
+        "Q8719",
+        "Q872"
+      ],
+      "children_of": [
+        "D610",
+        "D700",
+        "D70X",
+        "H350",
+        "Q828",
+        "Q871",
+        "Q872"
+      ]
+    },
+    "bottom_right": {
+      "name": "Cancers",
+      "color": "red",
+      "type": "cancer",
+      "codes": [],
+      "children_of": [
+        "C"
+      ]
+    },
+    "bottom_left": {
+      "name": "Non-Cancers",
+      "color": "yellow",
+      "type": "disease",
+      "codes": [
+        "D45",
+        "D571",
+        "D6181",
+        "D72818",
+        "E139",
+        "E83110",
+        "I280",
+        "K1321",
+        "K740",
+        "K7460",
+        "K7681",
+        "Q249",
+        "Q2730",
+        "Q909"
+      ],
+      "children_of": [
+        "E831",
+        "K76"
+      ]
+    },
+    "top_left": {
+      "name": "Hematologic",
+      "color": "orange",
+      "type": "disease",
+      "codes": [
+        "D569",
+        "D619",
+        "D6190",
+        "D649",
+        "D693",
+        "D6959",
+        "D696",
+        "D709",
+        "D72819",
+        "D849",
+        "J8410"
+      ],
+      "children_of": [
+        "D619",
+        "D69"
+      ]
+    }
+  },
+  "code_matching": {
+    "normalize": {
+      "trim": true,
+      "uppercase": true,
+      "remove_decimals": true
+    },
+    "match_order": [
+      "exact_normalized_code",
+      "children_of_prefix"
+    ]
+  }
+}

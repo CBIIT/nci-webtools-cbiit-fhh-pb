@@ -41,7 +41,8 @@ def main():
         
         # Inject API URL into configuration if provided
         if args.api_url:
-            inject_api_url(build_dir / 'config' / 'lfss.json', args.api_url, args.tier)
+            for config_path in (build_dir / 'config').glob('*.json'):
+                inject_api_url(config_path, args.api_url, args.tier)
     
     # Process templates
     for template_file in templates_dir.glob('*.html'):

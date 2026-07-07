@@ -15,6 +15,7 @@ import {
 
 import {
   ensureConfigLoaded,
+  load_study_config,
   check_for_families,
   load_families_into_select,
   load_config_and_data,
@@ -54,6 +55,14 @@ export function get_config() {
 let study_select = document.getElementById("study_select");
 study_select.addEventListener("change", function (event) {
   study_name = event.target.value;
+  load_study_config(study_name)
+    .then((loadedConfig) => {
+      config = loadedConfig;
+      update_build_mode_actions_visibility();
+    })
+    .catch((error) => {
+      console.error("Failed to load study config:", error);
+    });
   check_for_families(study_name);
 });
 
@@ -63,7 +72,7 @@ family_select.addEventListener("change", function (event) {
     return;
   }
   
-  load_config_and_data(study_name, event.target.value, "lfss")
+  load_config_and_data(study_name, event.target.value, study_name)
     .then(([d, a, c]) => {
       data = d;
       annotations = a;
@@ -233,9 +242,6 @@ document.addEventListener("DOMContentLoaded", async function () {
     
     const urlParams = new URLSearchParams(window.location.search);
     const family = urlParams.get("family");
-    check_for_families("lfss");
-    check_for_studies();
-
     let filename = null;
     if (family) {
       filename = family + ".json";
@@ -246,16 +252,17 @@ document.addEventListener("DOMContentLoaded", async function () {
 
     if (study) {
       study_name = study;
-    } else if (studies.length > 0) {
-      study_name = studies[0];
     }
+    // If no study param, leave blank option selected unless a family was specified in the URL
 
     if (study_name) {
       study_select.value = study_name;
+      config = await load_study_config(study_name);
+      update_build_mode_actions_visibility();
       await check_for_families(study_name);
     }
     if (filename) { 
-      const promise = load_config_and_data(family, "lfss", "lfss");
+      const promise = load_config_and_data(study_name, family, study_name);
       promise.then((result) => {
         if (!result) return;
         const [d, a, c] = result;
@@ -598,10 +605,10 @@ function set_study_summary() {
   const study_name = config.study_name || "Unknown Study";
   const study = data.general?.study;
 
-  const top_left = config.quadrants.top_left?.name || "Unknown";
-  const top_right = config.quadrants.top_right?.name || "Unknown";
-  const bottom_left = config.quadrants.bottom_left?.name || "Unknown";
-  const bottom_right = config.quadrants.bottom_right?.name || "Unknown";
+  const top_left = config.quadrants?.top_left?.name || "Unknown";
+  const top_right = config.quadrants?.top_right?.name || "Unknown";
+  const bottom_left = config.quadrants?.bottom_left?.name || "Unknown";
+  const bottom_right = config.quadrants?.bottom_right?.name || "Unknown";
 
   const table = document.createElement("table");
   table.classList.add("data-display-table");
@@ -614,10 +621,22 @@ function set_study_summary() {
   thead.appendChild(headerRow);
   table.appendChild(thead);
   const tbody = document.createElement("tbody");
-  add_row_to_table(tbody, "Top Left", top_left);
-  add_row_to_table(tbody, "Top Right", top_right);
-  add_row_to_table(tbody, "Bottom Left", bottom_left);
-  add_row_to_table(tbody, "Bottom Right", bottom_right);
+
+  if (config.quadrants && Object.keys(config.quadrants).length > 0) {
+    add_row_to_table(tbody, "Top Left", top_left);
+    add_row_to_table(tbody, "Top Right", top_right);
+    add_row_to_table(tbody, "Bottom Left", bottom_left);
+    add_row_to_table(tbody, "Bottom Right", bottom_right);
+  } else {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 2;
+    cell.textContent = "No quadrant information available";
+    cell.style.fontStyle = "italic";
+    cell.style.color = "#888";
+    row.appendChild(cell);
+    tbody.appendChild(row);
+  }
 
   table.appendChild(tbody);
   summary_elem[0].appendChild(table);
@@ -2414,19 +2433,7 @@ function check_quadrant_tr(person_id) {
   if (!data["people"][person_id]) return;
   let person = data["people"][person_id];
 
-  const top_right_type = config.quadrants.top_right?.type || "Unknown";
-  if (top_right_type == "disease") {
-    if (person.diseases && person.diseases.length > 0) {
-      const valid_codes = config.quadrants.top_right?.codes || [];
-      for (const disease of person.diseases) {
-        if (!disease.code) { set_other_alert(person_id, "has null diseases"); continue; }
-        const code = trimAfterCharacter(disease.code, "-");
-        if (valid_codes.includes(code)) {
-          return code;
-        }
-      }
-    }
-  }
+  return check_quadrant_match(person_id, config.quadrants?.top_right);
 }
 
 
@@ -2434,55 +2441,96 @@ function check_quadrant_tl(person_id) {
   if (!data["people"][person_id]) return;
   let person = data["people"][person_id];
 
-  const top_left_type = config.quadrants.top_left?.type || "Unknown";
-  if (top_left_type == "disease") {
-    if (person.diseases && person.diseases.length > 0) {
-      const valid_codes = config.quadrants.top_left?.codes || [];
-      for (const disease of person.diseases) {
-        if (!disease.code) { set_other_alert(person_id, "has null diseases"); continue; }
-        const code = trimAfterCharacter(disease.code, "-");
-        if (valid_codes.includes(code)) {
-          return code;
-        }
-      }
-    }
-  }
+  return check_quadrant_match(person_id, config.quadrants?.top_left);
 }
 
 function check_quadrant_bl(person_id) {
   if (!data["people"][person_id]) return;
   let person = data["people"][person_id];
 
-  const bottom_left_type = config.quadrants.bottom_left?.type || "Unknown";
-  if (bottom_left_type == "disease") {
-    if (person.diseases && person.diseases.length > 0) {
-      const valid_codes = config.quadrants.bottom_left?.codes || [];
-      for (const disease of person.diseases) {
-        if (!disease.code) { set_other_alert(person_id, "has null diseases"); continue; }
-        const code = trimAfterCharacter(disease.code, "-");
-        if (valid_codes.includes(code)) {
-          return code;
-        }
-      }
-    }
-  }
+  return check_quadrant_match(person_id, config.quadrants?.bottom_left);
 }
 
 function check_quadrant_br(person_id) {
   if (!data["people"][person_id]) return;
   let person = data["people"][person_id];
 
-  const bottom_right_type = config.quadrants.bottom_right?.type || "Unknown";
-  if (bottom_right_type == "disease") {
-    if (person.diseases && person.diseases.length > 0) {
-      const valid_codes = config.quadrants.bottom_right?.codes || [];
-      for (const disease of person.diseases) {
-        if (!disease.code) { set_other_alert(person_id, "has null diseases"); continue; }
-        const code = trimAfterCharacter(disease.code, "-");
-        if (valid_codes.includes(code)) {
-          return code;
-        }
-      }
+  return check_quadrant_match(person_id, config.quadrants?.bottom_right);
+}
+
+function normalize_disease_code(raw_code) {
+  if (!raw_code || typeof raw_code !== "string") return null;
+
+  const without_decimals = raw_code.toUpperCase().replace(/\./g, "").trim();
+  const match = without_decimals.match(/^([A-Z]\d{2,})/);
+  if (!match) return null;
+
+  return match[1];
+}
+
+function normalize_quadrant_code(raw_code) {
+  if (!raw_code || typeof raw_code !== "string") return null;
+
+  const without_decimals = raw_code.toUpperCase().replace(/\./g, "").trim();
+  const match = without_decimals.match(/^([A-Z]\d{2,})/);
+  if (!match) return null;
+
+  return match[1];
+}
+
+function normalize_children_of_prefix(raw_code) {
+  if (!raw_code || typeof raw_code !== "string") return null;
+
+  const without_decimals = raw_code.toUpperCase().replace(/\./g, "").trim();
+  if (!without_decimals) return null;
+
+  // Support broad prefixes like "C" and preserve alphanumeric markers like "D70X".
+  const match = without_decimals.match(/^([A-Z][A-Z0-9]*)/);
+  if (!match) return null;
+
+  return match[1];
+}
+
+function normalize_disease_prefix_code(raw_code) {
+  if (!raw_code || typeof raw_code !== "string") return null;
+
+  const without_decimals = raw_code.toUpperCase().replace(/\./g, "").trim();
+  const match = without_decimals.match(/^([A-Z][A-Z0-9]*)/);
+  if (!match) return null;
+
+  return match[1];
+}
+
+function check_quadrant_match(person_id, quadrant_config) {
+  const quadrant_type = quadrant_config?.type;
+  if (!quadrant_config || (quadrant_type !== "disease" && quadrant_type !== "cancer")) return;
+
+  const person = data["people"][person_id];
+  if (!person?.diseases?.length) return;
+
+  const valid_codes = (quadrant_config.codes || [])
+    .map(normalize_quadrant_code)
+    .filter(Boolean);
+  const child_prefixes = (quadrant_config.children_of || [])
+    .map(normalize_children_of_prefix)
+    .filter(Boolean);
+
+  for (const disease of person.diseases) {
+    if (!disease.code) {
+      set_other_alert(person_id, "has null diseases");
+      continue;
+    }
+
+    const normalized_code = normalize_disease_code(disease.code);
+    if (!normalized_code) continue;
+
+    if (valid_codes.includes(normalized_code)) {
+      return normalized_code;
+    }
+
+    const normalized_prefix_code = normalize_disease_prefix_code(disease.code);
+    if (normalized_prefix_code && child_prefixes.some((prefix) => normalized_prefix_code.startsWith(prefix))) {
+      return normalized_prefix_code;
     }
   }
 }
@@ -2496,10 +2544,22 @@ function draw_quadrants_male(person_id) {
   let color = "grey";
   let code = false;
 
-  if (code = check_quadrant_tr(person_id)) { el = draw_square(size, center_x, center_y - size, config.quadrants.top_right?.color || "grey"); } 
-  if (code = check_quadrant_tl(person_id)) { el = draw_square(size, center_x - size, center_y -size, config.quadrants.top_left?.color || "grey"); }
-  if (code = check_quadrant_br(person_id)) { el = draw_square(size, center_x, center_y, config.quadrants.bottom_right?.color || "grey"); }
-  if (code = check_quadrant_bl(person_id)) { el = draw_square(size, center_x - size, center_y, config.quadrants.bottom_left?.color || "grey"); }
+  if (code = check_quadrant_tr(person_id)) {
+    el = draw_square(size, center_x, center_y - size, config.quadrants.top_right?.color || "grey");
+    el.setAttributeNS(null, "pointer-events", "none");
+  }
+  if (code = check_quadrant_tl(person_id)) {
+    el = draw_square(size, center_x - size, center_y -size, config.quadrants.top_left?.color || "grey");
+    el.setAttributeNS(null, "pointer-events", "none");
+  }
+  if (code = check_quadrant_br(person_id)) {
+    el = draw_square(size, center_x, center_y, config.quadrants.bottom_right?.color || "grey");
+    el.setAttributeNS(null, "pointer-events", "none");
+  }
+  if (code = check_quadrant_bl(person_id)) {
+    el = draw_square(size, center_x - size, center_y, config.quadrants.bottom_left?.color || "grey");
+    el.setAttributeNS(null, "pointer-events", "none");
+  }
   if (el) { 
     el.setAttributeNS(null, "id", person_id);
     el.setAttributeNS(null, "stroke-width", "2");
@@ -2548,6 +2608,7 @@ function draw_arc_90(person_id, center_x, center_y, radius, quadrant, color) {
   el.setAttributeNS(null, "id", person_id);
   el.setAttributeNS(null, "name", person_id);
   el.setAttributeNS(null, "fill", color);
+  el.setAttributeNS(null, "pointer-events", "none");
 
   var svg = document.getElementById("svg");
   svg.appendChild(el);
