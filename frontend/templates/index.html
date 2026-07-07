@@ -4,7 +4,21 @@
   <script src="{{ url_for('static', filename='js/fhh_display_pedigree.js') }}" type="module"></script>
   <script src="{{ url_for('static', filename='js/fhh_load.js') }}" type="module"></script>
   <script src="{{ url_for('static', filename='js/fhh_move.js') }}" type="module"></script>
+  <script src="{{ url_for('static', filename='js/fhh_session_timeout.js') }}" type="module"></script>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/pedigree.css') }}">
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-K1Y1MRNYJW"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { dataLayer.push(arguments); }
+    gtag('js', new Date());
+
+    gtag('config', 'G-K1Y1MRNYJW', {
+      page_location: window.location.origin + window.location.pathname,
+      page_path: window.location.pathname,
+      page_referrer: (document.referrer || '').split('?')[0],
+    });
+  </script>
 
 <TITLE> Pedigree Drawing </TITLE>
 <BODY>
@@ -68,6 +82,20 @@
       Please choose a family from the dropdown above.
     </DIV>
   </DIV>
+
+  <div id="session-timeout-overlay" class="session-timeout-overlay" aria-hidden="true" style="display:none;">
+    <div class="session-timeout-dialog" role="dialog" aria-labelledby="session-timeout-title" aria-modal="true">
+      <h2 id="session-timeout-title">Your session is about to expire</h2>
+      <p>For your security, you will be logged out when the timer reaches zero.</p>
+      <p class="session-timeout-countdown-label">
+        Time remaining: <span id="session-timeout-countdown">05:00</span>
+      </p>
+      <div class="session-timeout-actions">
+        <button id="session-extend-button" type="button">Extend session</button>
+        <button id="session-logout-button" type="button" class="secondary">Log out now</button>
+      </div>
+    </div>
+  </div>
 
 </BODY>
 </HTML>

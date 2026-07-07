@@ -1,6 +1,5 @@
 """
-Lambda function for extending session expiration.
-Extends the current session by 1 hour from now.
+Lambda function for returning current session expiration information.
 """
 
 import json
@@ -12,28 +11,21 @@ from aws_lambda_powertools.logging import correlation_paths
 from aws_lambda_powertools.logging.formatters.datadog import DatadogLogFormatter
 
 from cookie_utils import (
-    SESSION_COOKIE_DOMAIN,
     SESSION_COOKIE_NAME,
-    create_cookie,
     json_response_headers,
     parse_cookies,
 )
-from session_manager import extend_session, validate_session
+from session_manager import validate_session
 
 logger = Logger(logger_formatter=DatadogLogFormatter())
-logger.append_keys(component="extend-session")
-
-SESSION_EXTENSION_SECONDS = 3600
+logger.append_keys(component="session-info")
 
 
 @logger.inject_lambda_context(
     correlation_id_path=correlation_paths.API_GATEWAY_REST, clear_state=True
 )
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-    """
-    Handle session extension request.
-    Extends the current session by 1 hour.
-    """
+    """Return remaining session time for the current user."""
     try:
         cookie_header = event.get("headers", {}).get("Cookie", "") or event.get(
             "headers", {}
@@ -56,43 +48,21 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "body": json.dumps({"error": "Session invalid or expired"}),
             }
 
+        current_time = int(time.time())
+        expires_at = int(session_data.get("expires_at", 0))
+        remaining_seconds = max(0, expires_at - current_time)
+
         logger.append_keys(
             email=session_data.get("email", "unknown"),
             user_id=session_data.get("user_id", "unknown"),
         )
 
-        new_expires_at = extend_session(
-            session_id, additional_seconds=SESSION_EXTENSION_SECONDS
-        )
-
-        if new_expires_at is None:
-            return {
-                "statusCode": 500,
-                "headers": json_response_headers(),
-                "body": json.dumps({"error": "Failed to extend session"}),
-            }
-
-        current_time = int(time.time())
-        remaining_seconds = max(0, new_expires_at - current_time)
-        auth_cookie = create_cookie(
-            SESSION_COOKIE_NAME,
-            session_id,
-            max_age=remaining_seconds,
-            domain=SESSION_COOKIE_DOMAIN,
-            same_site="Lax",
-        )
-
         return {
             "statusCode": 200,
-            "headers": {
-                **json_response_headers(),
-                "Set-Cookie": auth_cookie,
-            },
+            "headers": json_response_headers(),
             "body": json.dumps(
                 {
-                    "message": "Session extended successfully",
-                    "extended_by_seconds": SESSION_EXTENSION_SECONDS,
-                    "expires_at": new_expires_at,
+                    "expires_at": expires_at,
                     "server_time": current_time,
                     "remaining_seconds": remaining_seconds,
                 }
@@ -100,9 +70,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
 
     except Exception as e:
-        logger.error(f"Extend session error: {str(e)}")
+        logger.error(f"Session info error: {str(e)}")
         return {
             "statusCode": 500,
             "headers": json_response_headers(),
-            "body": json.dumps({"error": "Failed to extend session"}),
+            "body": json.dumps({"error": "Failed to retrieve session information"}),
         }

@@ -11,12 +11,48 @@ export class S3DataStack extends cdk.Stack {
 
     const tier = process.env.TIER || "dev";
 
+    // Create S3 access logs bucket
+    const accessLogsBucket = new s3.Bucket(this, "S3AccessLogsBucket", {
+      bucketName: `nci-cbiit-fhhpb-s3-access-logs-${tier}`,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      enforceSSL: true,
+      objectOwnership: s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
+      lifecycleRules: [
+        {
+          id: "ExpireAccessLogs",
+          enabled: true,
+          expiration: cdk.Duration.days(tier === "prod" ? 365 : 90),
+        },
+      ],
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    const accessLogsTags = createTags({ tier, resourceName: "s3-access-logs" });
+    Object.entries(accessLogsTags).forEach(([key, value]) => {
+      cdk.Tags.of(accessLogsBucket).add(key, value);
+    });
+
     // Create S3 bucket for data storage
     this.dataBucket = new s3.Bucket(this, "DataBucket", {
       bucketName: `nci-cbiit-fhhpb-data-${tier}`,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,
+      bucketKeyEnabled: true,
+      blockedEncryptionTypes: [s3.BlockedEncryptionType.SSE_C],
+      enforceSSL: true,
       versioned: true,
+      serverAccessLogsBucket: accessLogsBucket,
+      serverAccessLogsPrefix: `data-bucket/${tier}/`,
+      lifecycleRules: [
+        {
+          id: "ExpireNoncurrentVersions",
+          enabled: true,
+          noncurrentVersionExpiration: cdk.Duration.days(
+            tier === "prod" ? 365 : 90,
+          ),
+        },
+      ],
     });
 
     // Add tags to S3 bucket

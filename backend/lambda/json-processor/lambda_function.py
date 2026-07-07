@@ -1,44 +1,49 @@
 import boto3
 import json
 import os
+from aws_lambda_powertools import Logger
+from aws_lambda_powertools.logging.formatters.datadog import DatadogLogFormatter
 from json_processor import JSONProcessor
 
-s3_client = boto3.client('s3')
+logger = Logger(logger_formatter=DatadogLogFormatter())
+logger.append_keys(component="json-processor")
 
+s3_client = boto3.client("s3")
+
+
+@logger.inject_lambda_context(clear_state=True)
 def lambda_handler(event, context):
     # Lookup table for subdirectory mappings
     lookup_table = {
-        'chordoma': 'Chordoma',
-        'dicer1': 'DICER1',
-        'fanconi': 'fanconi',
-        'hemopoietic': 'LPD',
-        'ibmfs': 'IBMFS',
-        'lfss': 'LFS',
-        'melanoma': 'Melanoma/Spitz tumor',
-        'metformin': 'Metformin',
-        'omnibus': 'Omnibus',
-        'ras': 'RAS',
-        'xp-het': 'XP Heterozygotes'
+        "chordoma": "Chordoma",
+        "dicer1": "DICER1",
+        "fanconi": "fanconi",
+        "hemopoietic": "LPD",
+        "ibmfs": "IBMFS",
+        "lfss": "LFS",
+        "melanoma": "Melanoma/Spitz tumor",
+        "metformin": "Metformin",
+        "omnibus": "Omnibus",
+        "ras": "RAS",
+        "xp-het": "XP Heterozygotes",
     }
 
     # for determining destination folder
     lookup_processed = {
-        'Li-Fraumeni Syndrome': 'lfss',
+        "Li-Fraumeni Syndrome": "lfss",
     }
 
-    print("[INFO] Running json_processor ...")
+    logger.info("Running json_processor")
 
-    s3_bucket_name = event['Records'][0]['s3']['bucket']['name']
-    s3_file_name = event['Records'][0]['s3']['object']['key']
+    s3_bucket_name = event["Records"][0]["s3"]["bucket"]["name"]
+    s3_file_name = event["Records"][0]["s3"]["object"]["key"]
+    logger.append_keys(s3_bucket=s3_bucket_name, s3_key=s3_file_name)
 
-    print(f"Bucket: {s3_bucket_name}")
-    print(f"Filename: {s3_file_name}")
-
-    if s3_file_name.startswith('raw/'):
+    if s3_file_name.startswith("raw/"):
         # Normalize path separators and remove leading/trailing slashes
-        normalized_path = s3_file_name.strip('/').replace('\\', '/')
+        normalized_path = s3_file_name.strip("/").replace("\\", "/")
         # Split the path into components
-        path_parts = normalized_path.split('/')
+        path_parts = normalized_path.split("/")
         # Extract filename
         filename = path_parts[-1]
 
@@ -60,12 +65,11 @@ def lambda_handler(event, context):
             subdirectory = None
             full_name = None
 
-        print(f"[INFO] Processing file {s3_file_name}")
-        print(f"[INFO]   for study {full_name}")
+        logger.info(f"Processing file for study {full_name}")
 
         try:
             response = s3_client.get_object(Bucket=s3_bucket_name, Key=s3_file_name)
-            file_content = response['Body'].read().decode('utf-8')
+            file_content = response["Body"].read().decode("utf-8")
 
             # Initialize processor
             processor = JSONProcessor()
@@ -77,15 +81,18 @@ def lambda_handler(event, context):
 
             # Process the records
             processor.process_records(input_data)
-            print("[INFO] Processed records")
+            logger.info("Processed records")
 
             # Generate and save output
             output_data = processor.get_output_data()
 
             # Determine destination folder based on study
-            study_name = JSONProcessor.safe_get(output_data, 'general', 'study', default="not_found")
-            #dst_folder = lookup_processed.get(study_name, "study_unknown")
-            dst_folder = JSONProcessor.sanitize_folder_name(study_name, 20, "study_unknown")
+            study_name = JSONProcessor.safe_get(
+                output_data, "general", "study", default="not_found"
+            )
+            dst_folder = JSONProcessor.sanitize_folder_name(
+                study_name, 20, "study_unknown"
+            )
 
             # 2. Serialize to JSON string
             json_string = json.dumps(output_data)
@@ -93,29 +100,32 @@ def lambda_handler(event, context):
             # 3. Upload to S3
             filename_with_ext = os.path.basename(s3_file_name)
             filename_without_ext = os.path.splitext(filename_with_ext)[0]
-            s3_object_key = f"processed/{dst_folder}/{filename_without_ext}.processed.json"
+            s3_object_key = (
+                f"processed/{dst_folder}/{filename_without_ext}.processed.json"
+            )
 
-            #s3 = boto3.client('s3')
             s3_client.put_object(
                 Bucket=s3_bucket_name,
                 Key=s3_object_key,
                 Body=json_string,
-                ContentType='application/json'  # Specify the content type for proper handling
+                ContentType="application/json",
             )
-            print(f"JSON data successfully dumped to s3://{s3_bucket_name}/{s3_object_key}")
+            logger.info(
+                f"JSON data successfully dumped to s3://{s3_bucket_name}/{s3_object_key}"
+            )
         except Exception as e:
-            print(f"Error dumping JSON data to S3: {e}")
+            logger.error(f"Error processing JSON data: {e}")
 
-        # Print summary
-        print(f"[INFO] Processing complete!")
-        print(f"[INFO] Processed {len(input_data)} records")
-        print(f"[INFO] Generated data for {len(processor.people)} people")
-        print(f"[INFO] Proband: {processor.general['proband']}")
+        # Log summary
+        logger.info(
+            "Processing complete",
+            extra={
+                "records_processed": len(input_data),
+                "people_generated": len(processor.people),
+                "proband": processor.general.get("proband", "unknown"),
+            },
+        )
     else:
-        print(f"[INFO] Skipping file {s3_file_name}")
+        logger.info(f"Skipping non-raw file: {s3_file_name}")
 
-    # TODO implement
-    return {
-        'statusCode': 200,
-        'body': json.dumps('Hello from Lambda!')
-    }
+    return {"statusCode": 200, "body": json.dumps("Hello from Lambda!")}

@@ -5,11 +5,26 @@ OAuth callback is handled by API Gateway via CloudFront at /api/login
 """
 
 import base64
+import os
 import secrets
+
+# Lambda@Edge cannot use custom env vars; derive service from function name
+# and set POWERTOOLS_SERVICE_NAME before importing modules that use Logger(child=True)
+_fn_name = os.environ.get("AWS_LAMBDA_FUNCTION_NAME", "")
+if "." in _fn_name:
+    _fn_name = _fn_name.split(".", 1)[1]
+_tier = _fn_name.split("-")[0] if _fn_name else "unknown"
+os.environ.setdefault("POWERTOOLS_SERVICE_NAME", f"{_tier}-fhh-pb-lambda")
+
+from aws_lambda_powertools import Logger
+from aws_lambda_powertools.logging.formatters.datadog import DatadogLogFormatter
 from typing import Dict, Any
 from oidc_client import OIDCClient
 from secrets_manager import get_tier
 from session_manager import validate_session
+
+logger = Logger(logger_formatter=DatadogLogFormatter())
+logger.append_keys(component="cloudfront-auth")
 
 
 def parse_cookies(cookie_header: str) -> Dict[str, str]:
@@ -43,6 +58,7 @@ def create_cookie(
     return cookie
 
 
+@logger.inject_lambda_context(clear_state=True)
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Lambda@Edge handler for viewer-request.
@@ -63,7 +79,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Skip auth for /access-denied.html
         if uri == "/access-denied.html":
-            print(f"Skipping auth for access-denied page")
+            logger.info("Skipping auth for access-denied page")
             return request
 
         # Skip auth for /api/* paths (handled by API Gateway authorizer)
@@ -74,7 +90,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # This must happen BEFORE authentication so the SPA can load
         # Skip for static assets (they have file extensions)
         if not uri.startswith("/static/") and ("." not in uri or uri == "/"):
-            print(f"Rewriting SPA route {uri} to /index.html")
+            logger.info(f"SPA rewrite: {uri} -> /index.html")
             request["uri"] = "/index.html"
             uri = "/index.html"  # Update uri for subsequent checks
 
@@ -86,7 +102,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         cookie_header = headers.get("cookie", [{}])[0].get("value", "")
         cookies = parse_cookies(cookie_header)
     except Exception as e:
-        print(f"Error parsing request: {str(e)}")
+        logger.info(f"Error parsing request: {str(e)}")
         # Return 503 with details if we can't even parse the request
         return {
             "status": "503",
@@ -108,18 +124,25 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
             if session_data:
                 # Valid session, allow request
+                logger.append_keys(email=session_data.get("email", "unknown"))
                 # Add user info to request headers for downstream use
-                request["headers"]["x-auth-user"] = [{"value": session_data.get("user_id", "")}]
-                request["headers"]["x-auth-email"] = [{"value": session_data.get("email", "")}]
-                request["headers"]["x-auth-groups"] = [{"value": ",".join(session_data.get("groups", []))}]
+                request["headers"]["x-auth-user"] = [
+                    {"value": session_data.get("user_id", "")}
+                ]
+                request["headers"]["x-auth-email"] = [
+                    {"value": session_data.get("email", "")}
+                ]
+                request["headers"]["x-auth-groups"] = [
+                    {"value": ",".join(session_data.get("groups", []))}
+                ]
                 return request
             else:
                 # Invalid or expired session - clear cookie and redirect to login
-                print(f"Invalid or expired session: {session_id}")
+                logger.info("Invalid or expired session")
                 # Fall through to redirect to login below
 
         except Exception as e:
-            print(f"Session validation error: {str(e)}")
+            logger.info(f"Session validation error: {str(e)}")
             # On session validation error, redirect to login (fail closed)
             # Fall through to redirect to login below
 
@@ -128,8 +151,16 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         oidc = OIDCClient()
 
         # Generate PKCE and nonce for secure auth flow
-        state = base64.urlsafe_b64encode(secrets.token_bytes(16)).decode("utf-8").rstrip("=")
-        nonce = base64.urlsafe_b64encode(secrets.token_bytes(16)).decode("utf-8").rstrip("=")
+        state = (
+            base64.urlsafe_b64encode(secrets.token_bytes(16))
+            .decode("utf-8")
+            .rstrip("=")
+        )
+        nonce = (
+            base64.urlsafe_b64encode(secrets.token_bytes(16))
+            .decode("utf-8")
+            .rstrip("=")
+        )
         code_verifier, code_challenge = oidc.generate_pkce_pair()
 
         # Generate unique state_id for DynamoDB storage
@@ -163,6 +194,10 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         combined_state = f"{state}:{state_id}"
         auth_url = oidc.get_authorization_url(combined_state, code_challenge, nonce)
 
+        logger.info(
+            f"Login redirect: initiating OIDC auth flow, original_url={original_url}"
+        )
+
         return {
             "status": "302",
             "statusDescription": "Found",
@@ -172,7 +207,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             },
         }
     except Exception as e:
-        print(f"Error initiating login: {str(e)}")
+        logger.info(f"Error initiating login: {str(e)}")
         # Return error page if OIDC setup fails
         return {
             "status": "503",

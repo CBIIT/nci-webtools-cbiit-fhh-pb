@@ -12,6 +12,7 @@ import {
   resolveDatadogForwarderArn,
   subscribeLogGroupToDatadogForwarder,
 } from "./utils/datadog-logging";
+import { getPowertoolsLayer } from "./utils/powertools-layer";
 
 export interface LambdaJsonProcessorStackProps extends cdk.StackProps {
   dataBucket: s3.Bucket;
@@ -23,7 +24,7 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
   constructor(
     scope: Construct,
     id: string,
-    props: LambdaJsonProcessorStackProps
+    props: LambdaJsonProcessorStackProps,
   ) {
     super(scope, id, props);
 
@@ -34,7 +35,7 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
       assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
       managedPolicies: [
         iam.ManagedPolicy.fromAwsManagedPolicyName(
-          "service-role/AWSLambdaBasicExecutionRole"
+          "service-role/AWSLambdaBasicExecutionRole",
         ),
       ],
     });
@@ -54,7 +55,7 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
           `arn:aws:s3:::${dataBucketName}`,
           `arn:aws:s3:::${dataBucketName}/*`,
         ],
-      })
+      }),
     );
 
     const forwarderArn = resolveDatadogForwarderArn(this, tier);
@@ -64,17 +65,18 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
       { logGroupName: `/aws/lambda/nci-cbiit-fhhpb-jsonprocessor-${tier}` },
       tier,
       "lambda",
-      { component: "json-processor" }
+      { component: "json-processor" },
     );
     subscribeLogGroupToDatadogForwarder(
       this,
       "JsonProcessor",
       logGroup,
       forwarderArn,
-      logGroupDep
+      logGroupDep,
     );
 
     // Create Lambda function
+    const powertoolsLayer = getPowertoolsLayer(this, "PowertoolsLayer");
     this.lambdaFunction = new lambda.Function(this, "JsonProcessorFunction", {
       functionName: `nci-cbiit-fhhpb-jsonprocessor-${tier}`,
       description:
@@ -82,20 +84,25 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
       runtime: lambda.Runtime.PYTHON_3_13,
       handler: "lambda_function.lambda_handler",
       code: lambda.Code.fromAsset(
-        path.join(__dirname, "../../backend/lambda/json-processor")
+        path.join(__dirname, "../../backend/lambda/json-processor"),
       ),
+      layers: [powertoolsLayer],
       role: lambdaRole,
       timeout: cdk.Duration.minutes(5),
       memorySize: 512,
       environment: {
         DATA_BUCKET: dataBucketName,
         TIER: tier,
+        POWERTOOLS_SERVICE_NAME: `${tier}-fhh-pb-lambda`,
       },
       // Add retry configuration
       reservedConcurrentExecutions: 10, // Limit concurrent executions
       maxEventAge: cdk.Duration.minutes(1), // Maximum event age
       retryAttempts: 2, // Number of retry attempts
       logGroup: logGroup,
+      loggingFormat: lambda.LoggingFormat.JSON,
+      systemLogLevel: lambda.SystemLogLevel.WARN,
+      applicationLogLevel: lambda.ApplicationLogLevel.INFO,
     });
     this.lambdaFunction.node.addDependency(logGroupDep);
 
@@ -107,7 +114,7 @@ export class LambdaJsonProcessorStack extends cdk.Stack {
       {
         prefix: "raw/",
         suffix: ".json",
-      }
+      },
     );
 
     // Add tags to Lambda function

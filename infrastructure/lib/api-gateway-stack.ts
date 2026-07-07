@@ -13,6 +13,7 @@ import {
   subscribeLogGroupToDatadogForwarder,
   subscribeLogGroupToDatadogForwarderWhenReady,
 } from "./utils/datadog-logging";
+import { getPowertoolsLayer } from "./utils/powertools-layer";
 
 export interface ApiGatewayStackProps extends cdk.StackProps {
   listStudiesFunction: lambda.Function;
@@ -36,6 +37,7 @@ export class ApiGatewayStack extends cdk.Stack {
     const tier = process.env.TIER || "dev";
     const secretName = `${tier}/fhhpb/oidc-config`;
     const forwarderArn = resolveDatadogForwarderArn(this, tier);
+    const powertoolsLayer = getPowertoolsLayer(this, "PowertoolsLayer");
 
     const {
       logGroup: authorizerLogGroup,
@@ -78,10 +80,17 @@ export class ApiGatewayStack extends cdk.Stack {
             ],
           },
         }),
+        layers: [powertoolsLayer],
         timeout: cdk.Duration.seconds(10),
         memorySize: 256,
         logGroup: authorizerLogGroup,
-      }
+        loggingFormat: lambda.LoggingFormat.JSON,
+        systemLogLevel: lambda.SystemLogLevel.WARN,
+        applicationLogLevel: lambda.ApplicationLogLevel.INFO,
+        environment: {
+          POWERTOOLS_SERVICE_NAME: `${tier}-fhh-pb-lambda`,
+        },
+      },
     );
     this.authorizerFunction.node.addDependency(authorizerLogGroupDep);
 
@@ -136,11 +145,16 @@ export class ApiGatewayStack extends cdk.Stack {
           ],
         },
       }),
+      layers: [powertoolsLayer],
       timeout: cdk.Duration.seconds(10),
       memorySize: 256,
       logGroup: callbackLogGroup,
+      loggingFormat: lambda.LoggingFormat.JSON,
+      systemLogLevel: lambda.SystemLogLevel.WARN,
+      applicationLogLevel: lambda.ApplicationLogLevel.INFO,
       environment: {
         SESSIONS_TABLE_NAME: props.sessionsTable.tableName,
+        POWERTOOLS_SERVICE_NAME: `${tier}-fhh-pb-lambda`,
       },
     });
     this.callbackFunction.node.addDependency(callbackLogGroupDep);
@@ -195,6 +209,25 @@ export class ApiGatewayStack extends cdk.Stack {
       extendSessionLogGroupDep
     );
 
+    const {
+      logGroup: sessionInfoLogGroup,
+      dependency: sessionInfoLogGroupDep,
+    } = createManagedLogGroup(
+      this,
+      "OidcSessionInfoLogGroup",
+      { logGroupName: `/aws/lambda/${tier}-fhhpb-api-oidc-session` },
+      tier,
+      "lambda",
+      { component: "oidc-session" }
+    );
+    subscribeLogGroupToDatadogForwarder(
+      this,
+      "OidcSessionInfo",
+      sessionInfoLogGroup,
+      forwarderArn,
+      sessionInfoLogGroupDep
+    );
+
     // Creat project specific role for API Gateway
     let permissionBoundary: iam.IManagedPolicy | undefined;
     if (!['dev', 'qa'].includes(tier)) {
@@ -237,11 +270,13 @@ export class ApiGatewayStack extends cdk.Stack {
           ],
         },
       }),
+      layers: [powertoolsLayer],
       timeout: cdk.Duration.seconds(10),
       memorySize: 256,
       logGroup: logoutLogGroup,
       environment: {
         SESSIONS_TABLE_NAME: props.sessionsTable.tableName,
+        POWERTOOLS_SERVICE_NAME: `${tier}-fhh-pb-lambda`,
       },
     });
     logoutFunction.node.addDependency(logoutLogGroupDep);
@@ -266,18 +301,52 @@ export class ApiGatewayStack extends cdk.Stack {
           ],
         },
       }),
+      layers: [powertoolsLayer],
       timeout: cdk.Duration.seconds(10),
       memorySize: 256,
       logGroup: extendSessionLogGroup,
       environment: {
         SESSIONS_TABLE_NAME: props.sessionsTable.tableName,
+        POWERTOOLS_SERVICE_NAME: `${tier}-fhh-pb-lambda`,
       },
     });
     extendSessionFunction.node.addDependency(extendSessionLogGroupDep);
 
+    // Session info function
+    const sessionInfoFunction = new lambda.Function(this, "OidcSessionInfoFunction", {
+      functionName: `${tier}-fhhpb-api-oidc-session`,
+      runtime: lambda.Runtime.PYTHON_3_13,
+      handler: "session_info.lambda_handler",
+      code: lambda.Code.fromAsset("../backend/lambda/oidc-auth", {
+        bundling: {
+          image: lambda.Runtime.PYTHON_3_13.bundlingImage,
+          platform: "linux/amd64",
+          user: "root",
+          command: [
+            "bash",
+            "-c",
+            [
+              "pip install -r requirements.txt -t /asset-output --platform manylinux2014_x86_64 --only-binary=:all:",
+              "cp -r . /asset-output",
+            ].join(" && "),
+          ],
+        },
+      }),
+      layers: [powertoolsLayer],
+      timeout: cdk.Duration.seconds(10),
+      memorySize: 256,
+      logGroup: sessionInfoLogGroup,
+      environment: {
+        SESSIONS_TABLE_NAME: props.sessionsTable.tableName,
+        POWERTOOLS_SERVICE_NAME: `${tier}-fhh-pb-lambda`,
+      },
+    });
+    sessionInfoFunction.node.addDependency(sessionInfoLogGroupDep);
+
     // Grant DynamoDB permissions
     props.sessionsTable.grantReadWriteData(logoutFunction);
     props.sessionsTable.grantReadWriteData(extendSessionFunction);
+    props.sessionsTable.grantReadData(sessionInfoFunction);
 
     // Grant Secrets Manager access
     logoutFunction.addToRolePolicy(
@@ -291,6 +360,16 @@ export class ApiGatewayStack extends cdk.Stack {
     );
 
     extendSessionFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["secretsmanager:GetSecretValue"],
+        resources: [
+          `arn:aws:secretsmanager:us-east-1:${cdk.Stack.of(this).account}:secret:${secretName}-*`,
+        ],
+      })
+    );
+
+    sessionInfoFunction.addToRolePolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ["secretsmanager:GetSecretValue"],
@@ -486,6 +565,15 @@ export class ApiGatewayStack extends cdk.Stack {
     const extendSessionResource = this.api.root.addResource("extend-session");
     const extendSessionIntegration = new apigateway.LambdaIntegration(extendSessionFunction);
     extendSessionResource.addMethod("POST", extendSessionIntegration, {
+      apiKeyRequired: false,
+      authorizer: this.authorizer,
+      authorizationType: apigateway.AuthorizationType.CUSTOM,
+    });
+
+    // Session info endpoint - GET /api/session (requires auth)
+    const sessionResource = this.api.root.addResource("session");
+    const sessionInfoIntegration = new apigateway.LambdaIntegration(sessionInfoFunction);
+    sessionResource.addMethod("GET", sessionInfoIntegration, {
       apiKeyRequired: false,
       authorizer: this.authorizer,
       authorizationType: apigateway.AuthorizationType.CUSTOM,

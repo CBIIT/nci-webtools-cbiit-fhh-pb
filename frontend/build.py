@@ -92,6 +92,7 @@ def process_template(template_path, build_dir, static_dir):
         ("{{ url_for('static', filename='js/fhh_display_pedigree.js') }}", "./static/js/fhh_display_pedigree.js"),
         ("{{ url_for('static', filename='js/fhh_load.js') }}", "./static/js/fhh_load.js"),
         ("{{ url_for('static', filename='js/fhh_move.js') }}", "./static/js/fhh_move.js"),
+        ("{{ url_for('static', filename='js/fhh_session_timeout.js') }}", "./static/js/fhh_session_timeout.js"),
     ]
     
     for old, new in js_replacements:
