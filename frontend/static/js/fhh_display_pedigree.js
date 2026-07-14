@@ -2537,31 +2537,33 @@ function check_quadrant_match(person_id, quadrant_config) {
 
 function draw_quadrants_male(person_id) {
 
-  let el;
   const size = config.size / 2;
   const center_x = data["people"][person_id].x;
   const center_y = data["people"][person_id].y;
-  let color = "grey";
   let code = false;
 
   if (code = check_quadrant_tr(person_id)) {
-    el = draw_square(size, center_x, center_y - size, config.quadrants.top_right?.color || "grey");
+    const el = draw_square(size, center_x, center_y - size, config.quadrants.top_right?.color || "grey");
+    el.setAttributeNS(null, "id", person_id);
     el.setAttributeNS(null, "pointer-events", "none");
+    el.setAttributeNS(null, "stroke-width", "2");
   }
   if (code = check_quadrant_tl(person_id)) {
-    el = draw_square(size, center_x - size, center_y -size, config.quadrants.top_left?.color || "grey");
+    const el = draw_square(size, center_x - size, center_y -size, config.quadrants.top_left?.color || "grey");
+    el.setAttributeNS(null, "id", person_id);
     el.setAttributeNS(null, "pointer-events", "none");
+    el.setAttributeNS(null, "stroke-width", "2");
   }
   if (code = check_quadrant_br(person_id)) {
-    el = draw_square(size, center_x, center_y, config.quadrants.bottom_right?.color || "grey");
+    const el = draw_square(size, center_x, center_y, config.quadrants.bottom_right?.color || "grey");
+    el.setAttributeNS(null, "id", person_id);
     el.setAttributeNS(null, "pointer-events", "none");
+    el.setAttributeNS(null, "stroke-width", "2");
   }
   if (code = check_quadrant_bl(person_id)) {
-    el = draw_square(size, center_x - size, center_y, config.quadrants.bottom_left?.color || "grey");
-    el.setAttributeNS(null, "pointer-events", "none");
-  }
-  if (el) { 
+    const el = draw_square(size, center_x - size, center_y, config.quadrants.bottom_left?.color || "grey");
     el.setAttributeNS(null, "id", person_id);
+    el.setAttributeNS(null, "pointer-events", "none");
     el.setAttributeNS(null, "stroke-width", "2");
   }
 }
