@@ -257,7 +257,7 @@ export async function load_config_and_data(study_id, family_id, config_id) {
   if (!family_id) {
     return;
   }
-  const selected_study_id = (study_id || "lfss").trim();
+  const selected_study_id = (study_id || "default").trim();
   const selected_config_id = (config_id || selected_study_id || DEFAULT_CONFIG_ID).trim();
 
   const pedigree_file = build_api_url("/family/" + selected_study_id + "/" + family_id);
