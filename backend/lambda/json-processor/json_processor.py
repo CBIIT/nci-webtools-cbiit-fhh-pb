@@ -191,10 +191,13 @@ class JSONProcessor:
 
         disease_num = record.get("Subject_cancer[CANCER.NUM]", "")
         med_code, shorthand = self._parse_medical_code(code)
+        icd_o3 = record.get("Subject_cancer[CANCER.ICD_03]", "")
+        morphology_code = self._parse_medical_code(icd_o3)[0] if icd_o3 else ""
 
         return {
             "shorthand": shorthand,
-            "code": med_code,
+            "topography": med_code,
+            "morphology": morphology_code,
             "laterality": str(
                 record.get("Subject_cancer[CANCER.PRM_TUMOR_LATERAL_TP_STD]", "")
             ),
