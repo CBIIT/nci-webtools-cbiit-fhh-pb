@@ -1796,6 +1796,31 @@ function add_row_to_table(tbody, label, value) {
   tbody.appendChild(row);
 }
 
+function create_color_swatch_container(colors) {
+  if (!Array.isArray(colors) || colors.length === 0) return null;
+
+  const unique_colors = [...new Set(colors.filter(Boolean))];
+  if (unique_colors.length === 0) return null;
+
+  const swatch_container = document.createElement("span");
+  swatch_container.style.display = "inline-flex";
+  swatch_container.style.gap = "6px";
+  swatch_container.style.alignItems = "center";
+
+  unique_colors.forEach((color) => {
+    const swatch = document.createElement("span");
+    swatch.style.display = "inline-block";
+    swatch.style.width = "12px";
+    swatch.style.height = "12px";
+    swatch.style.border = "1px solid #333";
+    swatch.style.backgroundColor = color;
+    swatch.title = color;
+    swatch_container.appendChild(swatch);
+  });
+
+  return swatch_container;
+}
+
 function set_diagnoses_of_person(person_id) {
   const elem = document.getElementById("person_diagnoses");
   elem.innerHTML = "";
@@ -1827,13 +1852,27 @@ function set_diagnoses_of_person(person_id) {
 
   if (diseases && diseases.length > 0) {
     diseases.forEach((disease, diagnosis_index) => {
-      // There is a potential error in the code for non-cancer diseases, they include the shorthand as well.  So for now I will trim the code to dbefore the -
+      // Non-cancers are keyed by ICD code; cancers are displayed as topography:morphology.
       const code = trimAfterCharacter(disease.code, "-");
+      const topography = trimAfterCharacter(disease.topography, "-");
+      const morphology = trimAfterCharacter(disease.morphology, "-");
+      const cancer_identifier = [topography, morphology].filter(Boolean).join(":");
+      const is_cancer_diagnosis = Boolean(cancer_identifier)
+        || (disease.d_num && String(disease.d_num).startsWith("C"))
+        || (code && code[0] === "C");
+      const diagnosis_identifier = is_cancer_diagnosis ? (cancer_identifier || code) : code;
+      const diagnosis_description = disease.shorthand || "NOTITLE";
+      const matching_quadrants = get_matching_quadrants_for_disease(disease, person_id);
+      const matching_quadrant_names = matching_quadrants.map((quadrant) => quadrant.name);
+      const matching_quadrant_colors = matching_quadrants.map((quadrant) => quadrant.color).filter(Boolean);
+      const quadrant_suffix = matching_quadrant_names.length > 0
+        ? " (" + matching_quadrant_names.join(", ") + ")"
+        : "";
 
      
       const table = document.createElement("table");
       table.classList.add("data-display-table");
-      if (code[0] == "C") table.classList.add("cancer-diagnosis");
+      if (is_cancer_diagnosis) table.classList.add("cancer-diagnosis");
       const thead = document.createElement("thead");
       const headerRow = document.createElement("tr");
       const codeHeader = document.createElement("th");
@@ -1842,9 +1881,20 @@ function set_diagnoses_of_person(person_id) {
       const header_content = document.createElement("div");
       header_content.classList.add("section-header-content");
 
+      const header_title = document.createElement("span");
+      header_title.style.display = "inline-flex";
+      header_title.style.alignItems = "center";
+      header_title.style.gap = "6px";
+
+      const swatches = create_color_swatch_container(matching_quadrant_colors);
+      if (swatches) {
+        header_title.appendChild(swatches);
+      }
+
       const header_label = document.createElement("span");
-      header_label.textContent = code + " - " + disease.shorthand;
-      header_content.appendChild(header_label);
+      header_label.textContent = diagnosis_identifier + " - " + diagnosis_description + quadrant_suffix;
+      header_title.appendChild(header_label);
+      header_content.appendChild(header_title);
 
       if (is_pedigree_build_mode()) {
         const header_actions = document.createElement("div");
@@ -1878,7 +1928,12 @@ function set_diagnoses_of_person(person_id) {
       thead.appendChild(headerRow);
       table.appendChild(thead);
       const tbody = document.createElement("tbody");
-      add_row_to_table(tbody, "Code", code);
+      if (is_cancer_diagnosis) {
+        add_row_to_table(tbody, "Topography", topography);
+        add_row_to_table(tbody, "Morphology", morphology);
+      } else {
+        add_row_to_table(tbody, "Code", code);
+      }
       add_row_to_table(tbody, "Shorthand", disease.shorthand);
       add_row_to_table(tbody, "Age of Diagnosis", disease.age_of_diagnosis);
       add_row_to_table(tbody, "Date of Diagnosis", disease.date_of_diagnosis);
@@ -2413,12 +2468,15 @@ function draw_line(x1, y1, x2, y2) {
 
 /////. Helper functions /////
 function trimAfterCharacter(str, char) {
-  const index = str.indexOf(char); // Find the index of the first occurrence of the character
+  if (str === null || str === undefined) return "";
+
+  const text = String(str);
+  const index = text.indexOf(char); // Find the index of the first occurrence of the character
 
   if (index !== -1) { // If the character is found
-    return str.substring(0, index); // Return the substring from the beginning up to the character's index
+    return text.substring(0, index); // Return the substring from the beginning up to the character's index
   } else {
-    return str; // If the character is not found, return the original string
+    return text; // If the character is not found, return the original string
   }
 }
 
@@ -2491,6 +2549,29 @@ function normalize_children_of_prefix(raw_code) {
   return match[1];
 }
 
+function normalize_topography_code(raw_code) {
+  if (!raw_code || typeof raw_code !== "string") return null;
+
+  const without_decimals = raw_code.toUpperCase().replace(/\./g, "").trim();
+  const match = without_decimals.match(/^([A-Z]\d{2,}[A-Z0-9]*)/);
+  if (!match) return null;
+
+  return match[1];
+}
+
+function normalize_morphology_code(raw_code) {
+  if (raw_code === null || raw_code === undefined) return null;
+
+  const normalized = String(raw_code)
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .trim();
+  const match = normalized.match(/^(\d{4,6})/);
+  if (!match) return null;
+
+  return match[1];
+}
+
 function normalize_disease_prefix_code(raw_code) {
   if (!raw_code || typeof raw_code !== "string") return null;
 
@@ -2501,12 +2582,108 @@ function normalize_disease_prefix_code(raw_code) {
   return match[1];
 }
 
-function check_quadrant_match(person_id, quadrant_config) {
+function match_disease_to_quadrant(disease, quadrant_config, person_id = null) {
   const quadrant_type = quadrant_config?.type;
-  if (!quadrant_config || (quadrant_type !== "disease" && quadrant_type !== "cancer")) return;
+  if (!quadrant_config || (quadrant_type !== "disease" && quadrant_type !== "cancer")) return null;
+  if (!disease) return null;
 
-  const person = data["people"][person_id];
-  if (!person?.diseases?.length) return;
+  if (quadrant_type === "cancer") {
+    const raw_rules = Array.isArray(quadrant_config.topography_rules)
+      ? quadrant_config.topography_rules
+      : [{
+          topography: quadrant_config.topography || quadrant_config.codes || [],
+          topography_children_of: quadrant_config.topography_children_of || quadrant_config.children_of || [],
+          morphology: quadrant_config.morphology || quadrant_config.codes || [],
+          morphology_exclude: quadrant_config.morphology_exclude || [],
+        }];
+
+    const normalized_rules = raw_rules
+      .map((rule) => {
+        const exact_topography = (Array.isArray(rule?.topography) ? rule.topography : [rule?.topography])
+          .map(normalize_topography_code)
+          .filter(Boolean);
+        const topography_children_of = (Array.isArray(rule?.topography_children_of) ? rule.topography_children_of : [rule?.topography_children_of])
+          .map(normalize_children_of_prefix)
+          .filter(Boolean);
+        const morphology = (Array.isArray(rule?.morphology) ? rule.morphology : [rule?.morphology])
+          .map(normalize_morphology_code)
+          .filter(Boolean);
+        const morphology_exclude = (Array.isArray(rule?.morphology_exclude) ? rule.morphology_exclude : [rule?.morphology_exclude])
+          .map(normalize_morphology_code)
+          .filter(Boolean);
+
+        if (!exact_topography.length && !topography_children_of.length) {
+          return null;
+        }
+
+        return {
+          exact_topography,
+          topography_children_of,
+          morphology,
+          morphology_exclude,
+        };
+      })
+      .filter(Boolean);
+
+    const exact_topography_rules = normalized_rules.filter((rule) => rule.exact_topography.length > 0);
+    const children_of_rules = normalized_rules.filter((rule) => rule.topography_children_of.length > 0);
+
+    const normalized_topography = normalize_topography_code(disease.topography || disease.code);
+    if (!normalized_topography) return null;
+
+    const normalized_morphology = normalize_morphology_code(disease.morphology);
+
+    let excluded_by_exact_rule = false;
+    for (const rule of exact_topography_rules) {
+      const exact_match = rule.exact_topography.includes(normalized_topography);
+      if (!exact_match) continue;
+
+      if (rule.morphology.length > 0) {
+        if (normalized_morphology && rule.morphology.includes(normalized_morphology)) {
+          return normalized_topography;
+        }
+        continue;
+      }
+
+      if (
+        normalized_morphology
+        && rule.morphology_exclude.length > 0
+        && rule.morphology_exclude.includes(normalized_morphology)
+      ) {
+        excluded_by_exact_rule = true;
+        break;
+      }
+
+      return normalized_topography;
+    }
+
+    if (excluded_by_exact_rule) {
+      return null;
+    }
+
+    for (const rule of children_of_rules) {
+      const children_match = rule.topography_children_of.some((prefix) => normalized_topography.startsWith(prefix));
+      if (!children_match) continue;
+
+      // If no morphology list is provided for a children_of rule, treat it as topography-only.
+      if (rule.morphology.length === 0) {
+        if (
+          normalized_morphology
+          && rule.morphology_exclude.length > 0
+          && rule.morphology_exclude.includes(normalized_morphology)
+        ) {
+          continue;
+        }
+        return normalized_topography;
+      }
+
+      if (normalized_morphology && rule.morphology.includes(normalized_morphology)) {
+        return normalized_topography;
+      }
+    }
+
+    return null;
+  }
 
   const valid_codes = (quadrant_config.codes || [])
     .map(normalize_quadrant_code)
@@ -2515,23 +2692,63 @@ function check_quadrant_match(person_id, quadrant_config) {
     .map(normalize_children_of_prefix)
     .filter(Boolean);
 
+  if (!disease.code) {
+    if (person_id) set_other_alert(person_id, "has null diseases");
+    return null;
+  }
+
+  const normalized_code = normalize_disease_code(disease.code);
+  if (normalized_code && valid_codes.includes(normalized_code)) {
+    return normalized_code;
+  }
+
+  const normalized_prefix_code = normalize_disease_prefix_code(disease.code);
+  if (normalized_prefix_code && child_prefixes.some((prefix) => normalized_prefix_code.startsWith(prefix))) {
+    return normalized_prefix_code;
+  }
+
+  return null;
+}
+
+function get_matching_quadrants_for_disease(disease, person_id = null) {
+  const quadrants = config?.quadrants;
+  if (!quadrants) return [];
+
+  const ordered_quadrants = [
+    quadrants.top_right,
+    quadrants.bottom_right,
+    quadrants.bottom_left,
+    quadrants.top_left,
+  ];
+
+  const matches = [];
+  for (const quadrant of ordered_quadrants) {
+    if (!quadrant?.name) continue;
+    if (match_disease_to_quadrant(disease, quadrant, person_id)) {
+      matches.push({
+        name: quadrant.name,
+        color: quadrant.color || "",
+      });
+    }
+  }
+
+  return matches;
+}
+
+function get_matching_quadrant_names_for_disease(disease, person_id = null) {
+  return get_matching_quadrants_for_disease(disease, person_id).map((quadrant) => quadrant.name);
+}
+
+function check_quadrant_match(person_id, quadrant_config) {
+  const quadrant_type = quadrant_config?.type;
+  if (!quadrant_config || (quadrant_type !== "disease" && quadrant_type !== "cancer")) return;
+
+  const person = data["people"][person_id];
+  if (!person?.diseases?.length) return;
+
   for (const disease of person.diseases) {
-    if (!disease.code) {
-      set_other_alert(person_id, "has null diseases");
-      continue;
-    }
-
-    const normalized_code = normalize_disease_code(disease.code);
-    if (!normalized_code) continue;
-
-    if (valid_codes.includes(normalized_code)) {
-      return normalized_code;
-    }
-
-    const normalized_prefix_code = normalize_disease_prefix_code(disease.code);
-    if (normalized_prefix_code && child_prefixes.some((prefix) => normalized_prefix_code.startsWith(prefix))) {
-      return normalized_prefix_code;
-    }
+    const match = match_disease_to_quadrant(disease, quadrant_config, person_id);
+    if (match) return match;
   }
 }
 

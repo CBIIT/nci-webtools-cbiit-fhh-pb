@@ -1,7 +1,15 @@
 
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
 .grid-container {
   display: grid; /* Makes the container a grid container */
-  grid-template-columns: 400px 1fr; 
+  grid-template-columns: 300px 1fr;
+  grid-template-rows: auto auto minmax(0, 1fr);
   gap: 2px; /* Adds space between grid items */
   height:100vh;
   width:100vw;
@@ -10,12 +18,15 @@
 .grid-item {
   padding: 1px;
   border: 1px solid black;
+  min-height: 0;
 }
 
 .navbar {
   grid-column: span 2;
   font-family: sans-serif, Arial;
-  top:0;
+  position: sticky;
+  top: 0;
+  z-index: 20;
   width:100%;
   min-height:100px;
   height:auto;
@@ -25,7 +36,9 @@
 .alertbar {
   grid-column: span 2;
   font-family: sans-serif, Arial;
-  top:101px;
+  position: sticky;
+  top: 0;
+  z-index: 19;
   width:100%;
   padding:2px;
   display:none;
@@ -120,10 +133,10 @@
   padding:5px;
   margin-top:5px;
   margin-bottom:5px;
-  height:30%;
   overflow:auto;
   display:none;
-  height:100vh
+  height:auto;
+  min-height:0;
 }
 
 #raw_data_text {
