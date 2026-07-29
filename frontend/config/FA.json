@@ -56,9 +56,14 @@
       "name": "Cancers",
       "color": "red",
       "type": "cancer",
-      "codes": [],
-      "children_of": [
-        "C"
+      "topography_rules": [
+        {
+          "topography_children_of": [
+            "C"
+          ],
+          "morphology": [],
+          "morphology_exclude": []
+        }
       ]
     }
   },
