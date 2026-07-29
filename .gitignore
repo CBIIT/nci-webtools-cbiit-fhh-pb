@@ -4,6 +4,9 @@ node_modules
 processed/
 frontend/build/*
 data
+.venv/
+documentation/~$*
+documentation/Study COIs/~$*
 
 infrastructure/cdk.context.json
 __pycache__/
