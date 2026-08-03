@@ -127,14 +127,6 @@
       "color": "purple",
       "type": "disease",
       "codes": [
-        "86311",
-        "86313",
-        "89003",
-        "8959",
-        "89590",
-        "89591",
-        "89593",
-        "95013",
         "C499",
         "C569",
         "C629",
@@ -142,7 +134,29 @@
         "C694",
         "D140"
       ],
-      "children_of": []
+      "children_of": [],
+      "topography_rules": [
+        {
+          "topography": ["C499"],
+          "morphology": ["89003"],
+          "morphology_exclude": []
+        },
+        {
+          "topography": ["C569", "C629"],
+          "morphology": ["86311", "86313"],
+          "morphology_exclude": []
+        },
+        {
+          "topography": ["C649"],
+          "morphology": ["89590", "89591", "89593"],
+          "morphology_exclude": []
+        },
+        {
+          "topography": ["C694"],
+          "morphology": ["95013"],
+          "morphology_exclude": []
+        }
+      ]
     }
   },
   "code_matching": {
