@@ -127,11 +127,6 @@
       "color": "purple",
       "type": "disease",
       "codes": [
-        "C499",
-        "C569",
-        "C629",
-        "C649",
-        "C694",
         "D140"
       ],
       "children_of": [],
