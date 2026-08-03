@@ -2739,6 +2739,53 @@ function match_disease_to_quadrant(disease, quadrant_config, person_id = null) {
     return null;
   }
 
+  // For disease-type quadrants that also declare topography_rules (mixed case:
+  // e.g. a non-cancer ICD-10 code AND cancer entries stored with topography+morphology),
+  // check topography_rules first when the disease entry has a topography field.
+  if (Array.isArray(quadrant_config.topography_rules) && quadrant_config.topography_rules.length > 0 && disease.topography) {
+    const raw_rules = quadrant_config.topography_rules;
+    const normalized_rules = raw_rules
+      .map((rule) => {
+        const exact_topography = (Array.isArray(rule?.topography) ? rule.topography : [rule?.topography])
+          .map(normalize_topography_code)
+          .filter(Boolean);
+        const topography_children_of = (Array.isArray(rule?.topography_children_of) ? rule.topography_children_of : [rule?.topography_children_of])
+          .map(normalize_children_of_prefix)
+          .filter(Boolean);
+        const morphology = (Array.isArray(rule?.morphology) ? rule.morphology : [rule?.morphology])
+          .map(normalize_morphology_code)
+          .filter(Boolean);
+        const morphology_exclude = (Array.isArray(rule?.morphology_exclude) ? rule.morphology_exclude : [rule?.morphology_exclude])
+          .map(normalize_morphology_code)
+          .filter(Boolean);
+        if (!exact_topography.length && !topography_children_of.length) return null;
+        return { exact_topography, topography_children_of, morphology, morphology_exclude };
+      })
+      .filter(Boolean);
+
+    const normalized_topography = normalize_topography_code(disease.topography);
+    const normalized_morphology = normalize_morphology_code(disease.morphology);
+
+    for (const rule of normalized_rules.filter((r) => r.exact_topography.length > 0)) {
+      if (!rule.exact_topography.includes(normalized_topography)) continue;
+      if (rule.morphology.length > 0) {
+        if (normalized_morphology && rule.morphology.includes(normalized_morphology)) return normalized_topography;
+        continue;
+      }
+      if (normalized_morphology && rule.morphology_exclude.length > 0 && rule.morphology_exclude.includes(normalized_morphology)) break;
+      return normalized_topography;
+    }
+
+    for (const rule of normalized_rules.filter((r) => r.topography_children_of.length > 0)) {
+      if (!rule.topography_children_of.some((prefix) => normalized_topography?.startsWith(prefix))) continue;
+      if (rule.morphology.length === 0) {
+        if (normalized_morphology && rule.morphology_exclude.length > 0 && rule.morphology_exclude.includes(normalized_morphology)) continue;
+        return normalized_topography;
+      }
+      if (normalized_morphology && rule.morphology.includes(normalized_morphology)) return normalized_topography;
+    }
+  }
+
   const valid_codes = (quadrant_config.codes || [])
     .map(normalize_quadrant_code)
     .filter(Boolean);
