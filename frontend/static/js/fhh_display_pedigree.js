@@ -540,7 +540,11 @@ function draw_person(person_id) {
   //  console.log(person_id);
   const person = data["people"][person_id];
 
-  if (person && person["demographics"]["gender"] == "Male") {
+  // Check for miscarriage first (takes precedence over gender)
+  if (person && person["life_status"] == "Miscarriage") {
+    draw_miscarriage(person_id);
+    // Miscarriages don't have quadrants
+  } else if (person && person["demographics"]["gender"] == "Male") {
     draw_male(person_id);
     draw_quadrants_male(person_id);
   } else if (person && person["demographics"]["gender"] == "Female") {
@@ -1766,7 +1770,14 @@ function set_demographics_of_person(person_id) {
   table.appendChild(thead);
   const tbody = document.createElement("tbody");
   add_row_to_table(tbody, "ID", person_id);
-  add_row_to_table(tbody, "Sex", data["people"][person_id]["demographics"]["gender"]);
+  
+  // Show life_status if it's Miscarriage, otherwise show Sex
+  const person = data["people"][person_id];
+  if (person["life_status"] == "Miscarriage") {
+    add_row_to_table(tbody, "Life Status", "Miscarriage");
+  } else {
+    add_row_to_table(tbody, "Sex", person["demographics"]["gender"]);
+  }
 
   add_row_to_table(tbody, "Birthdate", data["people"][person_id]["born"]);
   const deceased_state = get_deceased_state(data["people"][person_id]);
@@ -2138,6 +2149,48 @@ function draw_female(person_id) {
     draw_name(center, person_id);
     draw_pedigree_symbol(center, person_id);
     draw_born_and_deceased(center, person_id);
+  }
+
+}
+
+function draw_miscarriage(person_id) {
+  if (!data["people"][person_id]) return;
+  let person = data["people"][person_id];
+
+  let center = get_center(person);
+  person.x = center.x;
+  person.y = center.y;
+
+  let x = person.x;
+  let y = person.y;
+  let s = config.size / 2;  // Half the size of unknown diamond
+
+  // Draw upward-pointing triangle (upper half of diamond)
+  // Top point: (x, y - s/2)
+  // Bottom left: (x - s/2, y + s/2)
+  // Bottom right: (x + s/2, y + s/2)
+  const el = draw_triangle(
+    x,
+    y - s / 2,
+    x - s / 2,
+    y + s / 2,
+    x + s / 2,
+    y + s / 2
+  );
+  el.setAttributeNS(null, "id", person_id);
+  el.setAttributeNS(null, "name", person_id);
+  el.setAttributeNS(null, "sex", "Miscarriage");
+  el.setAttributeNS(null, "cx", center.x);
+  el.setAttributeNS(null, "cy", center.y);
+
+  if (has_clinical_entries(person)) el.setAttributeNS(null, "stroke-width", "3");
+  else el.setAttributeNS(null, "stroke-width", "1");
+
+  people_drawn.push(person_id);
+  add_clicking_to_element(el, person_id);
+
+  if (!data["people"][person_id].placeholder) {
+    draw_name(center, person_id);
   }
 
 }
