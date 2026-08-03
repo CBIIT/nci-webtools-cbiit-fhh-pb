@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Miscarriage Symbol Test</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background-color: #f5f5f5;
+    }
+    .test-container {
+      background: white;
+      padding: 20px;
+      margin: 20px 0;
+      border-radius: 5px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    svg {
+      border: 1px solid #ccc;
+      background-color: white;
+      margin: 10px 0;
+    }
+    .legend {
+      display: flex;
+      gap: 30px;
+      flex-wrap: wrap;
+      margin-top: 20px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    svg text {
+      font-size: 12px;
+      font-family: Arial;
+    }
+    h1 {
+      color: #333;
+      border-bottom: 2px solid #007bff;
+      padding-bottom: 10px;
+    }
+    h2 {
+      color: #555;
+      margin-top: 30px;
+    }
+    .description {
+      background-color: #e7f3ff;
+      padding: 10px;
+      border-left: 4px solid #2196F3;
+      margin: 10px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>Miscarriage Symbol Test</h1>
+  
+  <div class="test-container">
+    <h2>Test 1: Basic Miscarriage Symbol Comparison</h2>
+    <p>This test shows the relationship between Unknown (full diamond) and Miscarriage (upper triangle, half-size).</p>
+    
+    <svg width="400" height="300" xmlns="http://www.w3.org/2000/svg">
+      <!-- Unknown Diamond (full size) -->
+      <g>
+        <text x="50" y="30" font-weight="bold">Unknown (Full Diamond)</text>
+        <!-- Diamond points: (100, 50-20), (100+20, 100), (100, 100+20), (100-20, 100) -->
+        <polygon points="100,50 120,100 100,150 80,100" 
+                 fill="white" stroke="black" stroke-width="2"/>
+        <text x="85" y="160" font-size="12">Size: 40px</text>
+      </g>
+      
+      <!-- Miscarriage Triangle (half-size) -->
+      <g>
+        <text x="250" y="30" font-weight="bold">Miscarriage (Upper Triangle, Half-size)</text>
+        <!-- Triangle: (100, 50-10), (100-10, 100), (100+10, 100) -->
+        <!-- But positioned differently, let's use the same center concept -->
+        <!-- Points: (300, 70-10), (300-10, 90+10), (300+10, 90+10) -->
+        <polygon points="300,60 290,110 310,110" 
+                 fill="lightblue" stroke="black" stroke-width="2"/>
+        <text x="280" y="130" font-size="12">Size: 20px (half)</text>
+      </g>
+    </svg>
+
+    <div class="description">
+      <strong>Expected:</strong> Miscarriage is an upward-pointing triangle that is approximately half the size of the unknown diamond.
+    </div>
+  </div>
+
+  <div class="test-container">
+    <h2>Test 2: Miscarriage in Pedigree Context</h2>
+    <p>This test shows how miscarriages should appear in a simple family structure.</p>
+    
+    <svg width="500" height="400" xmlns="http://www.w3.org/2000/svg">
+      <!-- Title -->
+      <text x="250" y="20" font-weight="bold" text-anchor="middle" font-size="14">Simple Pedigree with Miscarriage</text>
+      
+      <!-- Generation 1: Parents -->
+      <g>
+        <!-- Father (Male - square) -->
+        <text x="100" y="50" font-size="12" text-anchor="middle">Father</text>
+        <rect x="90" y="60" width="20" height="20" fill="white" stroke="black" stroke-width="1"/>
+        
+        <!-- Mother (Female - circle) -->
+        <text x="200" y="50" font-size="12" text-anchor="middle">Mother</text>
+        <circle cx="200" cy="70" r="10" fill="white" stroke="black" stroke-width="1"/>
+        
+        <!-- Connector line between parents -->
+        <line x1="110" y1="70" x2="190" y2="70" stroke="black" stroke-width="1"/>
+      </g>
+      
+      <!-- Generation 2: Children -->
+      <g>
+        <!-- Vertical line from parents -->
+        <line x1="150" y1="70" x2="150" y2="110" stroke="black" stroke-width="1"/>
+        
+        <!-- Horizontal line for siblings -->
+        <line x1="80" y1="110" x2="280" y2="110" stroke="black" stroke-width="1"/>
+        
+        <!-- Child 1: Miscarriage (Triangle) -->
+        <text x="80" y="135" font-size="12" text-anchor="middle">Miscarriage</text>
+        <polygon points="80,150 75,160 85,160" fill="lightblue" stroke="black" stroke-width="1"/>
+        <line x1="80" y1="110" x2="80" y2="145" stroke="black" stroke-width="1"/>
+        
+        <!-- Child 2: Male (Square) -->
+        <text x="150" y="135" font-size="12" text-anchor="middle">Son</text>
+        <rect x="140" y="145" width="20" height="20" fill="white" stroke="black" stroke-width="1"/>
+        <line x1="150" y1="110" x2="150" y2="145" stroke="black" stroke-width="1"/>
+        
+        <!-- Child 3: Female (Circle) -->
+        <text x="220" y="135" font-size="12" text-anchor="middle">Daughter</text>
+        <circle cx="220" cy="155" r="10" fill="white" stroke="black" stroke-width="1"/>
+        <line x1="220" y1="110" x2="220" y2="145" stroke="black" stroke-width="1"/>
+      </g>
+    </svg>
+
+    <div class="description">
+      <strong>Expected:</strong> The miscarriage appears as a small upward-pointing triangle connected to the parents via pedigree lines, just like other children.
+    </div>
+  </div>
+
+  <div class="test-container">
+    <h2>Test 3: Miscarriage with Clinical Data</h2>
+    <p>If a miscarriage has clinical data (unlikely but possible), stroke-width should be 3.</p>
+    
+    <svg width="400" height="200" xmlns="http://www.w3.org/2000/svg">
+      <text x="200" y="30" font-weight="bold" text-anchor="middle">Miscarriage Appearance Variations</text>
+      
+      <!-- Normal stroke -->
+      <g>
+        <text x="100" y="80" font-size="12" text-anchor="middle">Normal (stroke-width: 1)</text>
+        <polygon points="100,100 95,110 105,110" fill="lightblue" stroke="black" stroke-width="1"/>
+      </g>
+      
+      <!-- Thick stroke (if has clinical data) -->
+      <g>
+        <text x="250" y="80" font-size="12" text-anchor="middle">With Clinical Data (stroke-width: 3)</text>
+        <polygon points="250,100 245,110 255,110" fill="lightblue" stroke="black" stroke-width="3"/>
+      </g>
+    </svg>
+
+    <div class="description">
+      <strong>Implementation Detail:</strong> The draw_miscarriage() function checks has_clinical_entries() and sets stroke-width to 3 if diseases or procedures are present.
+    </div>
+  </div>
+
+  <div class="test-container">
+    <h2>Data Structure Test</h2>
+    <p>A miscarriage record should have life_status == "Miscarriage":</p>
+    <pre style="background: #f0f0f0; padding: 10px; border-radius: 3px;"><code>{
+  "name": "M Placid Wolf",
+  "born": "UN/UN/UNKN",
+  "deceased": "UN/UN/UNKN",
+  "father": "05643-02-001",
+  "mother": "05643-02-002",
+  "life_status": "Miscarriage",
+  "demographics": {
+    "gender": "Unknown"
+  }
+}</code></pre>
+    <div class="description">
+      <strong>Note:</strong> The life_status property is checked BEFORE gender in the draw_person() function.
+    </div>
+  </div>
+
+  <div class="test-container">
+    <h2>Summary of Changes</h2>
+    <ul>
+      <li>✓ New draw_miscarriage() function draws upward-pointing triangle</li>
+      <li>✓ Triangle size is config.size / 2 (half of unknown diamond)</li>
+      <li>✓ draw_person() checks life_status first, before gender</li>
+      <li>✓ Miscarriages do not have quadrants (draw_quadrants_unknown is empty anyway)</li>
+      <li>✓ Person details show "Life Status: Miscarriage" instead of "Sex"</li>
+      <li>✓ Uses existing draw_triangle() helper function</li>
+      <li>✓ Proper positioning with center.x, center.y coordinates</li>
+    </ul>
+  </div>
+
+</body>
+</html>

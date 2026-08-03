@@ -1772,7 +1772,6 @@ function set_demographics_of_person(person_id) {
   add_row_to_table(tbody, "ID", person_id);
   
   // Show life_status if it's Miscarriage, otherwise show Sex
-  const person = data["people"][person_id];
   if (person["life_status"] == "Miscarriage") {
     add_row_to_table(tbody, "Life Status", "Miscarriage");
   } else {
@@ -2163,25 +2162,27 @@ function draw_miscarriage(person_id) {
 
   let x = person.x;
   let y = person.y;
-  let s = config.size / 2;  // Half the size of unknown diamond
+  let s = config.size / 2;  // Half height (same as top half of diamond)
 
-  // Draw upward-pointing triangle (upper half of diamond)
-  // Top point: (x, y - s/2)
-  // Bottom left: (x - s/2, y + s/2)
-  // Bottom right: (x + s/2, y + s/2)
+  // Draw upward-pointing triangle: upper half of the unknown diamond
+  // Same width as diamond (config.size), half the height
+  // Top point: (x, y - s)
+  // Bottom left: (x - s, y)
+  // Bottom right: (x + s, y)
   const el = draw_triangle(
     x,
-    y - s / 2,
-    x - s / 2,
-    y + s / 2,
-    x + s / 2,
-    y + s / 2
+    y - s,
+    x - s,
+    y,
+    x + s,
+    y
   );
   el.setAttributeNS(null, "id", person_id);
   el.setAttributeNS(null, "name", person_id);
   el.setAttributeNS(null, "sex", "Miscarriage");
   el.setAttributeNS(null, "cx", center.x);
   el.setAttributeNS(null, "cy", center.y);
+  el.setAttributeNS(null, "fill", config.default_color || "lightblue");
 
   if (has_clinical_entries(person)) el.setAttributeNS(null, "stroke-width", "3");
   else el.setAttributeNS(null, "stroke-width", "1");
