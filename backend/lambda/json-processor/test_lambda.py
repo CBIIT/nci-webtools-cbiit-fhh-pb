@@ -14,6 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from lambda_function import lambda_handler
+from json_processor import JSONProcessor
 
 
 def create_test_event(bucket_name: str, object_key: str) -> dict:
@@ -30,6 +31,7 @@ def create_test_data() -> list:
     return [
         {
             "Merge1[Subject]": "00101",
+            "Merge1[project]": "Test Study",
             "Merge1[123a.result.participant.first_name]": "John",
             "Merge1[123a.result.participant.last_name]": "Doe",
             "DEMO[DTHDAT_RAW]": "",
@@ -42,6 +44,7 @@ def create_test_data() -> list:
             "Subject_cancer[CANCER.DX_DT]": "2020-01-15",
             "Subject_cancer[CANCER.PRM_TUMOR_LATERAL_TP_STD]": "Bilateral",
             "Subject_cancer[CANCER.PATH_ACQ_METH_TP]": "Biopsy",
+            "Subject_cancer[CANCER.TYPE_STD]": "PPB Type III",
             "Subject non cancer[N_CANCER.CD10_CD]": "I10",
             "Subject non cancer[N_CANCER.NUMBER]": "1",
             "Subject non cancer[N_CANCER.AGE_AT_DIAGNOSIS]": "40",
@@ -106,6 +109,19 @@ def test_lambda_function():
     except Exception as e:
         print(f"Error testing Lambda function: {e}")
         return False
+
+
+def test_cancer_disease_includes_type_std():
+    """Ensure _extract_cancer_disease surfaces the CANCER.TYPE_STD field as type_std."""
+    records = create_test_data()
+
+    processor = JSONProcessor()
+    processor.process_records(records)
+
+    person = processor.people["00101"]
+    cancer_disease = next(d for d in person["diseases"] if d["d_num"] == "C1")
+
+    assert cancer_disease["type_std"] == "PPB Type III"
 
 
 if __name__ == "__main__":
