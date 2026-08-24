@@ -210,6 +210,7 @@ class JSONProcessor:
             ),
             "date_of_diagnosis": record.get("Subject_cancer[CANCER.DX_DT]", ""),
             "d_num": f"C{disease_num}" if disease_num else "",
+            "type2_std": record.get("Subject_cancer[CANCER.type2_std]", ""),
         }
 
     def _extract_non_cancer_disease(
