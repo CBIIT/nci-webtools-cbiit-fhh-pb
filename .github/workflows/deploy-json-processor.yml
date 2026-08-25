@@ -47,6 +47,11 @@ jobs:
       - name: Install CDK
         run: npm install -g aws-cdk
 
+      - name: Sync CDK dependency lockfile
+        run: |
+          cd infrastructure
+          npm install --package-lock-only
+
       - name: Install CDK dependencies
         run: |
           cd infrastructure
