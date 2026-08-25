@@ -971,7 +971,7 @@ function remove_diagnosis_from_person(person_id, diagnosis_index) {
   if (!person || !person.diseases || !person.diseases[diagnosis_index]) return;
 
   const diagnosis = person.diseases[diagnosis_index];
-  const diagnosis_label = diagnosis.code || diagnosis.shorthand || ("Diagnosis #" + (diagnosis_index + 1));
+  const diagnosis_label = diagnosis.code || get_diagnosis_display_name(diagnosis) || ("Diagnosis #" + (diagnosis_index + 1));
   const confirmation = window.confirm("Remove diagnosis '" + diagnosis_label + "'?");
   if (!confirmation) return;
 
@@ -1806,6 +1806,10 @@ function add_row_to_table(tbody, label, value) {
   tbody.appendChild(row);
 }
 
+function get_diagnosis_display_name(diagnosis) {
+  return diagnosis.type_std || diagnosis.shorthand || "NOTITLE";
+}
+
 function create_color_swatch_container(colors) {
   if (!Array.isArray(colors) || colors.length === 0) return null;
 
@@ -1871,7 +1875,7 @@ function set_diagnoses_of_person(person_id) {
         || (disease.d_num && String(disease.d_num).startsWith("C"))
         || (code && code[0] === "C");
       const diagnosis_identifier = is_cancer_diagnosis ? (cancer_identifier || code) : code;
-      const diagnosis_description = disease.shorthand || "NOTITLE";
+      const diagnosis_description = get_diagnosis_display_name(disease);
       const matching_quadrants = get_matching_quadrants_for_disease(disease, person_id);
       const matching_quadrant_names = matching_quadrants.map((quadrant) => quadrant.name);
       const matching_quadrant_colors = matching_quadrants.map((quadrant) => quadrant.color).filter(Boolean);
