@@ -162,6 +162,7 @@ class JSONProcessor:
             "father": record.get("CORE[FPT_ID3]", ""),
             "mother": record.get("CORE[MPT_ID3]", ""),
             "pedigree_symbol": record.get("Merge2[Pedigree_Symbol]", ""),
+            "life_status": record.get("CORE_ADD[life_status]", ""),
             "demographics": self._extract_demographics(record),
             "partners": [],
             "diseases": [],
@@ -191,10 +192,13 @@ class JSONProcessor:
 
         disease_num = record.get("Subject_cancer[CANCER.NUM]", "")
         med_code, shorthand = self._parse_medical_code(code)
+        icd_o3 = record.get("Subject_cancer[CANCER.ICD_03]", "")
+        morphology_code = self._parse_medical_code(icd_o3)[0] if icd_o3 else ""
 
         return {
             "shorthand": shorthand,
-            "code": med_code,
+            "topography": med_code,
+            "morphology": morphology_code,
             "laterality": str(
                 record.get("Subject_cancer[CANCER.PRM_TUMOR_LATERAL_TP_STD]", "")
             ),
@@ -206,6 +210,9 @@ class JSONProcessor:
             ),
             "date_of_diagnosis": record.get("Subject_cancer[CANCER.DX_DT]", ""),
             "d_num": f"C{disease_num}" if disease_num else "",
+
+            "type_std": record.get("Subject_cancer[CANCER.type_std]", ""),
+            "type2_std": record.get("Subject_cancer[CANCER.type2_std]", ""),
         }
 
     def _extract_non_cancer_disease(
