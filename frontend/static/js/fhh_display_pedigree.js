@@ -1882,6 +1882,9 @@ function set_diagnoses_of_person(person_id) {
       const quadrant_suffix = matching_quadrant_names.length > 0
         ? " (" + matching_quadrant_names.join(", ") + ")"
         : "";
+      const header_text = disease.type_std
+        ? diagnosis_description
+        : diagnosis_identifier + " - " + diagnosis_description + quadrant_suffix;
 
      
       const table = document.createElement("table");
@@ -1906,7 +1909,7 @@ function set_diagnoses_of_person(person_id) {
       }
 
       const header_label = document.createElement("span");
-      header_label.textContent = diagnosis_identifier + " - " + diagnosis_description + quadrant_suffix;
+      header_label.textContent = header_text;
       header_title.appendChild(header_label);
       header_content.appendChild(header_title);
 
