@@ -44,6 +44,13 @@ let people_drawn = [];
 
 let increment = 0;
 
+function set_selection_loading(is_loading) {
+  const loading_overlay = document.getElementById("selection-loading-overlay");
+  if (!loading_overlay) return;
+  loading_overlay.style.display = is_loading ? "flex" : "none";
+  loading_overlay.setAttribute("aria-hidden", String(!is_loading));
+}
+
 const debug_offset = { x: 5000, y: 400 };
 var center_offset = {};
 
@@ -55,15 +62,21 @@ export function get_config() {
 let study_select = document.getElementById("study_select");
 study_select.addEventListener("change", function (event) {
   study_name = event.target.value;
-  load_study_config(study_name)
-    .then((loadedConfig) => {
-      config = loadedConfig;
-      update_build_mode_actions_visibility();
-    })
+  set_selection_loading(true);
+  Promise.all([
+    load_study_config(study_name)
+      .then((loadedConfig) => {
+        config = loadedConfig;
+        update_build_mode_actions_visibility();
+      }),
+    check_for_families(study_name),
+  ])
     .catch((error) => {
-      console.error("Failed to load study config:", error);
+      console.error("Failed to load study data:", error);
+    })
+    .finally(() => {
+      set_selection_loading(false);
     });
-  check_for_families(study_name);
 });
 
 let family_select = document.getElementById("families_select");
@@ -71,7 +84,8 @@ family_select.addEventListener("change", function (event) {
   if (!study_name) {
     return;
   }
-  
+
+  set_selection_loading(true);
   load_config_and_data(study_name, event.target.value, study_name)
     .then(([d, a, c]) => {
       data = d;
@@ -85,6 +99,9 @@ family_select.addEventListener("change", function (event) {
     })
     .catch((error) => {
       console.error("Failed to load family data:", error);
+    })
+    .finally(() => {
+      set_selection_loading(false);
     });
 });
 
@@ -233,6 +250,7 @@ action_mode_radio_elems.forEach((radio_elem) => {
 
 
 document.addEventListener("DOMContentLoaded", async function () {
+  set_selection_loading(true);
   try {
     const loadedConfig = await ensureConfigLoaded();
     if (loadedConfig) {
@@ -262,23 +280,24 @@ document.addEventListener("DOMContentLoaded", async function () {
       await check_for_families(study_name);
     }
     if (filename) { 
-      const promise = load_config_and_data(study_name, family, study_name);
-      promise.then((result) => {
-        if (!result) return;
+      const result = await load_config_and_data(study_name, family, study_name);
+      if (result) {
         const [d, a, c] = result;
         data = d;
         annotations = a;
         config = c;
         update_build_mode_actions_visibility();
-          show_all_blocks();
-          show_summary_block();
-          set_study_summary();
-          set_family_summary();
-          display_pedigree();
-      });
+        show_all_blocks();
+        show_summary_block();
+        set_study_summary();
+        set_family_summary();
+        display_pedigree();
+      }
     }
   } catch (error) {
     console.error("Error fetching data:", error);
+  } finally {
+    set_selection_loading(false);
   }
 });
 
