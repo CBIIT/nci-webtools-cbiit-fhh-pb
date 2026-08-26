@@ -1825,8 +1825,12 @@ function add_row_to_table(tbody, label, value) {
   tbody.appendChild(row);
 }
 
+function get_standardized_diagnosis_label(diagnosis) {
+  return diagnosis.type_std || diagnosis.type2_std || diagnosis.type3_std || diagnosis.type4_std || null;
+}
+
 function get_diagnosis_display_name(diagnosis) {
-  return diagnosis.type_std || diagnosis.shorthand || "NOTITLE";
+  return get_standardized_diagnosis_label(diagnosis) || diagnosis.shorthand || "NOTITLE";
 }
 
 function create_color_swatch_container(colors) {
@@ -1901,8 +1905,9 @@ function set_diagnoses_of_person(person_id) {
       const quadrant_suffix = matching_quadrant_names.length > 0
         ? " (" + matching_quadrant_names.join(", ") + ")"
         : "";
-      const header_text = disease.type_std
-        ? diagnosis_description
+      const standardized_label = get_standardized_diagnosis_label(disease);
+      const header_text = standardized_label
+        ? standardized_label
         : diagnosis_identifier + " - " + diagnosis_description + quadrant_suffix;
 
      

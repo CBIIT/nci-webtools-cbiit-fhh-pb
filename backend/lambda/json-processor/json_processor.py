@@ -213,6 +213,8 @@ class JSONProcessor:
 
             "type_std": record.get("Subject_cancer[CANCER.type_std]", ""),
             "type2_std": record.get("Subject_cancer[CANCER.type2_std]", ""),
+            "type3_std": record.get("Subject_cancer[CANCER.type3_std]", ""),
+            "type4_std": record.get("Subject_cancer[CANCER.type4_std]", ""),
         }
 
     def _extract_non_cancer_disease(
