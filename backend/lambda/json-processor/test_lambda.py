@@ -44,7 +44,7 @@ def create_test_data() -> list:
             "Subject_cancer[CANCER.DX_DT]": "2020-01-15",
             "Subject_cancer[CANCER.PRM_TUMOR_LATERAL_TP_STD]": "Bilateral",
             "Subject_cancer[CANCER.PATH_ACQ_METH_TP]": "Biopsy",
-            "Subject_cancer[CANCER.TYPE_STD]": "PPB Type III",
+            "Subject_cancer[CANCER.type_std]": "PPB Type III",
             "Subject non cancer[N_CANCER.CD10_CD]": "I10",
             "Subject non cancer[N_CANCER.NUMBER]": "1",
             "Subject non cancer[N_CANCER.AGE_AT_DIAGNOSIS]": "40",
@@ -112,7 +112,7 @@ def test_lambda_function():
 
 
 def test_cancer_disease_includes_type_std():
-    """Ensure _extract_cancer_disease surfaces the CANCER.TYPE_STD field as type_std."""
+    """Ensure _extract_cancer_disease surfaces the CANCER.type_std field as type_std."""
     records = create_test_data()
 
     processor = JSONProcessor()
