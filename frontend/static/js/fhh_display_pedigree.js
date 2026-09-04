@@ -44,6 +44,13 @@ let people_drawn = [];
 
 let increment = 0;
 
+function set_selection_loading(is_loading) {
+  const loading_overlay = document.getElementById("selection-loading-overlay");
+  if (!loading_overlay) return;
+  loading_overlay.style.display = is_loading ? "flex" : "none";
+  loading_overlay.setAttribute("aria-hidden", String(!is_loading));
+}
+
 const debug_offset = { x: 5000, y: 400 };
 var center_offset = {};
 
@@ -55,15 +62,21 @@ export function get_config() {
 let study_select = document.getElementById("study_select");
 study_select.addEventListener("change", function (event) {
   study_name = event.target.value;
-  load_study_config(study_name)
-    .then((loadedConfig) => {
-      config = loadedConfig;
-      update_build_mode_actions_visibility();
-    })
+  set_selection_loading(true);
+  Promise.all([
+    load_study_config(study_name)
+      .then((loadedConfig) => {
+        config = loadedConfig;
+        update_build_mode_actions_visibility();
+      }),
+    check_for_families(study_name),
+  ])
     .catch((error) => {
-      console.error("Failed to load study config:", error);
+      console.error("Failed to load study data:", error);
+    })
+    .finally(() => {
+      set_selection_loading(false);
     });
-  check_for_families(study_name);
 });
 
 let family_select = document.getElementById("families_select");
@@ -71,7 +84,8 @@ family_select.addEventListener("change", function (event) {
   if (!study_name) {
     return;
   }
-  
+
+  set_selection_loading(true);
   load_config_and_data(study_name, event.target.value, study_name)
     .then(([d, a, c]) => {
       data = d;
@@ -85,6 +99,9 @@ family_select.addEventListener("change", function (event) {
     })
     .catch((error) => {
       console.error("Failed to load family data:", error);
+    })
+    .finally(() => {
+      set_selection_loading(false);
     });
 });
 
@@ -233,6 +250,7 @@ action_mode_radio_elems.forEach((radio_elem) => {
 
 
 document.addEventListener("DOMContentLoaded", async function () {
+  set_selection_loading(true);
   try {
     const loadedConfig = await ensureConfigLoaded();
     if (loadedConfig) {
@@ -262,23 +280,24 @@ document.addEventListener("DOMContentLoaded", async function () {
       await check_for_families(study_name);
     }
     if (filename) { 
-      const promise = load_config_and_data(study_name, family, study_name);
-      promise.then((result) => {
-        if (!result) return;
+      const result = await load_config_and_data(study_name, family, study_name);
+      if (result) {
         const [d, a, c] = result;
         data = d;
         annotations = a;
         config = c;
         update_build_mode_actions_visibility();
-          show_all_blocks();
-          show_summary_block();
-          set_study_summary();
-          set_family_summary();
-          display_pedigree();
-      });
+        show_all_blocks();
+        show_summary_block();
+        set_study_summary();
+        set_family_summary();
+        display_pedigree();
+      }
     }
   } catch (error) {
     console.error("Error fetching data:", error);
+  } finally {
+    set_selection_loading(false);
   }
 });
 
@@ -971,7 +990,7 @@ function remove_diagnosis_from_person(person_id, diagnosis_index) {
   if (!person || !person.diseases || !person.diseases[diagnosis_index]) return;
 
   const diagnosis = person.diseases[diagnosis_index];
-  const diagnosis_label = diagnosis.code || diagnosis.shorthand || ("Diagnosis #" + (diagnosis_index + 1));
+  const diagnosis_label = diagnosis.code || get_diagnosis_display_name(diagnosis) || ("Diagnosis #" + (diagnosis_index + 1));
   const confirmation = window.confirm("Remove diagnosis '" + diagnosis_label + "'?");
   if (!confirmation) return;
 
@@ -1806,6 +1825,14 @@ function add_row_to_table(tbody, label, value) {
   tbody.appendChild(row);
 }
 
+function get_standardized_diagnosis_label(diagnosis) {
+  return diagnosis.type_std || diagnosis.type2_std || diagnosis.type3_std || diagnosis.type4_std || null;
+}
+
+function get_diagnosis_display_name(diagnosis) {
+  return get_standardized_diagnosis_label(diagnosis) || diagnosis.shorthand || "NOTITLE";
+}
+
 function create_color_swatch_container(colors) {
   if (!Array.isArray(colors) || colors.length === 0) return null;
 
@@ -1871,13 +1898,17 @@ function set_diagnoses_of_person(person_id) {
         || (disease.d_num && String(disease.d_num).startsWith("C"))
         || (code && code[0] === "C");
       const diagnosis_identifier = is_cancer_diagnosis ? (cancer_identifier || code) : code;
-      const diagnosis_description = disease.shorthand || "NOTITLE";
+      const diagnosis_description = get_diagnosis_display_name(disease);
       const matching_quadrants = get_matching_quadrants_for_disease(disease, person_id);
       const matching_quadrant_names = matching_quadrants.map((quadrant) => quadrant.name);
       const matching_quadrant_colors = matching_quadrants.map((quadrant) => quadrant.color).filter(Boolean);
       const quadrant_suffix = matching_quadrant_names.length > 0
         ? " (" + matching_quadrant_names.join(", ") + ")"
         : "";
+      const standardized_label = get_standardized_diagnosis_label(disease);
+      const header_text = standardized_label
+        ? standardized_label
+        : diagnosis_identifier + " - " + diagnosis_description + quadrant_suffix;
 
      
       const table = document.createElement("table");
@@ -1902,7 +1933,7 @@ function set_diagnoses_of_person(person_id) {
       }
 
       const header_label = document.createElement("span");
-      header_label.textContent = diagnosis_identifier + " - " + diagnosis_description + quadrant_suffix;
+      header_label.textContent = header_text;
       header_title.appendChild(header_label);
       header_content.appendChild(header_title);
 
