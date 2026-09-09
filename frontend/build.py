@@ -85,6 +85,10 @@ def process_template(template_path, build_dir, static_dir):
         "{{ url_for('static', filename='css/pedigree.css') }}", 
         "./static/css/pedigree.css"
     )
+    content = content.replace(
+        "{{ url_for('static', filename='favicon.svg') }}",
+        "./static/favicon.svg"
+    )
     
     # Handle JS files
     js_replacements = [
