@@ -1810,10 +1810,6 @@ function set_demographics_of_person(person_id) {
 
 function add_row_to_table(tbody, label, value) {
   if (!value) return;
-  if (value == "UN/UN/UNKN" || value == "00/00/0000") return;
-  if (value == "Unknown") return;
-  if (value == "UNK") return;
-
 
   const row = document.createElement("tr");
   const label_cell = document.createElement("td");
@@ -2400,7 +2396,6 @@ function draw_name(center, person_id) {
 
 function draw_born_and_deceased(center, person_id) {
   let born = data["people"][person_id]["born"];
-  if (born == "UN/UN/UNKN" || born == "00/00/0000") born = null;
 
   const deceased_state = get_deceased_state(data["people"][person_id]);
   const deceased = deceased_state.isDeceased ? deceased_state.deathDate : null;
