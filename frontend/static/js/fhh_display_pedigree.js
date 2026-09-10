@@ -727,10 +727,9 @@ function get_deceased_state(person) {
   }
 
   if (person.deceased && typeof person.deceased === "string") {
-    const deceased_date = person.deceased == "UN/UN/UNKN" || person.deceased == "00/00/0000" ? "" : person.deceased;
     return {
       isDeceased: true,
-      deathDate: deceased_date,
+      deathDate: person.deceased,
     };
   }
 
