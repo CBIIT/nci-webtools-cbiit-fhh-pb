@@ -2252,6 +2252,7 @@ function draw_unknown(person_id) {
 
   if (!data["people"][person_id].placeholder) {
     draw_name(center, person_id);
+    draw_born_and_deceased(center, person_id);
   }
 
 }
