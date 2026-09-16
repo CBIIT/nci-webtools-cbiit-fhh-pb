@@ -231,8 +231,8 @@ class JSONProcessor:
         med_code, shorthand = self._parse_medical_code(code)
 
         return {
-            "shorthand": shorthand,
             "code": med_code,
+            "description": shorthand,
             "laterality": str(
                 record.get("Subject non cancer[N_CANCER.PRM_TUMOR_LATERAL_TP_STD]", "")
             ),
@@ -244,6 +244,9 @@ class JSONProcessor:
             ),
             "date_of_diagnosis": record.get("Subject non cancer[N_CANCER.BX_DT]", ""),
             "d_num": f"D{disease_num}" if disease_num else "",
+
+            "type3_std": record.get("Subject non cancer[N_CANCER.type3_std]", ""),
+            "type4_std": record.get("Subject non cancer[N_CANCER.type4_std]", ""),
         }
 
     def _extract_procedure(self, record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -256,13 +259,16 @@ class JSONProcessor:
         med_code, shorthand = self._parse_medical_code(code)
 
         return {
-            "shorthand": shorthand,
             "code": med_code,
+            "description": shorthand,
             "age_at_procedure": record.get(
                 "Subject procedure[PRTRT.DERIV_PRSN_AGE]", ""
             ),
             "date_of_procedure": record.get("Subject procedure[PRTRT.PRSTDAT]", ""),
             "proc_num": f"P{proc_num}" if proc_num else "",
+
+            "type3_std": record.get("Subject procedure[PRTRT.type3_std]", ""),
+            "type4_std": record.get("Subject procedure[PRTRT.type4_std]", ""),
         }
 
     def _add_unique_item(
