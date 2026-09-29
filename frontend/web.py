@@ -46,9 +46,9 @@ def resolve_within(base, *parts):
     """Resolve parts under base, or return None if the result escapes base."""
     base_path = os.path.realpath(base)
     target = os.path.realpath(os.path.join(base_path, *parts))
-    if target == base_path or target.startswith(base_path + os.sep):
-        return target
-    return None
+    if not target.startswith(base_path + os.sep):
+        return None
+    return target
 
 
 def invalid_id_response():
