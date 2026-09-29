@@ -1,6 +1,7 @@
 from flask import Flask, request, send_from_directory, render_template, jsonify
 import os
 import json
+import re
 import requests
 from datetime import datetime
 from urllib.parse import urljoin
@@ -25,6 +26,34 @@ _app_config = get_app_config()
 DATA_DIR = os.path.join(app.root_path, _app_config.get("dataDir", "../data"))
 PROCESSED_FOLDER = os.path.join(DATA_DIR, "processed")
 ANNOTATIONS_FOLDER = os.path.join(DATA_DIR, "annotations")
+
+# Identifiers arriving from URLs and JSON payloads are used to build filesystem
+# paths. Restrict them to a conservative allowlist and confirm that every
+# resolved path stays inside its intended base directory.
+_SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+def is_safe_id(value):
+    """Return True when value is safe to use as a single path segment."""
+    return (
+        isinstance(value, str)
+        and value not in (".", "..")
+        and _SAFE_ID.match(value) is not None
+    )
+
+
+def resolve_within(base, *parts):
+    """Resolve parts under base, or return None if the result escapes base."""
+    base_path = os.path.realpath(base)
+    target = os.path.realpath(os.path.join(base_path, *parts))
+    if target == base_path or target.startswith(base_path + os.sep):
+        return target
+    return None
+
+
+def invalid_id_response():
+    """Uniform rejection for identifiers that cannot be used in a path."""
+    return jsonify({"error": "invalid id value"}), 400
 
 def get_api_config():
     """Return the API base URL from app config."""
@@ -74,22 +103,30 @@ def get_annotations(study_id, family_id):
         return jsonify(api_response.json()), api_response.status_code
 
     # Fall back to local file serving
+    if not is_safe_id(study_id) or not is_safe_id(family_id):
+        return invalid_id_response()
     filename = family_id + ".annotations.json"
-    study_annotations_dir = os.path.join(ANNOTATIONS_FOLDER, study_id)
-    annotation_path = os.path.join(study_annotations_dir, filename)
-    if not os.path.exists(annotation_path):
+    study_annotations_dir = resolve_within(ANNOTATIONS_FOLDER, study_id)
+    if study_annotations_dir is None:
+        return invalid_id_response()
+    annotation_path = resolve_within(study_annotations_dir, filename)
+    if annotation_path is None or not os.path.exists(annotation_path):
         return jsonify({"positions": {}}), 200
     return send_from_directory(study_annotations_dir, filename)
 
 
 @app.route("/config/<config_name>")
 def get_config(config_name):
+    if not is_safe_id(config_name):
+        return invalid_id_response()
     filename = config_name + ".json"
     return send_from_directory(CONFIG_FOLDER, filename)
 
 @app.route("/config/<config_name>.json")
 def get_config_with_extension(config_name):
     """Route with explicit .json extension for consistency with static builds"""
+    if not is_safe_id(config_name):
+        return invalid_id_response()
     filename = config_name + ".json"
     return send_from_directory(CONFIG_FOLDER, filename)
 
@@ -103,7 +140,12 @@ def list_families(study_id):
         return jsonify(api_response.json()), api_response.status_code
 
     # Fall back to local directory listing
-    return jsonify(os.listdir(os.path.join(PROCESSED_FOLDER, study_id)))
+    if not is_safe_id(study_id):
+        return invalid_id_response()
+    study_dir = resolve_within(PROCESSED_FOLDER, study_id)
+    if study_dir is None:
+        return invalid_id_response()
+    return jsonify(os.listdir(study_dir))
 
 
 @app.route("/families/<study_id>", methods=["POST"])
@@ -121,16 +163,20 @@ def create_family(study_id):
         return jsonify({"error": "proband_id is required"}), 400
 
     for value in (study_id, family_id, proband_id):
-        if "/" in value or "\\" in value or ".." in value:
-            return jsonify({"error": "invalid id value"}), 400
+        if not is_safe_id(value):
+            return invalid_id_response()
 
-    study_dir = os.path.join(PROCESSED_FOLDER, study_id)
+    study_dir = resolve_within(PROCESSED_FOLDER, study_id)
+    if study_dir is None:
+        return invalid_id_response()
     os.makedirs(study_dir, exist_ok=True)
 
     filename_json = family_id + ".json"
-    filepath_json = os.path.join(study_dir, filename_json)
+    filepath_json = resolve_within(study_dir, filename_json)
     filename_processed = family_id + ".processed.json"
-    filepath_processed = os.path.join(study_dir, filename_processed)
+    filepath_processed = resolve_within(study_dir, filename_processed)
+    if filepath_json is None or filepath_processed is None:
+        return invalid_id_response()
 
     if os.path.exists(filepath_json) or os.path.exists(filepath_processed):
         return jsonify({"error": "family file already exists"}), 409
@@ -184,11 +230,13 @@ def create_study():
     if not study_id:
         return jsonify({"error": "study_id is required"}), 400
 
-    if "/" in study_id or "\\" in study_id or ".." in study_id:
+    if not is_safe_id(study_id):
         return jsonify({"error": "invalid study_id"}), 400
 
-    processed_study_dir = os.path.join(PROCESSED_FOLDER, study_id)
-    annotations_study_dir = os.path.join(ANNOTATIONS_FOLDER, study_id)
+    processed_study_dir = resolve_within(PROCESSED_FOLDER, study_id)
+    annotations_study_dir = resolve_within(ANNOTATIONS_FOLDER, study_id)
+    if processed_study_dir is None or annotations_study_dir is None:
+        return jsonify({"error": "invalid study_id"}), 400
     os.makedirs(processed_study_dir, exist_ok=True)
     os.makedirs(annotations_study_dir, exist_ok=True)
 
@@ -203,12 +251,17 @@ def get_family_api_gateway(study_id, family_id):
         return jsonify(api_response.json()), api_response.status_code
 
     # Fall back to local file serving
-    study_name = study_id;
+    if not is_safe_id(study_id) or not is_safe_id(family_id):
+        return invalid_id_response()
+    study_name = study_id
     processed_filename = family_id + ".processed.json"
     json_filename = family_id + ".json"
-    study_folder = os.path.join(PROCESSED_FOLDER, study_name)
+    study_folder = resolve_within(PROCESSED_FOLDER, study_name)
+    if study_folder is None:
+        return invalid_id_response()
 
-    if os.path.exists(os.path.join(study_folder, processed_filename)):
+    processed_path = resolve_within(study_folder, processed_filename)
+    if processed_path is not None and os.path.exists(processed_path):
         filename = processed_filename
     else:
         filename = json_filename
@@ -224,14 +277,18 @@ def save_family_json(study_id, family_id):
         return jsonify({"error": "invalid JSON payload"}), 400
 
     for value in (study_id, family_id):
-        if "/" in value or "\\" in value or ".." in value:
-            return jsonify({"error": "invalid id value"}), 400
+        if not is_safe_id(value):
+            return invalid_id_response()
 
-    study_dir = os.path.join(PROCESSED_FOLDER, study_id)
+    study_dir = resolve_within(PROCESSED_FOLDER, study_id)
+    if study_dir is None:
+        return invalid_id_response()
     os.makedirs(study_dir, exist_ok=True)
 
-    json_path = os.path.join(study_dir, family_id + ".json")
-    processed_path = os.path.join(study_dir, family_id + ".processed.json")
+    json_path = resolve_within(study_dir, family_id + ".json")
+    processed_path = resolve_within(study_dir, family_id + ".processed.json")
+    if json_path is None or processed_path is None:
+        return invalid_id_response()
     target_path = json_path if os.path.exists(json_path) or not os.path.exists(processed_path) else processed_path
 
     with open(target_path, "w") as output_file:
@@ -249,8 +306,15 @@ def write_annotations_api_gateway(study_id,family_id):
         return jsonify(api_response.json()), api_response.status_code
 
     # Fall back to local file writing
-    os.makedirs(os.path.join(ANNOTATIONS_FOLDER, study_id), exist_ok=True)
-    filename = os.path.join(ANNOTATIONS_FOLDER, study_id, family_id + ".annotations.json")
+    if not is_safe_id(study_id) or not is_safe_id(family_id):
+        return invalid_id_response()
+    annotations_dir = resolve_within(ANNOTATIONS_FOLDER, study_id)
+    if annotations_dir is None:
+        return invalid_id_response()
+    os.makedirs(annotations_dir, exist_ok=True)
+    filename = resolve_within(annotations_dir, family_id + ".annotations.json")
+    if filename is None:
+        return invalid_id_response()
 
     datastr = data.decode("utf-8")
     app.logger.info(datastr)
