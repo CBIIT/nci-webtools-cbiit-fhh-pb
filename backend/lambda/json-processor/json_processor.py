@@ -153,6 +153,8 @@ class JSONProcessor:
         first_name = record.get("Merge1[participant.first_name]", "")
         last_name = record.get("Merge1[participant.last_name]", "")
         full_name = f"{first_name} {last_name}".strip()
+        type_quad = record.get("AB_QU[type_quad]", "")
+        type_abbr = record.get("AB_QU[type_abbr]", "")
 
         # Build person structure
         person_data = {
@@ -163,16 +165,8 @@ class JSONProcessor:
             "mother": record.get("CORE[MPT_ID3]", ""),
             "pedigree_symbol": record.get("Merge2[Pedigree_Symbol]", ""),
             "life_status": record.get("CORE_ADD[life_status]", ""),
-            "type_quad": [
-                value.strip()
-                for value in record.get("AB_QU[type_quad]", "").split(";")
-                if value.strip()
-            ],
-            "type_abbr": [
-                value.strip()
-                for value in record.get("AB_QU[type_abbr]", "").split(";")
-                if value.strip()
-            ],
+            "type_quad": [value.strip() for value in type_quad.split(";")] if type_quad else [],
+            "type_abbr": [value.strip() for value in type_abbr.split(";")] if type_abbr else [],
             "demographics": self._extract_demographics(record),
             "partners": [],
             "diseases": [],

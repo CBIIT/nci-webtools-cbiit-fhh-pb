@@ -130,7 +130,7 @@ def test_person_types_are_json_arrays():
         "Merge1[Subject]": "00101",
         "Merge1[project]": "Test Study",
         "AB_QU[type_quad]": "first; second; ;",
-        "AB_QU[type_abbr]": "A; B",
+        "AB_QU[type_abbr]": "A;; B",
     }
 
     _, missing_types = processor.extract_person_data({"Merge1[Subject]": "00102"})
@@ -139,8 +139,8 @@ def test_person_types_are_json_arrays():
 
     processor.process_records([record])
     person = json.loads(json.dumps(processor.get_output_data()))["people"]["00101"]
-    assert person["type_quad"] == ["first", "second"]
-    assert person["type_abbr"] == ["A", "B"]
+    assert person["type_quad"] == ["first", "second", "", ""]
+    assert person["type_abbr"] == ["A", "", "B"]
 
     processor = JSONProcessor()
     processor.process_records([{"Merge1[Subject]": "00102", "Merge1[project]": "Test Study"}])
