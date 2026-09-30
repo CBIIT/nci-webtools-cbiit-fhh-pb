@@ -163,6 +163,16 @@ class JSONProcessor:
             "mother": record.get("CORE[MPT_ID3]", ""),
             "pedigree_symbol": record.get("Merge2[Pedigree_Symbol]", ""),
             "life_status": record.get("CORE_ADD[life_status]", ""),
+            "type_quad": [
+                value.strip()
+                for value in record.get("AB_QU[type_quad]", "").split(";")
+                if value.strip()
+            ],
+            "type_abbr": [
+                value.strip()
+                for value in record.get("AB_QU[type_abbr]", "").split(";")
+                if value.strip()
+            ],
             "demographics": self._extract_demographics(record),
             "partners": [],
             "diseases": [],
@@ -418,7 +428,7 @@ class JSONProcessor:
                     self.people[person_id] = {
                         k: v
                         for k, v in person_data.items()
-                        if v not in (None, "", [], {}, ())
+                        if k in ("type_quad", "type_abbr") or v not in (None, "", [], {}, ())
                     }
                 except Exception as e:
                     print(f"[WARNING] Error cleaning record {person_id}: {e}")

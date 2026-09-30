@@ -124,6 +124,31 @@ def test_cancer_disease_includes_type_std():
     assert cancer_disease["type_std"] == "PPB Type III"
 
 
+def test_person_types_are_json_arrays():
+    processor = JSONProcessor()
+    record = {
+        "Merge1[Subject]": "00101",
+        "Merge1[project]": "Test Study",
+        "AB_QU[type_quad]": "first; second; ;",
+        "AB_QU[type_abbr]": "A; B",
+    }
+
+    _, missing_types = processor.extract_person_data({"Merge1[Subject]": "00102"})
+    assert missing_types["type_quad"] == []
+    assert missing_types["type_abbr"] == []
+
+    processor.process_records([record])
+    person = json.loads(json.dumps(processor.get_output_data()))["people"]["00101"]
+    assert person["type_quad"] == ["first", "second"]
+    assert person["type_abbr"] == ["A", "B"]
+
+    processor = JSONProcessor()
+    processor.process_records([{"Merge1[Subject]": "00102", "Merge1[project]": "Test Study"}])
+    empty_person = json.loads(json.dumps(processor.get_output_data()))["people"]["00102"]
+    assert empty_person["type_quad"] == []
+    assert empty_person["type_abbr"] == []
+
+
 if __name__ == "__main__":
     success = test_lambda_function()
     sys.exit(0 if success else 1)
