@@ -36,7 +36,7 @@ export class ApiGatewayStack extends cdk.Stack {
     super(scope, id, props);
 
     const tier = process.env.TIER || "dev";
-    const secretName = `${tier}/fhhpb/oidc-config`;
+    const secretName = `${tier}-fhhpb-oidc`;
     const forwarderArn = resolveDatadogForwarderArn(this, tier);
     const powertoolsLayer = getPowertoolsLayer(this, "PowertoolsLayer");
 

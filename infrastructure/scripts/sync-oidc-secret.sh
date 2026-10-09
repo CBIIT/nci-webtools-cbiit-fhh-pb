@@ -7,7 +7,7 @@ set -euo pipefail
 : "${OIDC_CONFIG:?OIDC_CONFIG is required}"
 : "${OIDC_CLIENT_SECRET:?OIDC_CLIENT_SECRET is required}"
 
-SECRET_NAME="${TIER}/fhhpb/oidc-config"
+SECRET_NAME="${TIER}-fhhpb-oidc"
 
 # OIDC_CONFIG is dotenv-style KEY=VALUE lines (same shape as the old *-oidc.env
 # files, minus CLIENT_SECRET) — turn it into a JSON object before merging.

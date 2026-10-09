@@ -101,7 +101,7 @@ export class CloudFrontS3Stack extends cdk.Stack {
     // Create Lambda@Edge function if auth is enabled
     const edgeFunctions: cloudfront.EdgeLambda[] = [];
     if (props?.enableAuth) {
-      const secretName = `${tier}/fhhpb/oidc-config`;
+      const secretName = `${tier}-fhhpb-oidc`;
 
       // Lambda@Edge writes to per-region log groups named
       // `/aws/lambda/{region}.{functionName}` and ignores the `logGroup` prop on
