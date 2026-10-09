@@ -4,6 +4,7 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as iam from "aws-cdk-lib/aws-iam";
+import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import * as ssm from "aws-cdk-lib/aws-ssm";
 import { Construct } from "constructs";
 import { createTags } from "./utils/tags";
@@ -38,6 +39,27 @@ export class ApiGatewayStack extends cdk.Stack {
     const secretName = `${tier}/fhhpb/oidc-config`;
     const forwarderArn = resolveDatadogForwarderArn(this, tier);
     const powertoolsLayer = getPowertoolsLayer(this, "PowertoolsLayer");
+
+    // CDK only manages the secret's shape (name/tags/placeholder); CI/CD overwrites
+    // the real value via `aws secretsmanager put-secret-value` after this deploys.
+    const oidcConfigSecret = new secretsmanager.Secret(this, "OidcConfigSecret", {
+      secretName,
+      description: `OIDC configuration for FHHPB ${tier} environment`,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      generateSecretString: {
+        secretStringTemplate: JSON.stringify({
+          CLIENT_ID: "",
+          BASE_URL: "",
+          CALLBACK_URI: "",
+          REQUIRED_GROUPS: "",
+        }),
+        generateStringKey: "CLIENT_SECRET",
+      },
+    });
+    const oidcSecretTags = createTags({ tier, resourceName: "oidc-config" });
+    Object.entries(oidcSecretTags).forEach(([key, value]) => {
+      cdk.Tags.of(oidcConfigSecret).add(key, value);
+    });
 
     const {
       logGroup: authorizerLogGroup,
