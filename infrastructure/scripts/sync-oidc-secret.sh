@@ -11,8 +11,10 @@ SECRET_NAME="${TIER}-fhhpb-oidc"
 
 # OIDC_CONFIG is dotenv-style KEY=VALUE lines (same shape as the old *-oidc.env
 # files, minus CLIENT_SECRET) — turn it into a JSON object before merging.
+# Strip \r first in case the value has CRLF line endings (leaves stray \r on values).
 CONFIG_JSON=$(printf '%s' "$OIDC_CONFIG" | jq -R -s '
-  split("\n")
+  gsub("\r"; "")
+  | split("\n")
   | map(select(length > 0 and (startswith("#") | not)))
   | map(capture("^(?<key>[^=]+)=(?<value>.*)$"))
   | from_entries
