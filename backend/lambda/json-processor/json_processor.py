@@ -153,8 +153,6 @@ class JSONProcessor:
         first_name = record.get("Merge1[participant.first_name]", "")
         last_name = record.get("Merge1[participant.last_name]", "")
         full_name = f"{first_name} {last_name}".strip()
-        type_quad = record.get("AB_QU[type_quad]", "")
-        type_abbr = record.get("AB_QU[type_abbr]", "")
 
         # Build person structure
         person_data = {
@@ -165,8 +163,6 @@ class JSONProcessor:
             "mother": record.get("CORE[MPT_ID3]", ""),
             "pedigree_symbol": record.get("Merge2[Pedigree_Symbol]", ""),
             "life_status": record.get("CORE_ADD[life_status]", ""),
-            "type_quad": [value.strip() for value in type_quad.split(";")] if type_quad else [],
-            "type_abbr": [value.strip() for value in type_abbr.split(";")] if type_abbr else [],
             "demographics": self._extract_demographics(record),
             "partners": [],
             "diseases": [],
@@ -200,6 +196,8 @@ class JSONProcessor:
         morphology_code, morphology_title = (
             self._parse_medical_code(icd_o3) if icd_o3 else ("", "")
         )
+        type_abbr = record.get("Subject_cancer[CANCER.type_abbr]", "")
+        type_abbr_list = [value.strip() for value in type_abbr.split(";")] if type_abbr else []
 
         return {
             "topography": topography_title,
@@ -216,11 +214,8 @@ class JSONProcessor:
             ),
             "date_of_diagnosis": record.get("Subject_cancer[CANCER.DX_DT]", ""),
             "d_num": f"C{disease_num}" if disease_num else "",
-
-            "type_std": record.get("Subject_cancer[CANCER.type_std]", ""),
-            "type2_std": record.get("Subject_cancer[CANCER.type2_std]", ""),
-            "type3_std": record.get("Subject_cancer[CANCER.type3_std]", ""),
-            "type4_std": record.get("Subject_cancer[CANCER.type4_std]", ""),
+            "quad_abbr": type_abbr_list,
+            "abbr": self._flatten_type_abbr(type_abbr_list),
         }
 
     def _extract_non_cancer_disease(
@@ -233,6 +228,8 @@ class JSONProcessor:
 
         disease_num = record.get("Subject non cancer[N_CANCER.NUMBER]", "")
         med_code, shorthand = self._parse_medical_code(code)
+        type_abbr = record.get("Subject non cancer[N_CANCER.type_abbr]", "")
+        type_abbr_list = [value.strip() for value in type_abbr.split(";")] if type_abbr else []
 
         return {
             "code": med_code,
@@ -248,9 +245,8 @@ class JSONProcessor:
             ),
             "date_of_diagnosis": record.get("Subject non cancer[N_CANCER.BX_DT]", ""),
             "d_num": f"D{disease_num}" if disease_num else "",
-
-            "type3_std": record.get("Subject non cancer[N_CANCER.type3_std]", ""),
-            "type4_std": record.get("Subject non cancer[N_CANCER.type4_std]", ""),
+            "quad_abbr": type_abbr_list,
+            "abbr": self._flatten_type_abbr(type_abbr_list),
         }
 
     def _extract_procedure(self, record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -270,9 +266,7 @@ class JSONProcessor:
             ),
             "date_of_procedure": record.get("Subject procedure[PRTRT.PRSTDAT]", ""),
             "proc_num": f"P{proc_num}" if proc_num else "",
-
-            "type3_std": record.get("Subject procedure[PRTRT.type3_std]", ""),
-            "type4_std": record.get("Subject procedure[PRTRT.type4_std]", ""),
+            "abbr": record.get("Subject procedure[PRTRT.type_abbr]", ""),
         }
 
     def _add_unique_item(
@@ -290,6 +284,44 @@ class JSONProcessor:
             item.get(unique_key) == new_item.get(unique_key) for item in items_list
         ):
             items_list.append(new_item)
+
+    @staticmethod
+    def _compute_quad_flags(diseases: List[Dict[str, Any]]) -> List[bool]:
+        """
+        Compute a 4-position boolean array across all of a person's diseases.
+
+        Each disease's "quad_abbr" is a 4-value array (split from a
+        semicolon-delimited field). Position i of the returned array is True
+        if any disease has a non-empty value at position i.
+
+        Args:
+            diseases: List of disease dictionaries (cancer and non-cancer)
+
+        Returns:
+            List of 4 booleans
+        """
+        flags = [False, False, False, False]
+        for disease in diseases:
+            for i, value in enumerate(disease.get("quad_abbr", [])):
+                if i < len(flags) and value:
+                    flags[i] = True
+        return flags
+
+    @staticmethod
+    def _flatten_type_abbr(type_abbr: List[str]) -> str:
+        """
+        Flatten a disease's "quad_abbr" value array into a single display string.
+
+        Non-empty values are joined with ";" (e.g. ["", "something", "", "else"]
+        becomes "something;else"); a single non-empty value is returned as-is.
+
+        Args:
+            type_abbr: List of values split from a semicolon-delimited field
+
+        Returns:
+            Flattened string
+        """
+        return ";".join(value for value in type_abbr if value)
 
     def _parse_medical_code(self, text):
         """
@@ -414,6 +446,13 @@ class JSONProcessor:
                 print(f"[WARNING] Error processing record {i}: {e}")
                 continue
 
+        # Compute per-person quad_flags: true at position i if any disease's
+        # quad_abbr has a non-empty value at position i
+        for person_id, person_data in self.people.items():
+            person_data["quad_flags"] = self._compute_quad_flags(
+                person_data.get("diseases", [])
+            )
+
         # clean up so empty records are not present (thus reducing file-size)
         if True:  # compress
             for person_id, person_data in self.people.items():
@@ -422,7 +461,7 @@ class JSONProcessor:
                     self.people[person_id] = {
                         k: v
                         for k, v in person_data.items()
-                        if k in ("type_quad", "type_abbr") or v not in (None, "", [], {}, ())
+                        if k in ("quad_flags",) or v not in (None, "", [], {}, ())
                     }
                 except Exception as e:
                     print(f"[WARNING] Error cleaning record {person_id}: {e}")

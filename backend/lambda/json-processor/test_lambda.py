@@ -44,15 +44,17 @@ def create_test_data() -> list:
             "Subject_cancer[CANCER.DX_DT]": "2020-01-15",
             "Subject_cancer[CANCER.PRM_TUMOR_LATERAL_TP_STD]": "Bilateral",
             "Subject_cancer[CANCER.PATH_ACQ_METH_TP]": "Biopsy",
-            "Subject_cancer[CANCER.type_std]": "PPB Type III",
+            "Subject_cancer[CANCER.type_abbr]": "PPB Type III;;;",
             "Subject non cancer[N_CANCER.CD10_CD]": "I10",
             "Subject non cancer[N_CANCER.NUMBER]": "1",
             "Subject non cancer[N_CANCER.AGE_AT_DIAGNOSIS]": "40",
             "Subject non cancer[N_CANCER.BX_DT]": "2019-06-10",
+            "Subject non cancer[N_CANCER.type_abbr]": ";;;NCMH",
             "Subject procedure[PRTRT.ICD_9_STD]": "85.41",
             "Subject procedure[PRTRT.NUMBER]": "1",
             "Subject procedure[PRTRT.DERIV_PRSN_AGE]": "46",
             "Subject procedure[PRTRT.PRSTDAT]": "2020-02-20",
+            "Subject procedure[PRTRT.type_abbr]": "Mastectomy",
         },
         {
             "Merge1[Subject]": "00102",
@@ -111,8 +113,8 @@ def test_lambda_function():
         return False
 
 
-def test_cancer_disease_includes_type_std():
-    """Ensure _extract_cancer_disease surfaces the CANCER.type_std field as type_std."""
+def test_disease_includes_quad_abbr():
+    """Ensure disease extraction surfaces CANCER.type_abbr/N_CANCER.type_abbr as a quad_abbr JSON array."""
     records = create_test_data()
 
     processor = JSONProcessor()
@@ -120,33 +122,63 @@ def test_cancer_disease_includes_type_std():
 
     person = processor.people["00101"]
     cancer_disease = next(d for d in person["diseases"] if d["d_num"] == "C1")
+    non_cancer_disease = next(d for d in person["diseases"] if d["d_num"] == "D1")
 
-    assert cancer_disease["type_std"] == "PPB Type III"
+    assert cancer_disease["quad_abbr"] == ["PPB Type III", "", "", ""]
+    assert non_cancer_disease["quad_abbr"] == ["", "", "", "NCMH"]
+    assert cancer_disease["abbr"] == "PPB Type III"
+    assert non_cancer_disease["abbr"] == "NCMH"
 
 
-def test_person_types_are_json_arrays():
+def test_disease_abbr_joins_multiple_values_with_semicolon():
+    """Ensure disease "abbr" flattens multiple quad_abbr values with ';'."""
     processor = JSONProcessor()
     record = {
         "Merge1[Subject]": "00101",
         "Merge1[project]": "Test Study",
-        "AB_QU[type_quad]": "first; second; ;",
-        "AB_QU[type_abbr]": "A;; B",
+        "Subject_cancer[CANCER.ICD03]": "C50.9",
+        "Subject_cancer[CANCER.NUM]": "1",
+        "Subject_cancer[CANCER.type_abbr]": ";something;;else",
+        "Subject non cancer[N_CANCER.CD10_CD]": "I10",
+        "Subject non cancer[N_CANCER.NUMBER]": "1",
+        "Subject non cancer[N_CANCER.type_abbr]": ";something;;else",
     }
 
-    _, missing_types = processor.extract_person_data({"Merge1[Subject]": "00102"})
-    assert missing_types["type_quad"] == []
-    assert missing_types["type_abbr"] == []
-
     processor.process_records([record])
-    person = json.loads(json.dumps(processor.get_output_data()))["people"]["00101"]
-    assert person["type_quad"] == ["first", "second", "", ""]
-    assert person["type_abbr"] == ["A", "", "B"]
+    person = processor.people["00101"]
+    cancer_disease = next(d for d in person["diseases"] if d["d_num"] == "C1")
+    non_cancer_disease = next(d for d in person["diseases"] if d["d_num"] == "D1")
+
+    assert cancer_disease["abbr"] == "something;else"
+    assert non_cancer_disease["abbr"] == "something;else"
+
+
+def test_procedure_includes_abbr():
+    """Ensure _extract_procedure surfaces PRTRT.type_abbr as a plain text abbr field."""
+    records = create_test_data()
 
     processor = JSONProcessor()
-    processor.process_records([{"Merge1[Subject]": "00102", "Merge1[project]": "Test Study"}])
-    empty_person = json.loads(json.dumps(processor.get_output_data()))["people"]["00102"]
-    assert empty_person["type_quad"] == []
-    assert empty_person["type_abbr"] == []
+    processor.process_records(records)
+
+    person = processor.people["00101"]
+    procedure = next(p for p in person["procedures"] if p["proc_num"] == "P1")
+
+    assert procedure["abbr"] == "Mastectomy"
+
+
+def test_person_quad_flags_reflect_any_disease_type_abbr():
+    """Ensure quad_flags is True at position i if any disease has a value there."""
+    records = create_test_data()
+
+    processor = JSONProcessor()
+    processor.process_records(records)
+
+    # person 00101 has cancer type_abbr ["PPB Type III", "", "", ""]
+    # and non-cancer type_abbr ["", "", "", "NCMH"], so the combined OR is:
+    assert processor.people["00101"]["quad_flags"] == [True, False, False, True]
+
+    # person 00102 has a cancer disease with no type_abbr value at all
+    assert processor.people["00102"]["quad_flags"] == [False, False, False, False]
 
 
 if __name__ == "__main__":
