@@ -50,7 +50,7 @@ def get_secret(
     # Determine secret name using tier-based convention
     if secret_name is None:
         tier = get_tier()
-        secret_name = f"{tier}/fhhpb/oidc-config"
+        secret_name = f"{tier}-fhhpb-oidc"
 
     # Return cached value if available
     if secret_name in _secrets_cache:
