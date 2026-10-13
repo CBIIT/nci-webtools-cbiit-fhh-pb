@@ -343,6 +343,31 @@ class JSONProcessor:
 
         return "NOCODE", text
 
+    def process_input(self, input_data: Dict[str, Any]) -> None:
+        """
+        Process a raw input payload containing a "data" array of medical
+        records and a "ranAt" timestamp indicating when the data was pulled.
+
+        Populates general["data_pulled_dtm"] from "ranAt" and delegates the
+        "data" array to process_records.
+
+        Args:
+            input_data: Dictionary with "data" (list of records) and "ranAt"
+                (timestamp string) keys
+
+        Raises:
+            ValueError: If input_data is not a dict or "data" is not a list
+        """
+        if not isinstance(input_data, dict):
+            raise ValueError("Input JSON must be an object with 'data' and 'ranAt' fields")
+
+        records = input_data.get("data")
+        if not isinstance(records, list):
+            raise ValueError("Input JSON 'data' field must be a list of records")
+
+        self.general["data_pulled_dtm"] = input_data.get("ranAt", "")
+        self.process_records(records)
+
     def process_records(self, records: List[Dict[str, Any]]) -> None:
         """
         Process a list of medical records and organize by person.
@@ -609,10 +634,8 @@ def main():
         # Initialize processor
         processor = JSONProcessor()
 
-        # Load input data
+        # Load input data (expected shape: {"ranAt": "...", "data": [...]})
         input_data = processor.load_json(input_path)
-        if not isinstance(input_data, list):
-            raise ValueError("Input JSON must be a list of records")
 
         # Load reference data (for debugging/comparison)
         try:
@@ -626,7 +649,7 @@ def main():
             print(f"[WARNING] Could not load reference file: {e}")
 
         # Process the records
-        processor.process_records(input_data)
+        processor.process_input(input_data)
 
         # Generate output
         output_data = processor.get_output_data()
@@ -643,7 +666,7 @@ def main():
 
         # Print summary
         print(f"[INFO] Processing complete!")
-        print(f"[INFO] Processed {len(input_data)} records")
+        print(f"[INFO] Processed {len(input_data.get('data', []))} records")
         print(f"[INFO] Generated data for {len(processor.people)} people")
         # print(f"[INFO] Proband: {processor.proband}")
 
