@@ -195,7 +195,8 @@ def test_process_input_sets_data_pulled_dtm_and_processes_records():
 
 
 def test_output_data_orders_data_pulled_dtm_directly_before_json_processed_dtm():
-    """Ensure general.data_pulled_dtm is immediately followed by general.json_processed_dtm."""
+    """Ensure general.data_pulled_dtm and general.json_processed_dtm are the last two,
+    adjacent keys, after study/proband/family fields."""
     records = create_test_data()
     input_data = {"ranAt": "2020-01-15T12:00:00Z", "data": records}
 
@@ -204,8 +205,8 @@ def test_output_data_orders_data_pulled_dtm_directly_before_json_processed_dtm()
     output_data = processor.get_output_data()
 
     general_keys = list(output_data["general"].keys())
-    assert general_keys[0] == "data_pulled_dtm"
-    assert general_keys[1] == "json_processed_dtm"
+    assert general_keys[-2] == "data_pulled_dtm"
+    assert general_keys[-1] == "json_processed_dtm"
 
 
 def test_process_input_raises_for_invalid_shapes():
