@@ -113,8 +113,8 @@ def test_lambda_function():
         return False
 
 
-def test_disease_includes_quad_abbr():
-    """Ensure disease extraction surfaces CANCER.type_abbr/N_CANCER.type_abbr as a quad_abbr JSON array."""
+def test_disease_includes_quad_abbrs():
+    """Ensure disease extraction surfaces CANCER.type_abbr/N_CANCER.type_abbr as a quad_abbrs JSON array."""
     records = create_test_data()
 
     processor = JSONProcessor()
@@ -124,14 +124,14 @@ def test_disease_includes_quad_abbr():
     cancer_disease = next(d for d in person["diseases"] if d["d_num"] == "C1")
     non_cancer_disease = next(d for d in person["diseases"] if d["d_num"] == "D1")
 
-    assert cancer_disease["quad_abbr"] == ["PPB Type III", "", "", ""]
-    assert non_cancer_disease["quad_abbr"] == ["", "", "", "NCMH"]
+    assert cancer_disease["quad_abbrs"] == ["PPB Type III", "", "", ""]
+    assert non_cancer_disease["quad_abbrs"] == ["", "", "", "NCMH"]
     assert cancer_disease["abbr"] == "PPB Type III"
     assert non_cancer_disease["abbr"] == "NCMH"
 
 
 def test_disease_abbr_joins_multiple_values_with_semicolon():
-    """Ensure disease "abbr" flattens multiple quad_abbr values with ';'."""
+    """Ensure disease "abbr" flattens multiple quad_abbrs values with ';'."""
     processor = JSONProcessor()
     record = {
         "Merge1[Subject]": "00101",

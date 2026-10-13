@@ -214,8 +214,9 @@ class JSONProcessor:
             ),
             "date_of_diagnosis": record.get("Subject_cancer[CANCER.DX_DT]", ""),
             "d_num": f"C{disease_num}" if disease_num else "",
-            "quad_abbr": type_abbr_list,
-            "abbr": self._flatten_type_abbr(type_abbr_list),
+
+            "quad_abbrs": type_abbr_list,
+            "abbr": ";".join(value for value in type_abbr_list if value),
         }
 
     def _extract_non_cancer_disease(
@@ -245,8 +246,9 @@ class JSONProcessor:
             ),
             "date_of_diagnosis": record.get("Subject non cancer[N_CANCER.BX_DT]", ""),
             "d_num": f"D{disease_num}" if disease_num else "",
-            "quad_abbr": type_abbr_list,
-            "abbr": self._flatten_type_abbr(type_abbr_list),
+
+            "quad_abbrs": type_abbr_list,
+            "abbr": ";".join(value for value in type_abbr_list if value),
         }
 
     def _extract_procedure(self, record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -290,7 +292,7 @@ class JSONProcessor:
         """
         Compute a 4-position boolean array across all of a person's diseases.
 
-        Each disease's "quad_abbr" is a 4-value array (split from a
+        Each disease's "quad_abbrs" is a 4-value array (split from a
         semicolon-delimited field). Position i of the returned array is True
         if any disease has a non-empty value at position i.
 
@@ -302,26 +304,10 @@ class JSONProcessor:
         """
         flags = [False, False, False, False]
         for disease in diseases:
-            for i, value in enumerate(disease.get("quad_abbr", [])):
+            for i, value in enumerate(disease.get("quad_abbrs", [])):
                 if i < len(flags) and value:
                     flags[i] = True
         return flags
-
-    @staticmethod
-    def _flatten_type_abbr(type_abbr: List[str]) -> str:
-        """
-        Flatten a disease's "quad_abbr" value array into a single display string.
-
-        Non-empty values are joined with ";" (e.g. ["", "something", "", "else"]
-        becomes "something;else"); a single non-empty value is returned as-is.
-
-        Args:
-            type_abbr: List of values split from a semicolon-delimited field
-
-        Returns:
-            Flattened string
-        """
-        return ";".join(value for value in type_abbr if value)
 
     def _parse_medical_code(self, text):
         """
@@ -447,7 +433,7 @@ class JSONProcessor:
                 continue
 
         # Compute per-person quad_flags: true at position i if any disease's
-        # quad_abbr has a non-empty value at position i
+        # quad_abbrs has a non-empty value at position i
         for person_id, person_data in self.people.items():
             person_data["quad_flags"] = self._compute_quad_flags(
                 person_data.get("diseases", [])
