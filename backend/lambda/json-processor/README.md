@@ -39,29 +39,35 @@ Where `{TIER}` is the deployment tier (e.g., `dev`, `staging`, `prod`).
 
 ## Input Format
 
-The function expects JSON files containing an array of medical records with the following structure:
+The function expects JSON files shaped as an object with a `ranAt` timestamp
+(when the data was pulled) and a `data` array of medical records:
 
 ```json
-[
-  {
-    "Merge1[Subject]": "person_id",
-    "Merge1[123a.result.participant.first_name]": "John",
-    "Merge1[123a.result.participant.last_name]": "Doe",
-    "DEMO[DTHDAT_RAW]": "",
-    "CORE[FPT_ID3]": "father_id",
-    "CORE[MPT_ID3]": "mother_id",
-    "DEMO[SEX_OLD]": "M",
-    "Subject_cancer[CANCER.ICD03]": "C50.9",
-    "Subject_cancer[CANCER.NUM]": "1",
-    "Subject_cancer[CANCER.AGE_AT_DIAGNOSIS]": "45",
-    "Subject_cancer[CANCER.DX_DT]": "2020-01-15",
-    "Subject non cancer[N_CANCER.CD10_CD]": "I10",
-    "Subject non cancer[N_CANCER.NUMBER]": "1",
-    "Subject procedure[PRTRT.ICD_9_STD]": "85.41",
-    "Subject procedure[PRTRT.NUMBER]": "1"
-  }
-]
+{
+  "ranAt": "2020-01-15T12:00:00Z",
+  "data": [
+    {
+      "Merge1[Subject]": "person_id",
+      "Merge1[123a.result.participant.first_name]": "John",
+      "Merge1[123a.result.participant.last_name]": "Doe",
+      "DEMO[DTHDAT_RAW]": "",
+      "CORE[FPT_ID3]": "father_id",
+      "CORE[MPT_ID3]": "mother_id",
+      "DEMO[SEX_OLD]": "M",
+      "Subject_cancer[CANCER.ICD03]": "C50.9",
+      "Subject_cancer[CANCER.NUM]": "1",
+      "Subject_cancer[CANCER.AGE_AT_DIAGNOSIS]": "45",
+      "Subject_cancer[CANCER.DX_DT]": "2020-01-15",
+      "Subject non cancer[N_CANCER.CD10_CD]": "I10",
+      "Subject non cancer[N_CANCER.NUMBER]": "1",
+      "Subject procedure[PRTRT.ICD_9_STD]": "85.41",
+      "Subject procedure[PRTRT.NUMBER]": "1"
+    }
+  ]
+}
 ```
+
+`ranAt` is surfaced in the output under `general.data_pulled_dtm`.
 
 ## Output Format
 

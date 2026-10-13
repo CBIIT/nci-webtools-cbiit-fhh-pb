@@ -181,6 +181,36 @@ def test_person_quad_flags_reflect_any_disease_type_abbr():
     assert processor.people["00102"]["quad_flags"] == [False, False, False, False]
 
 
+def test_process_input_sets_data_pulled_dtm_and_processes_records():
+    """Ensure process_input surfaces "ranAt" as general.data_pulled_dtm and processes "data"."""
+    records = create_test_data()
+    input_data = {"ranAt": "2020-01-15T12:00:00Z", "data": records}
+
+    processor = JSONProcessor()
+    processor.process_input(input_data)
+
+    assert processor.general["data_pulled_dtm"] == "2020-01-15T12:00:00Z"
+    assert "00101" in processor.people
+    assert "00102" in processor.people
+
+
+def test_process_input_raises_for_invalid_shapes():
+    """Ensure process_input rejects non-dict input and a missing/invalid "data" field."""
+    processor = JSONProcessor()
+
+    try:
+        processor.process_input(create_test_data())
+        assert False, "Expected ValueError for non-dict input"
+    except ValueError:
+        pass
+
+    try:
+        processor.process_input({"ranAt": "2020-01-15T12:00:00Z"})
+        assert False, "Expected ValueError for missing 'data' field"
+    except ValueError:
+        pass
+
+
 if __name__ == "__main__":
     success = test_lambda_function()
     sys.exit(0 if success else 1)

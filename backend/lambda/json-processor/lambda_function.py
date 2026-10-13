@@ -74,13 +74,11 @@ def lambda_handler(event, context):
             # Initialize processor
             processor = JSONProcessor()
 
-            # Load input data
+            # Load input data (expected shape: {"ranAt": "...", "data": [...]})
             input_data = processor.load_s3_json(file_content)
-            if not isinstance(input_data, list):
-                raise ValueError("Input JSON must be a list of records")
 
             # Process the records
-            processor.process_records(input_data)
+            processor.process_input(input_data)
             logger.info("Processed records")
 
             # Generate and save output
@@ -120,7 +118,7 @@ def lambda_handler(event, context):
         logger.info(
             "Processing complete",
             extra={
-                "records_processed": len(input_data),
+                "records_processed": len(input_data.get("data", [])),
                 "people_generated": len(processor.people),
                 "proband": processor.general.get("proband", "unknown"),
             },
