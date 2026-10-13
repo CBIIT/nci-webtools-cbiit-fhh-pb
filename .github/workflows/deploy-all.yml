@@ -49,7 +49,7 @@ jobs:
       - name: Deploy Data Bucket
         run: |
           cd infrastructure
-          npx cdk deploy S3DataStack-${{ env.TIER }} --require-approval never
+          npx cdk deploy S3DataStack-${{ env.TIER }} --require-approval never --import-existing-resources
 
       - name: Deploy Lambda Functions
         run: |

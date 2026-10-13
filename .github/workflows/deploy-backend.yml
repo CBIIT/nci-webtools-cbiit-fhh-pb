@@ -58,7 +58,8 @@ jobs:
             LambdaListStudies-${{ env.TIER }} \
             LambdaJsonProcessor-${{ env.TIER }} \
             ApiGateway-${{ env.TIER }} \
-            --require-approval never
+            --require-approval never \
+            --import-existing-resources
 
       - name: Deployment Summary
         run: |
