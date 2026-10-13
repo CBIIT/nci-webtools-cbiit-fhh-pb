@@ -486,11 +486,20 @@ class JSONProcessor:
             Dictionary with proband and people data
         """
         # generate updated last datetime stamp (in ISO 8601 formatted string)
-        self.general["last_updated"] = datetime.now().isoformat()
+        self.general["json_processed_dtm"] = datetime.now().isoformat()
+
+        # Ensure data_pulled_dtm is immediately followed by json_processed_dtm,
+        # regardless of when the other general fields were set
+        general = dict(self.general)
+        ordered_general = {}
+        if "data_pulled_dtm" in general:
+            ordered_general["data_pulled_dtm"] = general.pop("data_pulled_dtm")
+        ordered_general["json_processed_dtm"] = general.pop("json_processed_dtm")
+        ordered_general.update(general)
 
         return {
             #'proband': self.proband,
-            "general": dict(self.general),
+            "general": ordered_general,
             "people": dict(self.people),  # Convert defaultdict to regular dict
         }
 
