@@ -195,15 +195,27 @@ def test_process_input_sets_data_pulled_dtm_and_processes_records():
 
 
 def test_process_input_normalizes_ran_at_fractional_precision():
-    """Ensure a "ranAt" value with 7-digit fractional seconds (e.g. .NET-style)
-    is normalized to the same ISO format produced for json_processed_dtm."""
+    """Ensure a naive "ranAt" value with 7-digit fractional seconds (e.g.
+    .NET-style) is assumed to be UTC and normalized to a UTC-aware ISO
+    string matching the format produced for json_processed_dtm."""
     records = create_test_data()
     input_data = {"ranAt": "2026-10-13T14:55:39.7139205", "data": records}
 
     processor = JSONProcessor()
     processor.process_input(input_data)
 
-    assert processor.general["data_pulled_dtm"] == "2026-10-13T14:55:39.713920"
+    assert processor.general["data_pulled_dtm"] == "2026-10-13T14:55:39.713920+00:00"
+
+
+def test_process_input_converts_non_utc_offset_ran_at_to_utc():
+    """Ensure a "ranAt" value with a non-UTC offset is converted to UTC."""
+    records = create_test_data()
+    input_data = {"ranAt": "2020-01-15T12:00:00-05:00", "data": records}
+
+    processor = JSONProcessor()
+    processor.process_input(input_data)
+
+    assert processor.general["data_pulled_dtm"] == "2020-01-15T17:00:00+00:00"
 
 
 def test_process_input_keeps_unparseable_ran_at_as_is():
@@ -215,6 +227,18 @@ def test_process_input_keeps_unparseable_ran_at_as_is():
     processor.process_input(input_data)
 
     assert processor.general["data_pulled_dtm"] == "not-a-timestamp"
+
+
+def test_json_processed_dtm_is_utc():
+    """Ensure general.json_processed_dtm is timezone-aware and in UTC."""
+    records = create_test_data()
+    input_data = {"ranAt": "2020-01-15T12:00:00Z", "data": records}
+
+    processor = JSONProcessor()
+    processor.process_input(input_data)
+    output_data = processor.get_output_data()
+
+    assert output_data["general"]["json_processed_dtm"].endswith("+00:00")
 
 
 def test_output_data_orders_data_pulled_dtm_directly_before_json_processed_dtm():

@@ -12,7 +12,7 @@ import re
 import sys
 import unicodedata
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -348,9 +348,10 @@ class JSONProcessor:
         Process a raw input payload containing a "data" array of medical
         records and a "ranAt" timestamp indicating when the data was pulled.
 
-        Populates general["data_pulled_dtm"] from "ranAt" (normalized to the
-        same ISO 8601 format produced for general["json_processed_dtm"]) and
-        delegates the "data" array to process_records.
+        Populates general["data_pulled_dtm"] from "ranAt", normalized to a
+        UTC-aware ISO 8601 string (matching general["json_processed_dtm"]);
+        naive "ranAt" values are assumed to already be in UTC. Delegates the
+        "data" array to process_records.
 
         Args:
             input_data: Dictionary with "data" (list of records) and "ranAt"
@@ -369,7 +370,12 @@ class JSONProcessor:
         ran_at = input_data.get("ranAt", "")
         if ran_at:
             try:
-                ran_at = datetime.fromisoformat(ran_at).isoformat()
+                parsed_ran_at = datetime.fromisoformat(ran_at)
+                if parsed_ran_at.tzinfo is None:
+                    parsed_ran_at = parsed_ran_at.replace(tzinfo=timezone.utc)
+                else:
+                    parsed_ran_at = parsed_ran_at.astimezone(timezone.utc)
+                ran_at = parsed_ran_at.isoformat()
             except ValueError:
                 print(f"[WARNING] Could not parse 'ranAt' value as ISO datetime: {ran_at!r}")
         self.general["data_pulled_dtm"] = ran_at
@@ -493,7 +499,7 @@ class JSONProcessor:
             Dictionary with proband and people data
         """
         # generate JSON processed datetime stamp (in ISO 8601 formatted string)
-        self.general["json_processed_dtm"] = datetime.now().isoformat()
+        self.general["json_processed_dtm"] = datetime.now(timezone.utc).isoformat()
 
         general = dict(self.general)
         data_pulled_dtm = general.pop("data_pulled_dtm", None)

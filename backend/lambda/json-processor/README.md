@@ -68,8 +68,10 @@ The function expects JSON files shaped as an object with a `ranAt` timestamp
 ```
 
 `ranAt` is surfaced in the output under `general.data_pulled_dtm`, normalized
-to the same ISO 8601 format used for `general.json_processed_dtm` (falling
-back to the raw value as-is if it cannot be parsed as a datetime).
+to a UTC-aware ISO 8601 string matching the format used for
+`general.json_processed_dtm` (also UTC). Timezone-naive `ranAt` values are
+assumed to already be in UTC; values with an explicit offset are converted
+to UTC. If `ranAt` cannot be parsed as a datetime, it is kept as-is.
 
 ## Output Format
 
