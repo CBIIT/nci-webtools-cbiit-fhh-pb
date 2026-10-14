@@ -115,6 +115,7 @@ clear_alert_elem.addEventListener("click", function () {
 
 let log_elem = document.getElementById("log-button");
 log_elem.addEventListener("click", function () {
+  log_data_vs_dom_positions();
 });
 
 let save_elem = document.getElementById("save-button");
@@ -475,6 +476,52 @@ function add_other_alerts(alert_elem) {
     return false;
   }    
 } 
+
+// Debug helper: compares each person's in-memory x/y (what gets saved) against
+// their live SVG shape's actual rendered position, to catch drag/save desync bugs.
+function log_data_vs_dom_positions() {
+  const mismatches = [];
+  const rows = [];
+
+  for (const person_id in data["people"]) {
+    const person = data["people"][person_id];
+    const el =
+      document.querySelector(`rect[id="${person_id}"]`) ||
+      document.querySelector(`circle[id="${person_id}"]`) ||
+      document.querySelector(`polygon[id="${person_id}"]`);
+
+    if (!el) continue;
+
+    let dom_x, dom_y;
+    if (el.tagName === "polygon") {
+      const points = el.getAttribute("points").trim().split(/\s+/).map((p) => p.split(",").map(Number));
+      const xs = points.map((p) => p[0]);
+      const ys = points.map((p) => p[1]);
+      dom_x = (Math.min(...xs) + Math.max(...xs)) / 2;
+      dom_y = (Math.min(...ys) + Math.max(...ys)) / 2;
+    } else if (el.hasAttribute("cx")) {
+      dom_x = Number(el.getAttribute("cx"));
+      dom_y = Number(el.getAttribute("cy"));
+    } else {
+      dom_x = Number(el.getAttribute("x")) + config.size / 2;
+      dom_y = Number(el.getAttribute("y")) + config.size / 2;
+    }
+
+    const data_x = person.x;
+    const data_y = person.y;
+    const mismatch = Math.abs(dom_x - data_x) > 0.5 || Math.abs(dom_y - data_y) > 0.5;
+
+    rows.push({ person_id, data_x, data_y, dom_x, dom_y, mismatch });
+    if (mismatch) mismatches.push(person_id);
+  }
+
+  console.table(rows);
+  if (mismatches.length > 0) {
+    console.warn("DATA/DOM MISMATCH for:", mismatches);
+  } else {
+    console.log("No data/DOM position mismatches found.");
+  }
+}
 
 
 

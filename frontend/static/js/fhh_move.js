@@ -46,48 +46,48 @@ function move_all_elements_of_a_person(person_id, diff_x, diff_y) {
   // This will include the line above the person if there
   // And the label
   const elements = document.querySelectorAll("[id=\"" + person_id + "\"]");
-  for (const i in elements) {
-    move_element(elements[i], diff_x, diff_y);
+  for (const el of elements) {
+    move_element(el, diff_x, diff_y);
   }
 
   // Then if this is a child, move the connector above the child
   const parent_connector_line = document.querySelectorAll("[child_id=\"" + person_id + "\"]");
-  for (const i in parent_connector_line) {
-    move_last_point_of_line(parent_connector_line[i], diff_x, diff_y);
+  for (const el of parent_connector_line) {
+    move_last_point_of_line(el, diff_x, diff_y);
   }
 
   // Then move the line to the other partner
   const mother_connector_line = document.querySelectorAll("[mother_id=\"" + person_id + "\"]");
-  for (const i in mother_connector_line) {
-    move_first_point_of_line(mother_connector_line[i], diff_x, diff_y);
+  for (const el of mother_connector_line) {
+    move_first_point_of_line(el, diff_x, diff_y);
   }
 
   // Then move the line to the other partner
   const father_connector_line = document.querySelectorAll("[father_id=\"" + person_id + "\"]");
-  for (const i in father_connector_line) {
-    move_last_point_of_line(father_connector_line[i], diff_x, diff_y);
+  for (const el of father_connector_line) {
+    move_last_point_of_line(el, diff_x, diff_y);
   }
 
   // These connector lines are anchored to the midpoint of both parents (X and Y both
   // move by half when either parent moves, since the anchor is the average of the two).
   const mother_line_down = document.querySelectorAll("[p_mother_id=\"" + person_id + "\"]");
-  for (const i in mother_line_down) {
-    move_first_point_of_line(mother_line_down[i], diff_x/2, diff_y/2);
-    move_last_point_of_line(mother_line_down[i], diff_x/2, diff_y/2);
+  for (const el of mother_line_down) {
+    move_first_point_of_line(el, diff_x/2, diff_y/2);
+    move_last_point_of_line(el, diff_x/2, diff_y/2);
   }
   const father_line_down = document.querySelectorAll("[p_father_id=\"" + person_id + "\"]");
-  for (const i in father_line_down) {
-    move_first_point_of_line(father_line_down[i], diff_x/2, diff_y/2);
-    move_last_point_of_line(father_line_down[i], diff_x/2, diff_y/2);
+  for (const el of father_line_down) {
+    move_first_point_of_line(el, diff_x/2, diff_y/2);
+    move_last_point_of_line(el, diff_x/2, diff_y/2);
   }
 
   const child_mother_line_down = document.querySelectorAll("[c_mother_id=\"" + person_id + "\"]");
-  for (const i in child_mother_line_down) {
-    move_first_point_of_line(child_mother_line_down[i], diff_x/2, diff_y/2);
+  for (const el of child_mother_line_down) {
+    move_first_point_of_line(el, diff_x/2, diff_y/2);
   }
   const child_father_line_down = document.querySelectorAll("[c_father_id=\"" + person_id + "\"]");
-  for (const i in child_father_line_down) {
-    move_first_point_of_line(child_father_line_down[i], diff_x/2, diff_y/2);
+  for (const el of child_father_line_down) {
+    move_first_point_of_line(el, diff_x/2, diff_y/2);
   }
 
 }
@@ -167,8 +167,8 @@ function move_rect(el, diff_x, diff_y) {
   var new_x = current_x - diff_x;
   var new_y = current_y - diff_y;
 
-  el.attributes.x.value = new_x;
-  el.attributes.y.value = new_y;
+  el.setAttribute("x", new_x);
+  el.setAttribute("y", new_y);
 
   if (el.getAttribute("is_decoration") === "true") return;
 
@@ -188,8 +188,8 @@ function move_circle(el, diff_x, diff_y) {
   var new_x = current_x - diff_x;
   var new_y = current_y - diff_y;
 
-  el.attributes.cx.value = new_x;
-  el.attributes.cy.value = new_y;
+  el.setAttribute("cx", new_x);
+  el.setAttribute("cy", new_y);
 
   const person_id = el.attributes.id.value;
   let data = get_data();
@@ -207,9 +207,14 @@ function move_poly(el, diff_x, diff_y) {
   var new_x = current_x - diff_x;
   var new_y = current_y - diff_y;
 
+  // Keep cx/cy in sync with the shape so repeated moves (multiple mousemove events
+  // in one drag) accumulate correctly instead of only reflecting the latest step.
+  el.setAttribute("cx", new_x);
+  el.setAttribute("cy", new_y);
+
   let current_points = el.attributes.points.value;
   const new_points = shift_points(current_points, diff_x, diff_y);
-  el.attributes.points.value = new_points;
+  el.setAttribute("points", new_points);
 
   if (el.getAttribute("is_decoration") === "true") return;
 
@@ -255,7 +260,7 @@ function move_path(el, diff_x, diff_y) {
       }
     }
   }
-  el.attributes.d.value = new_d;
+  el.setAttribute("d", new_d);
 } 
 
 function shift_points(points, diff_x, diff_y) {
@@ -279,8 +284,8 @@ function move_text(el, diff_x, diff_y) {
   var new_x = current_x - diff_x;
   var new_y = current_y - diff_y;
 
-  el.attributes.x.value = new_x;
-  el.attributes.y.value = new_y;
+  el.setAttribute("x", new_x);
+  el.setAttribute("y", new_y);
 }
 
 function isString(variable) {
@@ -299,10 +304,10 @@ function move_line(el, diff_x, diff_y) {
   var new_x2 = current_x2 - diff_x;
   var new_y2 = current_y2 - diff_y;
 
-  el.attributes.x1.value = new_x1;
-  el.attributes.y1.value = new_y1;
-  el.attributes.x2.value = new_x2;
-  el.attributes.y2.value = new_y2;
+  el.setAttribute("x1", new_x1);
+  el.setAttribute("y1", new_y1);
+  el.setAttribute("x2", new_x2);
+  el.setAttribute("y2", new_y2);
 }
 
 function move_first_point_of_line(el, diff_x, diff_y) {
@@ -312,8 +317,8 @@ function move_first_point_of_line(el, diff_x, diff_y) {
   var new_x1 = current_x1 - diff_x;
   var new_y1 = current_y1 - diff_y;
 
-  el.attributes.x1.value = new_x1;
-  el.attributes.y1.value = new_y1;
+  el.setAttribute("x1", new_x1);
+  el.setAttribute("y1", new_y1);
 }
 
 function move_last_point_of_line(el, diff_x, diff_y) {
@@ -323,8 +328,8 @@ function move_last_point_of_line(el, diff_x, diff_y) {
   var new_x2 = current_x2 - diff_x;
   var new_y2 = current_y2 - diff_y;
 
-  el.attributes.x2.value = new_x2;
-  el.attributes.y2.value = new_y2;
+  el.setAttribute("x2", new_x2);
+  el.setAttribute("y2", new_y2);
 }
 
 
