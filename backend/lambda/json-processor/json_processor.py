@@ -348,8 +348,9 @@ class JSONProcessor:
         Process a raw input payload containing a "data" array of medical
         records and a "ranAt" timestamp indicating when the data was pulled.
 
-        Populates general["data_pulled_dtm"] from "ranAt" and delegates the
-        "data" array to process_records.
+        Populates general["data_pulled_dtm"] from "ranAt" (normalized to the
+        same ISO 8601 format produced for general["json_processed_dtm"]) and
+        delegates the "data" array to process_records.
 
         Args:
             input_data: Dictionary with "data" (list of records) and "ranAt"
@@ -365,7 +366,13 @@ class JSONProcessor:
         if not isinstance(records, list):
             raise ValueError("Input JSON 'data' field must be a list of records")
 
-        self.general["data_pulled_dtm"] = input_data.get("ranAt", "")
+        ran_at = input_data.get("ranAt", "")
+        if ran_at:
+            try:
+                ran_at = datetime.fromisoformat(ran_at).isoformat()
+            except ValueError:
+                print(f"[WARNING] Could not parse 'ranAt' value as ISO datetime: {ran_at!r}")
+        self.general["data_pulled_dtm"] = ran_at
         self.process_records(records)
 
     def process_records(self, records: List[Dict[str, Any]]) -> None:

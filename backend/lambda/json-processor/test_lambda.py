@@ -182,16 +182,39 @@ def test_person_quad_flags_reflect_any_disease_type_abbr():
 
 
 def test_process_input_sets_data_pulled_dtm_and_processes_records():
-    """Ensure process_input surfaces "ranAt" as general.data_pulled_dtm and processes "data"."""
+    """Ensure process_input surfaces "ranAt" as a normalized ISO general.data_pulled_dtm and processes "data"."""
     records = create_test_data()
     input_data = {"ranAt": "2020-01-15T12:00:00Z", "data": records}
 
     processor = JSONProcessor()
     processor.process_input(input_data)
 
-    assert processor.general["data_pulled_dtm"] == "2020-01-15T12:00:00Z"
+    assert processor.general["data_pulled_dtm"] == "2020-01-15T12:00:00+00:00"
     assert "00101" in processor.people
     assert "00102" in processor.people
+
+
+def test_process_input_normalizes_ran_at_fractional_precision():
+    """Ensure a "ranAt" value with 7-digit fractional seconds (e.g. .NET-style)
+    is normalized to the same ISO format produced for json_processed_dtm."""
+    records = create_test_data()
+    input_data = {"ranAt": "2026-10-13T14:55:39.7139205", "data": records}
+
+    processor = JSONProcessor()
+    processor.process_input(input_data)
+
+    assert processor.general["data_pulled_dtm"] == "2026-10-13T14:55:39.713920"
+
+
+def test_process_input_keeps_unparseable_ran_at_as_is():
+    """Ensure an unparseable "ranAt" value falls back to being stored as-is."""
+    records = create_test_data()
+    input_data = {"ranAt": "not-a-timestamp", "data": records}
+
+    processor = JSONProcessor()
+    processor.process_input(input_data)
+
+    assert processor.general["data_pulled_dtm"] == "not-a-timestamp"
 
 
 def test_output_data_orders_data_pulled_dtm_directly_before_json_processed_dtm():
