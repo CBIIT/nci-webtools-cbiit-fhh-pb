@@ -580,6 +580,7 @@ function draw_proband_arrow() {
       proband.y + 30
     );
     arrow_triange.setAttributeNS(null, "id", proband_id);
+    arrow_triange.setAttributeNS(null, "is_decoration", "true");
   } else {
     let arrow_line = draw_line(
       proband.x - (config.size / 2) * 0.7071 - 7,
@@ -599,6 +600,7 @@ function draw_proband_arrow() {
     );
 
     arrow_triange.setAttributeNS(null, "id", proband_id);
+    arrow_triange.setAttributeNS(null, "is_decoration", "true");
   }
 }
 
@@ -725,7 +727,7 @@ function set_family_summary() {
   const study = data.general?.study;
   const family_classification = data.general?.family_classification;
   const family_genetic_status = data.general?.family_genetic_status;
-  const last_updated = format_last_updated(data.general?.last_updated);
+  const last_updated = format_last_updated(data.general?.data_pulled_dtm || data.general?.last_updated);
   
   
   const number_of_people = Object.keys(data.people).length;
@@ -2433,7 +2435,7 @@ function draw_line_child_to_parents(
 ) {
   //  const x1 = mother_loc.x + config.h_spacing;
   const x1 = (mother_loc.x + father_loc.x) / 2;
-  const y1 = mother_loc.y + config.v_spacing / 2;
+  const y1 = (mother_loc.y + father_loc.y) / 2 + config.v_spacing / 2;
 
   const x2 = child_loc.x;
   const y2 = child_loc.y - config.v_spacing / 2;
@@ -2477,8 +2479,8 @@ function draw_line_connecting_parents_down(
 ) {
   const x = (mother_loc.x + father_loc.x) / 2;
   //  const x = mother_loc.x + config.h_spacing;
-  const y1 = mother_loc.y;
-  const y2 = mother_loc.y + config.v_spacing / 2;
+  const y1 = (mother_loc.y + father_loc.y) / 2;
+  const y2 = y1 + config.v_spacing / 2;
   let elem = draw_line(x, y1, x, y2);
   elem.setAttributeNS(null, "stroke-width", "2");
   elem.setAttributeNS(null, "p_mother_id", mother_id);
@@ -2581,7 +2583,7 @@ function draw_svg_header_info() {
   const proband_label = [proband_id, proband_name].filter(Boolean).join(" - ");
   const family_classification = data.general?.family_classification;
   const family_genetic_status = data.general?.family_genetic_status;
-  const last_updated = format_last_updated(data.general?.last_updated);
+  const last_updated = format_last_updated(data.general?.data_pulled_dtm || data.general?.last_updated);
 
   const lines = [
     study_name,
@@ -2718,7 +2720,7 @@ export function set_other_alert(person_id, message) {
 ///
 // Quadrants
 
-// person.quad_flags and disease.quad_abbr are indexed [top_right, bottom_right, bottom_left, top_left].
+// person.quad_flags and disease.quad_abbrs (formerly quad_abbr) are indexed [top_right, bottom_right, bottom_left, top_left].
 function check_quadrant_tr(person_id) {
   return !!data["people"][person_id]?.quad_flags?.[0];
 }
@@ -2737,7 +2739,8 @@ function check_quadrant_tl(person_id) {
 
 function get_matching_quadrants_for_disease(disease) {
   const quadrants = config?.quadrants;
-  if (!quadrants || !Array.isArray(disease?.quad_abbr)) return [];
+  const quad_abbrs = disease?.quad_abbrs || disease?.quad_abbr;
+  if (!quadrants || !Array.isArray(quad_abbrs)) return [];
 
   const ordered_quadrants = [
     quadrants.top_right,
@@ -2749,7 +2752,7 @@ function get_matching_quadrants_for_disease(disease) {
   const matches = [];
   ordered_quadrants.forEach((quadrant, index) => {
     if (!quadrant?.name) return;
-    if (disease.quad_abbr[index]) {
+    if (quad_abbrs[index]) {
       matches.push({ name: quadrant.name, color: quadrant.color || "" });
     }
   });
@@ -2769,24 +2772,28 @@ function draw_quadrants_male(person_id) {
     el.setAttributeNS(null, "id", person_id);
     el.setAttributeNS(null, "pointer-events", "none");
     el.setAttributeNS(null, "stroke-width", "2");
+    el.setAttributeNS(null, "is_decoration", "true");
   }
   if (code = check_quadrant_tl(person_id)) {
     const el = draw_square(size, center_x - size, center_y -size, config.quadrants?.top_left?.color || "grey");
     el.setAttributeNS(null, "id", person_id);
     el.setAttributeNS(null, "pointer-events", "none");
     el.setAttributeNS(null, "stroke-width", "2");
+    el.setAttributeNS(null, "is_decoration", "true");
   }
   if (code = check_quadrant_br(person_id)) {
     const el = draw_square(size, center_x, center_y, config.quadrants?.bottom_right?.color || "grey");
     el.setAttributeNS(null, "id", person_id);
     el.setAttributeNS(null, "pointer-events", "none");
     el.setAttributeNS(null, "stroke-width", "2");
+    el.setAttributeNS(null, "is_decoration", "true");
   }
   if (code = check_quadrant_bl(person_id)) {
     const el = draw_square(size, center_x - size, center_y, config.quadrants?.bottom_left?.color || "grey");
     el.setAttributeNS(null, "id", person_id);
     el.setAttributeNS(null, "pointer-events", "none");
     el.setAttributeNS(null, "stroke-width", "2");
+    el.setAttributeNS(null, "is_decoration", "true");
   }
 }
 

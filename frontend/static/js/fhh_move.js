@@ -68,7 +68,8 @@ function move_all_elements_of_a_person(person_id, diff_x, diff_y) {
     move_last_point_of_line(father_connector_line[i], diff_x, diff_y);
   }
 
-  // NOTE: the divide by 2 is because we are only moving one of the endpoints, therefore the center line only moves by half
+  // These connector lines are anchored to the midpoint of both parents (X and Y both
+  // move by half when either parent moves, since the anchor is the average of the two).
   const mother_line_down = document.querySelectorAll("[p_mother_id=\"" + person_id + "\"]");
   for (const i in mother_line_down) {
     move_first_point_of_line(mother_line_down[i], diff_x/2, diff_y/2);
@@ -169,6 +170,8 @@ function move_rect(el, diff_x, diff_y) {
   el.attributes.x.value = new_x;
   el.attributes.y.value = new_y;
 
+  if (el.getAttribute("is_decoration") === "true") return;
+
   const person_id = el.attributes.id.value;
   let data = get_data();
   if (person_id && data["people"][person_id]) {
@@ -207,6 +210,8 @@ function move_poly(el, diff_x, diff_y) {
   let current_points = el.attributes.points.value;
   const new_points = shift_points(current_points, diff_x, diff_y);
   el.attributes.points.value = new_points;
+
+  if (el.getAttribute("is_decoration") === "true") return;
 
   const person_id = el.attributes.id.value;
   let data = get_data();
