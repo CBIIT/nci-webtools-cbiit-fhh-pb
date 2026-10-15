@@ -203,6 +203,10 @@ body {
   background-color:#CEC;
 }
 
+.procedure-abbr thead  {
+  background-color:#CC8899;
+}
+
 .data-display-table th {
   border:1px solid black;
   padding:2px;
