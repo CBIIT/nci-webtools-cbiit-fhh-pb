@@ -63,7 +63,8 @@ jobs:
             LambdaGetFamily-${{ env.TIER }} \
             LambdaListFamilies-${{ env.TIER }} \
             LambdaListStudies-${{ env.TIER }} \
-            --require-approval never
+            --require-approval never \
+            --import-existing-resources
 
       - name: Deploy API Gateway and DynamoDB Session
         run: |
@@ -71,7 +72,9 @@ jobs:
           npx cdk deploy \
             DynamoDBSession-${{ env.TIER }} \
             ApiGateway-${{ env.TIER }} \
-            --require-approval never
+            --require-approval never \
+            --import-existing-resources
+            --import-existing-resources
 
       - name: Sync OIDC Secret
         run: ./infrastructure/scripts/sync-oidc-secret.sh
@@ -81,7 +84,8 @@ jobs:
           cd infrastructure
           npx cdk deploy \
             CloudFrontS3Stack-${{ env.TIER }} \
-            --require-approval never
+            --require-approval never \
+            --import-existing-resources
 
       - name: Build frontend assets
         run: |
