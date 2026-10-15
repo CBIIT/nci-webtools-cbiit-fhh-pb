@@ -41,8 +41,12 @@ def test_write_annotations_function():
     response = s3_client.get_object(
         Bucket=bucket_name, Key=f"annotations/{study_id}/{family_id}.annotations.json"
     )
-    stored_data = response["Body"].read().decode("utf-8")
-    assert stored_data == test_data
+    stored_data = json.loads(response["Body"].read().decode("utf-8"))
+    assert stored_data["annotations"] == json.loads(test_data)["annotations"]
+    assert stored_data["created_at"]
+    assert stored_data["updated_at"]
+    assert stored_data["created_by"] == "unknown"
+    assert stored_data["updated_by"] == "unknown"
 
 
 def test_write_annotations_missing_bucket():
@@ -88,7 +92,7 @@ def test_lambda_handler_success():
 
         # Verify write_annotations was called with correct parameters
         mock_write.assert_called_once_with(
-            "test_study_001", "test_family_456", '{"annotations": [{"id": 2, "note": "another test"}]}'
+            "test_study_001", "test_family_456", '{"annotations": [{"id": 2, "note": "another test"}]}', updated_by="unknown"
         )
 
 
@@ -139,7 +143,7 @@ def test_lambda_handler_base64_encoded():
         result = lambda_module.lambda_handler(event, context)
 
         assert result["statusCode"] == 200
-        mock_write.assert_called_once_with("test_study_001", "test_family_789", original_body)
+        mock_write.assert_called_once_with("test_study_001", "test_family_789", original_body, updated_by="unknown")
 
 
 def test_lambda_handler_error_response():

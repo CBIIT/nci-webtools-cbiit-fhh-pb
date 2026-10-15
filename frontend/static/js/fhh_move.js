@@ -1,6 +1,6 @@
 
 import { find_all_partners, find_all_children, find_all_descendants, get_data } from "./fhh_build_pedigree.js";
-import { get_config} from "./fhh_display_pedigree.js";
+import { get_config, ensure_canvas_fits_point } from "./fhh_display_pedigree.js";
 
 var free_move = false;
 var slide_move = false;
@@ -179,6 +179,7 @@ function move_rect(el, diff_x, diff_y) {
     person.x = new_x + config.size/2;  // Center of Males is offset by half the size of the box
     person.y = new_y + config.size/2;
     person.moved = true;
+    ensure_canvas_fits_point(person.x, person.y);
   }
 }
 
@@ -198,6 +199,7 @@ function move_circle(el, diff_x, diff_y) {
     person.x = new_x;
     person.y = new_y;
     person.moved = true;
+    ensure_canvas_fits_point(person.x, person.y);
   }
 }
 
@@ -225,6 +227,7 @@ function move_poly(el, diff_x, diff_y) {
     person.x = new_x;
     person.y = new_y;
     person.moved = true;
+    ensure_canvas_fits_point(person.x, person.y);
   }
 }
 
