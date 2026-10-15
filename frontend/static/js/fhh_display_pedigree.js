@@ -546,6 +546,20 @@ function draw_frame() {
   const height_of_svg = 2 * config.margin + num_generations * config.v_spacing;
 
   const svgElem = create_svg(width_of_svg, height_of_svg);
+
+  // Saved annotation positions can fall outside the default grid-based frame
+  // (e.g. after manual dragging); grow the canvas before drawing the header so
+  // the header text can be anchored to the true (possibly expanded) left edge.
+  if (annotations?.positions) {
+    for (const person_id in data["people"]) {
+      const person = data["people"][person_id];
+      if (person.gen != null && person.loc != null) {
+        const center = get_center(person);
+        expand_canvas_to_fit(center.x, center.y);
+      }
+    }
+  }
+
   draw_svg_header_info();
 
   //const r2 = draw_rectangle(width_of_svg - 2, height_of_svg - 2, 1, 1);
@@ -555,6 +569,39 @@ function draw_frame() {
 
   //  const center = draw_circle(10, center_offset.x, center_offset.y);
   //  center.setAttributeNS(null, "fill", "blue");
+}
+
+// Expands the live SVG's viewBox/width/height (in place) so the given point,
+// plus some padding for the shape and its label, stays within the visible canvas.
+function expand_canvas_to_fit(x, y) {
+  const svgElem = document.getElementById("svg");
+  if (!svgElem) return;
+
+  const viewBox = svgElem.getAttribute("viewBox");
+  if (!viewBox) return;
+  const [min_x, min_y, width, height] = viewBox.split(" ").map(Number);
+  const padding = (config?.size || 40) * 1.5;
+
+  const new_min_x = Math.min(min_x, x - padding);
+  const new_min_y = Math.min(min_y, y - padding);
+  const new_max_x = Math.max(min_x + width, x + padding);
+  const new_max_y = Math.max(min_y + height, y + padding);
+
+  if (new_min_x === min_x && new_min_y === min_y && new_max_x === min_x + width && new_max_y === min_y + height) {
+    return;
+  }
+
+  const new_width = new_max_x - new_min_x;
+  const new_height = new_max_y - new_min_y;
+
+  svgElem.setAttributeNS(null, "viewBox", new_min_x + " " + new_min_y + " " + new_width + " " + new_height);
+  svgElem.setAttributeNS(null, "width", new_width);
+  svgElem.setAttributeNS(null, "height", new_height);
+}
+
+// Called from fhh_move.js while the user drags a person outside the current canvas.
+export function ensure_canvas_fits_point(x, y) {
+  expand_canvas_to_fit(x, y);
 }
 
 export function create_svg(width, height) {
@@ -781,7 +828,8 @@ function set_family_summary() {
   const number_of_diagnoses = Object.values(data.people).reduce((acc, person) => acc + (person.diseases ? person.diseases.length : 0), 0);
   const number_of_procedures = Object.values(data.people).reduce((acc, person) => acc + (person.procedures ? person.procedures.length : 0), 0);
 
-  
+  const annotations_updated_at = format_last_updated(annotations?.updated_at);
+  const annotations_updated_by = annotations?.updated_by;
 
   const table = document.createElement("table");
   table.classList.add("data-display-table");
@@ -797,6 +845,8 @@ function set_family_summary() {
   add_row_to_table(tbody, "Family Classification", family_classification);
   add_row_to_table(tbody, "Family Genetic Status", family_genetic_status);
   add_row_to_table(tbody, "Last Updated", last_updated);
+  add_row_to_table(tbody, "Locations Updated", annotations_updated_at);
+  add_row_to_table(tbody, "Locations Updated By", annotations_updated_by);
   add_row_to_table(tbody, "People", number_of_people);
   add_row_to_table(tbody, "Diagnoses", number_of_diagnoses);
   add_row_to_table(tbody, "Procedures", number_of_procedures);
@@ -2631,6 +2681,9 @@ function draw_svg_header_info() {
   const family_classification = data.general?.family_classification;
   const family_genetic_status = data.general?.family_genetic_status;
   const last_updated = format_last_updated(data.general?.data_pulled_dtm || data.general?.last_updated);
+  const locations_updated_at = format_last_updated(annotations?.updated_at);
+  const locations_updated_by = annotations?.updated_by;
+  const locations_updated_label = locations_updated_at && "Locations Updated on " + locations_updated_at + (locations_updated_by ? " by " + locations_updated_by : "");
 
   const lines = [
     study_name,
@@ -2638,13 +2691,18 @@ function draw_svg_header_info() {
     family_classification && "Family Classification: " + family_classification,
     family_genetic_status && "Family Genetic Status: " + family_genetic_status,
     last_updated && "Last Updated: " + last_updated,
+    locations_updated_label,
   ].filter(Boolean);
 
-  const start_x = 10;
+  // Anchor to the canvas's current left/top edge so the header stays pinned to
+  // the corner even after the viewBox has been expanded to fit saved positions.
+  const svgElem = document.getElementById("svg");
+  const [view_min_x, view_min_y] = (svgElem?.getAttribute("viewBox") || "0 0").split(" ").map(Number);
+  const start_x = view_min_x + 10;
   const line_height = 16;
 
   lines.forEach((line, index) => {
-    const elem = draw_label(line, start_x, 16 + index * line_height);
+    const elem = draw_label(line, start_x, view_min_y + 16 + index * line_height);
     elem.setAttribute("text-anchor", "start");
     if (index === 0) elem.setAttribute("font-weight", "bold");
   });
