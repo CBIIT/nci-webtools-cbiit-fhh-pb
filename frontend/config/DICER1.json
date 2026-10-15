@@ -44,29 +44,32 @@
       ]
     },
     "bottom_right": {
-      "name": "Cancers",
-      "color": "red",
-      "type": "cancer",
+      "name": "DICER Spectrum Disorders",
+      "color": "purple",
+      "type": "disease",
+      "codes": [
+        "D140"
+      ],
+      "children_of": [],
       "topography_rules": [
         {
-          "topography_children_of": [
-            "C"
-          ],
-          "morphology": [
-            "80103",
-            "80703",
-            "80903",
-            "81403",
-            "81603",
-            "87203",
-            "95903",
-            "95913",
-            "96503",
-            "98003",
-            "98233",
-            "98353",
-            "98613"
-          ],
+          "topography": ["C499"],
+          "morphology": ["89003"],
+          "morphology_exclude": []
+        },
+        {
+          "topography": ["C569", "C629"],
+          "morphology": ["86311", "86313"],
+          "morphology_exclude": []
+        },
+        {
+          "topography": ["C649"],
+          "morphology": ["89590", "89591", "89593"],
+          "morphology_exclude": []
+        },
+        {
+          "topography": ["C694"],
+          "morphology": ["95013"],
           "morphology_exclude": []
         }
       ]
@@ -123,32 +126,29 @@
       "children_of": []
     },
     "top_left": {
-      "name": "DICER Spectrum Disorders",
-      "color": "purple",
-      "type": "disease",
-      "codes": [
-        "D140"
-      ],
-      "children_of": [],
+      "name": "Cancers",
+      "color": "red",
+      "type": "cancer",
       "topography_rules": [
         {
-          "topography": ["C499"],
-          "morphology": ["89003"],
-          "morphology_exclude": []
-        },
-        {
-          "topography": ["C569", "C629"],
-          "morphology": ["86311", "86313"],
-          "morphology_exclude": []
-        },
-        {
-          "topography": ["C649"],
-          "morphology": ["89590", "89591", "89593"],
-          "morphology_exclude": []
-        },
-        {
-          "topography": ["C694"],
-          "morphology": ["95013"],
+          "topography_children_of": [
+            "C"
+          ],
+          "morphology": [
+            "80103",
+            "80703",
+            "80903",
+            "81403",
+            "81603",
+            "87203",
+            "95903",
+            "95913",
+            "96503",
+            "98003",
+            "98233",
+            "98353",
+            "98613"
+          ],
           "morphology_exclude": []
         }
       ]
