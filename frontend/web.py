@@ -3,6 +3,7 @@ import os
 import json
 import re
 import requests
+import getpass
 from datetime import datetime
 from urllib.parse import urljoin
 
@@ -319,8 +320,31 @@ def write_annotations_api_gateway(study_id,family_id):
     datastr = data.decode("utf-8")
     app.logger.info(datastr)
 
+    try:
+        annotations = json.loads(datastr)
+    except ValueError:
+        return jsonify({"error": "invalid JSON payload"}), 400
+
+    created_at = None
+    created_by = None
+    if os.path.exists(filename):
+        try:
+            with open(filename, "r") as existing_file:
+                existing = json.load(existing_file)
+            created_at = existing.get("created_at")
+            created_by = existing.get("created_by")
+        except (ValueError, OSError):
+            pass
+
+    updated_by = getpass.getuser()
+    now = datetime.utcnow().isoformat()
+    annotations["created_at"] = created_at or now
+    annotations["created_by"] = created_by or updated_by
+    annotations["updated_at"] = now
+    annotations["updated_by"] = updated_by
+
     with open(filename, "w") as file_object:
-        file_object.write(datastr)
+        json.dump(annotations, file_object)
 
     return '{"response": "OK"}'
 

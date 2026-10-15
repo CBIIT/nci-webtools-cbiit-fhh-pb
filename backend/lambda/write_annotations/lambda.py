@@ -37,9 +37,10 @@ def lambda_handler(event, context):
         request_context = event.get("requestContext", {})
         authorizer = request_context.get("authorizer", {})
         identity = request_context.get("identity", {})
+        user_email = authorizer.get("email", "unknown")
         logger.append_keys(
             user_id=authorizer.get("userId", "unknown"),
-            email=authorizer.get("email", "unknown"),
+            email=user_email,
             source_ip=identity.get("sourceIp", "unknown"),
         )
 
@@ -64,7 +65,7 @@ def lambda_handler(event, context):
             body = base64.b64decode(body).decode("utf-8")
 
         # Process the request
-        result = write_annotations(study_id, family_id, body)
+        result = write_annotations(study_id, family_id, body, updated_by=user_email)
         status_code = 200 if result["status"] == "success" else 500
 
         content_hash = hashlib.sha256(body.encode()).hexdigest()[:12]

@@ -42,42 +42,44 @@ export class ApiGatewayStack extends cdk.Stack {
 
     // CDK only manages the secret's shape (name/tags/placeholder); CI/CD overwrites
     // the real value via `aws secretsmanager put-secret-value` after this deploys.
-    const oidcConfigSecret = new secretsmanager.Secret(this, "OidcConfigSecret", {
-      secretName,
-      description: `OIDC configuration for FHHPB ${tier} environment`,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-      generateSecretString: {
-        secretStringTemplate: JSON.stringify({
-          CLIENT_ID: "",
-          BASE_URL: "",
-          CALLBACK_URI: "",
-          REQUIRED_GROUPS: "",
-        }),
-        generateStringKey: "CLIENT_SECRET",
+    const oidcConfigSecret = new secretsmanager.Secret(
+      this,
+      "OidcConfigSecret",
+      {
+        secretName,
+        description: `OIDC configuration for FHHPB ${tier} environment`,
+        removalPolicy: cdk.RemovalPolicy.RETAIN,
+        generateSecretString: {
+          secretStringTemplate: JSON.stringify({
+            CLIENT_ID: "",
+            BASE_URL: "",
+            CALLBACK_URI: "",
+            REQUIRED_GROUPS: "",
+          }),
+          generateStringKey: "CLIENT_SECRET",
+        },
       },
-    });
+    );
     const oidcSecretTags = createTags({ tier, resourceName: "oidc-config" });
     Object.entries(oidcSecretTags).forEach(([key, value]) => {
       cdk.Tags.of(oidcConfigSecret).add(key, value);
     });
 
-    const {
-      logGroup: authorizerLogGroup,
-      dependency: authorizerLogGroupDep,
-    } = createManagedLogGroup(
-      this,
-      "OidcAuthorizerLogGroup",
-      { logGroupName: `/aws/lambda/${tier}-fhhpb-api-oidc-authorizer` },
-      tier,
-      "lambda",
-      { component: "oidc-authorizer" }
-    );
+    const { logGroup: authorizerLogGroup, dependency: authorizerLogGroupDep } =
+      createManagedLogGroup(
+        this,
+        "OidcAuthorizerLogGroup",
+        { logGroupName: `/aws/lambda/${tier}-fhhpb-api-oidc-authorizer` },
+        tier,
+        "lambda",
+        { component: "oidc-authorizer" },
+      );
     subscribeLogGroupToDatadogForwarder(
       this,
       "OidcAuthorizer",
       authorizerLogGroup,
       forwarderArn,
-      authorizerLogGroupDep
+      authorizerLogGroupDep,
     );
 
     this.authorizerFunction = new lambda.Function(
@@ -125,26 +127,24 @@ export class ApiGatewayStack extends cdk.Stack {
             cdk.Stack.of(this).account
           }:secret:${secretName}-*`,
         ],
-      })
+      }),
     );
 
-    const {
-      logGroup: callbackLogGroup,
-      dependency: callbackLogGroupDep,
-    } = createManagedLogGroup(
-      this,
-      "OidcCallbackLogGroup",
-      { logGroupName: `/aws/lambda/${tier}-fhhpb-api-oidc-callback` },
-      tier,
-      "lambda",
-      { component: "oidc-callback" }
-    );
+    const { logGroup: callbackLogGroup, dependency: callbackLogGroupDep } =
+      createManagedLogGroup(
+        this,
+        "OidcCallbackLogGroup",
+        { logGroupName: `/aws/lambda/${tier}-fhhpb-api-oidc-callback` },
+        tier,
+        "lambda",
+        { component: "oidc-callback" },
+      );
     subscribeLogGroupToDatadogForwarder(
       this,
       "OidcCallback",
       callbackLogGroup,
       forwarderArn,
-      callbackLogGroupDep
+      callbackLogGroupDep,
     );
 
     // OAuth callback function - handles redirect from NIH IdP
@@ -190,26 +190,24 @@ export class ApiGatewayStack extends cdk.Stack {
             cdk.Stack.of(this).account
           }:secret:${secretName}-*`,
         ],
-      })
+      }),
     );
 
-    const {
-      logGroup: logoutLogGroup,
-      dependency: logoutLogGroupDep,
-    } = createManagedLogGroup(
-      this,
-      "OidcLogoutLogGroup",
-      { logGroupName: `/aws/lambda/${tier}-fhhpb-api-oidc-logout` },
-      tier,
-      "lambda",
-      { component: "oidc-logout" }
-    );
+    const { logGroup: logoutLogGroup, dependency: logoutLogGroupDep } =
+      createManagedLogGroup(
+        this,
+        "OidcLogoutLogGroup",
+        { logGroupName: `/aws/lambda/${tier}-fhhpb-api-oidc-logout` },
+        tier,
+        "lambda",
+        { component: "oidc-logout" },
+      );
     subscribeLogGroupToDatadogForwarder(
       this,
       "OidcLogout",
       logoutLogGroup,
       forwarderArn,
-      logoutLogGroupDep
+      logoutLogGroupDep,
     );
 
     const {
@@ -221,14 +219,14 @@ export class ApiGatewayStack extends cdk.Stack {
       { logGroupName: `/aws/lambda/${tier}-fhhpb-api-oidc-extend` },
       tier,
       "lambda",
-      { component: "oidc-extend" }
+      { component: "oidc-extend" },
     );
     subscribeLogGroupToDatadogForwarder(
       this,
       "OidcExtendSession",
       extendSessionLogGroup,
       forwarderArn,
-      extendSessionLogGroupDep
+      extendSessionLogGroupDep,
     );
 
     const {
@@ -240,37 +238,39 @@ export class ApiGatewayStack extends cdk.Stack {
       { logGroupName: `/aws/lambda/${tier}-fhhpb-api-oidc-session` },
       tier,
       "lambda",
-      { component: "oidc-session" }
+      { component: "oidc-session" },
     );
     subscribeLogGroupToDatadogForwarder(
       this,
       "OidcSessionInfo",
       sessionInfoLogGroup,
       forwarderArn,
-      sessionInfoLogGroupDep
+      sessionInfoLogGroupDep,
     );
 
-    // Creat project specific role for API Gateway
-    let permissionBoundary: iam.IManagedPolicy | undefined;
-    if (!['dev', 'qa'].includes(tier)) {
-      permissionBoundary = iam.ManagedPolicy.fromManagedPolicyName(
-        this,
-        'PermissionBoundaryPowerUser',
-        'PermissionBoundary_PowerUser'
+    // Create project specific role for API Gateway
+    const apiGatewayRole = new iam.Role(this, "AnalysistoolsApiGatewayRole", {
+      roleName: `power-user-analysistools-fhhpb-api-${tier}`,
+      assumedBy: new iam.ServicePrincipal("apigateway.amazonaws.com"),
+      description: "API Gateway role for analysistools FHHPB uploads",
+    });
+    // power-user-s3-policy-{tier} only exists in the lower-tier account.
+    if (["dev", "qa"].includes(tier)) {
+      apiGatewayRole.addManagedPolicy(
+        iam.ManagedPolicy.fromManagedPolicyName(
+          this,
+          "PowerUserS3Policy",
+          `power-user-s3-policy-${tier}`,
+        ),
+      );
+    } else {
+      apiGatewayRole.addToPolicy(
+        new iam.PolicyStatement({
+          actions: ["s3:PutObject"],
+          resources: [`arn:aws:s3:::nci-cbiit-fhhpb-data-${tier}/raw/*`],
+        }),
       );
     }
-    const s3Policy = iam.ManagedPolicy.fromManagedPolicyName(
-      this,
-      'PowerUserS3Policy',
-      `power-user-s3-policy-${tier}`
-    );
-    const apiGatewayRole = new iam.Role(this, 'AnalysistoolsApiGatewayRole', {
-      roleName: `power-user-analysistools-fhhpb-api-${tier}`,
-      assumedBy: new iam.ServicePrincipal('apigateway.amazonaws.com'),
-      permissionsBoundary: permissionBoundary,
-      description: 'API Gateway role for analysistools FHHPB uploads',
-    });
-    apiGatewayRole.addManagedPolicy(s3Policy);
 
     // Logout function
     const logoutFunction = new lambda.Function(this, "OidcLogoutFunction", {
@@ -304,65 +304,73 @@ export class ApiGatewayStack extends cdk.Stack {
     logoutFunction.node.addDependency(logoutLogGroupDep);
 
     // Extend session function
-    const extendSessionFunction = new lambda.Function(this, "OidcExtendSessionFunction", {
-      functionName: `${tier}-fhhpb-api-oidc-extend`,
-      runtime: lambda.Runtime.PYTHON_3_13,
-      handler: "extend_session.lambda_handler",
-      code: lambda.Code.fromAsset("../backend/lambda/oidc-auth", {
-        bundling: {
-          image: lambda.Runtime.PYTHON_3_13.bundlingImage,
-          platform: "linux/amd64",
-          user: "root",
-          command: [
-            "bash",
-            "-c",
-            [
-              "pip install -r requirements.txt -t /asset-output --platform manylinux2014_x86_64 --only-binary=:all:",
-              "cp -r . /asset-output",
-            ].join(" && "),
-          ],
+    const extendSessionFunction = new lambda.Function(
+      this,
+      "OidcExtendSessionFunction",
+      {
+        functionName: `${tier}-fhhpb-api-oidc-extend`,
+        runtime: lambda.Runtime.PYTHON_3_13,
+        handler: "extend_session.lambda_handler",
+        code: lambda.Code.fromAsset("../backend/lambda/oidc-auth", {
+          bundling: {
+            image: lambda.Runtime.PYTHON_3_13.bundlingImage,
+            platform: "linux/amd64",
+            user: "root",
+            command: [
+              "bash",
+              "-c",
+              [
+                "pip install -r requirements.txt -t /asset-output --platform manylinux2014_x86_64 --only-binary=:all:",
+                "cp -r . /asset-output",
+              ].join(" && "),
+            ],
+          },
+        }),
+        layers: [powertoolsLayer],
+        timeout: cdk.Duration.seconds(10),
+        memorySize: 256,
+        logGroup: extendSessionLogGroup,
+        environment: {
+          SESSIONS_TABLE_NAME: props.sessionsTable.tableName,
+          POWERTOOLS_SERVICE_NAME: `${tier}-fhh-pb-lambda`,
         },
-      }),
-      layers: [powertoolsLayer],
-      timeout: cdk.Duration.seconds(10),
-      memorySize: 256,
-      logGroup: extendSessionLogGroup,
-      environment: {
-        SESSIONS_TABLE_NAME: props.sessionsTable.tableName,
-        POWERTOOLS_SERVICE_NAME: `${tier}-fhh-pb-lambda`,
       },
-    });
+    );
     extendSessionFunction.node.addDependency(extendSessionLogGroupDep);
 
     // Session info function
-    const sessionInfoFunction = new lambda.Function(this, "OidcSessionInfoFunction", {
-      functionName: `${tier}-fhhpb-api-oidc-session`,
-      runtime: lambda.Runtime.PYTHON_3_13,
-      handler: "session_info.lambda_handler",
-      code: lambda.Code.fromAsset("../backend/lambda/oidc-auth", {
-        bundling: {
-          image: lambda.Runtime.PYTHON_3_13.bundlingImage,
-          platform: "linux/amd64",
-          user: "root",
-          command: [
-            "bash",
-            "-c",
-            [
-              "pip install -r requirements.txt -t /asset-output --platform manylinux2014_x86_64 --only-binary=:all:",
-              "cp -r . /asset-output",
-            ].join(" && "),
-          ],
+    const sessionInfoFunction = new lambda.Function(
+      this,
+      "OidcSessionInfoFunction",
+      {
+        functionName: `${tier}-fhhpb-api-oidc-session`,
+        runtime: lambda.Runtime.PYTHON_3_13,
+        handler: "session_info.lambda_handler",
+        code: lambda.Code.fromAsset("../backend/lambda/oidc-auth", {
+          bundling: {
+            image: lambda.Runtime.PYTHON_3_13.bundlingImage,
+            platform: "linux/amd64",
+            user: "root",
+            command: [
+              "bash",
+              "-c",
+              [
+                "pip install -r requirements.txt -t /asset-output --platform manylinux2014_x86_64 --only-binary=:all:",
+                "cp -r . /asset-output",
+              ].join(" && "),
+            ],
+          },
+        }),
+        layers: [powertoolsLayer],
+        timeout: cdk.Duration.seconds(10),
+        memorySize: 256,
+        logGroup: sessionInfoLogGroup,
+        environment: {
+          SESSIONS_TABLE_NAME: props.sessionsTable.tableName,
+          POWERTOOLS_SERVICE_NAME: `${tier}-fhh-pb-lambda`,
         },
-      }),
-      layers: [powertoolsLayer],
-      timeout: cdk.Duration.seconds(10),
-      memorySize: 256,
-      logGroup: sessionInfoLogGroup,
-      environment: {
-        SESSIONS_TABLE_NAME: props.sessionsTable.tableName,
-        POWERTOOLS_SERVICE_NAME: `${tier}-fhh-pb-lambda`,
       },
-    });
+    );
     sessionInfoFunction.node.addDependency(sessionInfoLogGroupDep);
 
     // Grant DynamoDB permissions
@@ -378,7 +386,7 @@ export class ApiGatewayStack extends cdk.Stack {
         resources: [
           `arn:aws:secretsmanager:us-east-1:${cdk.Stack.of(this).account}:secret:${secretName}-*`,
         ],
-      })
+      }),
     );
 
     extendSessionFunction.addToRolePolicy(
@@ -388,7 +396,7 @@ export class ApiGatewayStack extends cdk.Stack {
         resources: [
           `arn:aws:secretsmanager:us-east-1:${cdk.Stack.of(this).account}:secret:${secretName}-*`,
         ],
-      })
+      }),
     );
 
     sessionInfoFunction.addToRolePolicy(
@@ -398,7 +406,7 @@ export class ApiGatewayStack extends cdk.Stack {
         resources: [
           `arn:aws:secretsmanager:us-east-1:${cdk.Stack.of(this).account}:secret:${secretName}-*`,
         ],
-      })
+      }),
     );
 
     // Configure CORS to only allow CloudFront domain
@@ -413,14 +421,15 @@ export class ApiGatewayStack extends cdk.Stack {
       (tier === "dev" || tier === "qa") &&
       app.node.tryGetContext("apigwDataTrace") === true;
 
-    const { logGroup: accessLogGroup, dependency: accessLogGroupDep } = createManagedLogGroup(
-      this,
-      "ApiGatewayAccessLogGroup",
-      { logGroupName: `/aws/apigateway/nci-cbiit-fhhpb-api-${tier}/access` },
-      tier,
-      "apigateway",
-      { component: "apigateway-access" }
-    );
+    const { logGroup: accessLogGroup, dependency: accessLogGroupDep } =
+      createManagedLogGroup(
+        this,
+        "ApiGatewayAccessLogGroup",
+        { logGroupName: `/aws/apigateway/nci-cbiit-fhhpb-api-${tier}/access` },
+        tier,
+        "apigateway",
+        { component: "apigateway-access" },
+      );
 
     const accessLogFormat = apigateway.AccessLogFormat.custom(
       [
@@ -435,7 +444,7 @@ export class ApiGatewayStack extends cdk.Stack {
         `"userAgent":"${apigateway.AccessLogField.contextIdentityUserAgent()}",`,
         `"responseLength":"${apigateway.AccessLogField.contextResponseLength()}"`,
         "}",
-      ].join("")
+      ].join(""),
     );
 
     this.api = new apigateway.RestApi(this, "FhhpbApi", {
@@ -467,7 +476,7 @@ export class ApiGatewayStack extends cdk.Stack {
         dataTraceEnabled,
         metricsEnabled: true,
         accessLogDestination: new apigateway.LogGroupLogDestination(
-          accessLogGroup
+          accessLogGroup,
         ),
         accessLogFormat,
       },
@@ -484,7 +493,7 @@ export class ApiGatewayStack extends cdk.Stack {
       "ApigwAccess",
       accessLogGroup,
       forwarderArn,
-      accessLogGroupDep
+      accessLogGroupDep,
     );
     // Execution log group is AWS-managed; wait for it before PutSubscriptionFilter.
     subscribeLogGroupToDatadogForwarderWhenReady(
@@ -492,7 +501,7 @@ export class ApiGatewayStack extends cdk.Stack {
       "ApigwExec",
       `API-Gateway-Execution-Logs_${this.api.restApiId}/api`,
       forwarderArn,
-      this.api.deploymentStage
+      this.api.deploymentStage,
     );
 
     this.authorizer = new apigateway.RequestAuthorizer(this, "OidcAuthorizer", {
@@ -523,28 +532,28 @@ export class ApiGatewayStack extends cdk.Stack {
 
     // Create Lambda integrations
     const listStudiesIntegration = new apigateway.LambdaIntegration(
-      props.listStudiesFunction
+      props.listStudiesFunction,
     );
     const listFamiliesIntegration = new apigateway.LambdaIntegration(
-      props.listFamiliesFunction
+      props.listFamiliesFunction,
     );
     const getFamilyIntegration = new apigateway.LambdaIntegration(
-      props.getFamilyFunction
+      props.getFamilyFunction,
     );
     const getAnnotationsIntegration = new apigateway.LambdaIntegration(
-      props.getAnnotationsFunction
+      props.getAnnotationsFunction,
     );
     const writeAnnotationsIntegration = new apigateway.LambdaIntegration(
       props.writeAnnotationsFunction,
       {
         requestTemplates: { "application/json": '{ "statusCode": "200" }' },
-      }
+      },
     );
 
     // OAuth callback endpoint - receives redirect from NIH IdP
     const callbackIntegration = new apigateway.LambdaIntegration(
       this.callbackFunction,
-      { proxy: true } // Enable proxy for proper redirect handling
+      { proxy: true }, // Enable proxy for proper redirect handling
     );
     const loginResource = this.api.root.addResource("login");
     loginResource.addMethod("GET", callbackIntegration, {
@@ -580,12 +589,14 @@ export class ApiGatewayStack extends cdk.Stack {
       {
         apiKeyRequired: false,
         methodResponses: [{ statusCode: "200" }],
-      }
+      },
     );
 
     // Extend session endpoint - POST /api/extend-session (requires auth)
     const extendSessionResource = this.api.root.addResource("extend-session");
-    const extendSessionIntegration = new apigateway.LambdaIntegration(extendSessionFunction);
+    const extendSessionIntegration = new apigateway.LambdaIntegration(
+      extendSessionFunction,
+    );
     extendSessionResource.addMethod("POST", extendSessionIntegration, {
       apiKeyRequired: false,
       authorizer: this.authorizer,
@@ -594,7 +605,9 @@ export class ApiGatewayStack extends cdk.Stack {
 
     // Session info endpoint - GET /api/session (requires auth)
     const sessionResource = this.api.root.addResource("session");
-    const sessionInfoIntegration = new apigateway.LambdaIntegration(sessionInfoFunction);
+    const sessionInfoIntegration = new apigateway.LambdaIntegration(
+      sessionInfoFunction,
+    );
     sessionResource.addMethod("GET", sessionInfoIntegration, {
       apiKeyRequired: false,
       authorizer: this.authorizer,
@@ -616,7 +629,7 @@ export class ApiGatewayStack extends cdk.Stack {
           restApi: this.api,
           requestValidatorName: "list-studies-validator",
           validateRequestParameters: true,
-        }
+        },
       ),
     });
 
@@ -634,7 +647,7 @@ export class ApiGatewayStack extends cdk.Stack {
           restApi: this.api,
           requestValidatorName: "list-families-validator",
           validateRequestParameters: true,
-        }
+        },
       ),
       requestParameters: {
         "method.request.path.study_id": true,
@@ -656,7 +669,7 @@ export class ApiGatewayStack extends cdk.Stack {
           restApi: this.api,
           requestValidatorName: "get-family-validator",
           validateRequestParameters: true,
-        }
+        },
       ),
       requestParameters: {
         "method.request.path.study_id": true,
@@ -666,8 +679,10 @@ export class ApiGatewayStack extends cdk.Stack {
 
     // GET /annotations/{study_id}/{family_id} - Get annotations for a family
     const annotationsResource = this.api.root.addResource("annotations");
-    const annotationsStudyIdResource = annotationsResource.addResource("{study_id}");
-    const annotationsFamilyIdResource = annotationsStudyIdResource.addResource("{family_id}");
+    const annotationsStudyIdResource =
+      annotationsResource.addResource("{study_id}");
+    const annotationsFamilyIdResource =
+      annotationsStudyIdResource.addResource("{family_id}");
     annotationsFamilyIdResource.addMethod("GET", getAnnotationsIntegration, {
       apiKeyRequired: false,
       authorizer: this.authorizer,
@@ -679,7 +694,7 @@ export class ApiGatewayStack extends cdk.Stack {
           restApi: this.api,
           requestValidatorName: "get-annotations-validator",
           validateRequestParameters: true,
-        }
+        },
       ),
       requestParameters: {
         "method.request.path.study_id": true,
@@ -700,7 +715,7 @@ export class ApiGatewayStack extends cdk.Stack {
           requestValidatorName: "write-annotations-validator",
           validateRequestParameters: true,
           validateRequestBody: true,
-        }
+        },
       ),
       requestParameters: {
         "method.request.path.study_id": true,
@@ -711,20 +726,12 @@ export class ApiGatewayStack extends cdk.Stack {
     // PUT /upload/{proxy} - Upload objects to S3 raw/ prefix
     const uploadResource = this.api.root.addResource("upload");
     const uploadProxyResource = uploadResource.addResource("{proxy}");
-    const uploadApiGatewayRole = iam.Role.fromRoleArn(
-      this,
-      "UploadApiGatewayRole",
-      `arn:aws:iam::${cdk.Stack.of(this).account}:role/power-user-analysistools-fhhpb-api-${tier}`,
-      {
-        mutable: false,
-      }
-    );
     const uploadIntegration = new apigateway.AwsIntegration({
       service: "s3",
       path: `nci-cbiit-fhhpb-data-${tier}/raw/{proxy}`,
       integrationHttpMethod: "PUT",
       options: {
-        credentialsRole: uploadApiGatewayRole,
+        credentialsRole: apiGatewayRole,
         requestParameters: {
           "integration.request.path.proxy": "method.request.path.proxy",
         },
@@ -776,10 +783,7 @@ export class ApiGatewayStack extends cdk.Stack {
       cdk.Tags.of(this.api).add(key, value);
     });
 
-    const executeApiDomain = cdk.Fn.select(
-      2,
-      cdk.Fn.split("/", this.api.url)
-    );
+    const executeApiDomain = cdk.Fn.select(2, cdk.Fn.split("/", this.api.url));
     this.apiGatewayUrl = executeApiDomain;
 
     new ssm.StringParameter(this, "ApiGatewayUrlParam", {
