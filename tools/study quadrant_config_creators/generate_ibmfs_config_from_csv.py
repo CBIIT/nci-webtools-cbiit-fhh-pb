@@ -36,9 +36,9 @@ from typing import Dict, Iterable, List, MutableMapping
 
 QUADRANT_TO_POSITION = {
     "I": "top_right",
-    "II": "bottom_right",
+    "II": "top_left",
     "III": "bottom_left",
-    "IV": "top_left",
+    "IV": "bottom_right",
     "TOP_RIGHT": "top_right",
     "BOTTOM_RIGHT": "bottom_right",
     "BOTTOM_LEFT": "bottom_left",
