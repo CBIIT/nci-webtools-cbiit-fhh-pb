@@ -49,6 +49,43 @@ def test_write_annotations_function():
     assert stored_data["updated_by"] == "unknown"
 
 
+@mock_aws
+def test_write_annotations_preserves_created_at_on_second_write():
+    """A second write to the same S3 key should keep the original created_at/created_by."""
+    bucket_name = "test-bucket"
+    s3_client = boto3.client("s3", region_name="us-east-1")
+    s3_client.create_bucket(Bucket=bucket_name)
+
+    study_id = "test_study_001"
+    family_id = "test_family_999"
+    s3_key = f"annotations/{study_id}/{family_id}.annotations.json"
+
+    first_result = write_annotations(
+        study_id, family_id, '{"positions": {"p1": {"x": 1, "y": 1}}}', bucket_name, updated_by="alice"
+    )
+    assert first_result["status"] == "success"
+
+    first_stored = json.loads(
+        s3_client.get_object(Bucket=bucket_name, Key=s3_key)["Body"].read().decode("utf-8")
+    )
+    assert first_stored["created_by"] == "alice"
+    assert first_stored["updated_by"] == "alice"
+
+    second_result = write_annotations(
+        study_id, family_id, '{"positions": {"p1": {"x": 2, "y": 2}}}', bucket_name, updated_by="bob"
+    )
+    assert second_result["status"] == "success"
+
+    second_stored = json.loads(
+        s3_client.get_object(Bucket=bucket_name, Key=s3_key)["Body"].read().decode("utf-8")
+    )
+    assert second_stored["created_at"] == first_stored["created_at"]
+    assert second_stored["created_by"] == "alice"
+    assert second_stored["updated_by"] == "bob"
+    assert second_stored["updated_at"] != first_stored["updated_at"]
+    assert second_stored["positions"]["p1"] == {"x": 2, "y": 2}
+
+
 def test_write_annotations_missing_bucket():
     """Test write_annotations function with missing bucket name."""
     study_id = "test_study_001"

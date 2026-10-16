@@ -2015,26 +2015,6 @@ function get_diagnosis_display_name(diagnosis) {
   return get_standardized_diagnosis_label(diagnosis) || "NOTITLE";
 }
 
-function get_first_part(str) {
-  if (str === null || str === undefined) return "";
-
-  const text = String(str).trim();
-  if (!text) return "";
-
-  const index = text.indexOf("-");
-  return index !== -1 ? text.substring(0, index) : text;
-}
-
-function get_second_part(str) {
-  if (str === null || str === undefined) return "";
-
-  const text = String(str).trim();
-  if (!text) return "";
-
-  const index = text.indexOf("-");
-  return index !== -1 ? text.substring(index + 1) : text;
-}
-
 function create_color_swatch_container(colors) {
   if (!Array.isArray(colors) || colors.length === 0) return null;
 
@@ -2092,13 +2072,11 @@ function set_diagnoses_of_person(person_id) {
   if (diseases && diseases.length > 0) {
     diseases.forEach((disease, diagnosis_index) => {
       // Non-cancers are keyed by ICD code; cancers are displayed as topography:morphology.
-      const code = trimAfterCharacter(disease.code, "-");
-      const topography = get_second_part(disease.topography);
-      const morphology = get_second_part(disease.morphology);
-      const topography_first_part = get_first_part(disease.topography);
-      const morphology_first_part = get_first_part(disease.morphology);
+      const code = disease.code;
+      const topography = disease.topography;
+      const morphology = disease.morphology;
       const cancer_identifier = [topography, morphology].filter(Boolean).join(":");
-      const coding_identifier = [topography_first_part, morphology_first_part].filter(Boolean).join(":");
+      const coding_identifier = disease.coding;
       const is_cancer_diagnosis = Boolean(cancer_identifier)
         || (disease.d_num && String(disease.d_num).startsWith("C"))
         || (code && code[0] === "C");
@@ -2219,11 +2197,11 @@ function set_procedures_of_person(person_id) {
 
   if (procedures && procedures.length > 0) {
     procedures.forEach((procedure, procedure_index) => {
-      // There is a potential error in the code for non-cancer diseases, they include the shorthand as well.  So for now I will trim the code to dbefore the -
-      const code = trimAfterCharacter(procedure.code, "-");
+      const code = procedure.code;
 
       const table = document.createElement("table");
       table.classList.add("data-display-table");
+      if (procedure.abbr) table.classList.add("procedure-abbr");
       const thead = document.createElement("thead");
       const headerRow = document.createElement("tr");
       const codeHeader = document.createElement("th");
@@ -2233,7 +2211,7 @@ function set_procedures_of_person(person_id) {
       header_content.classList.add("section-header-content");
 
       const header_label = document.createElement("span");
-      header_label.textContent = procedure.abbr || code;
+      header_label.textContent = procedure.abbr || procedure.description || code;
       header_content.appendChild(header_label);
 
       if (is_pedigree_build_mode()) {
@@ -2805,18 +2783,6 @@ function draw_line(x1, y1, x2, y2) {
 }
 
 /////. Helper functions /////
-function trimAfterCharacter(str, char) {
-  if (str === null || str === undefined) return "";
-
-  const text = String(str);
-  const index = text.indexOf(char); // Find the index of the first occurrence of the character
-
-  if (index !== -1) { // If the character is found
-    return text.substring(0, index); // Return the substring from the beginning up to the character's index
-  } else {
-    return text; // If the character is not found, return the original string
-  }
-}
 
 export function set_other_alert(person_id, message) {
   other_alerts[person_id] = message;

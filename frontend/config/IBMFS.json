@@ -40,6 +40,47 @@
       "children_of": []
     },
     "bottom_right": {
+      "name": "Hematologic",
+      "color": "orange",
+      "type": "disease",
+      "codes": [
+        "D569",
+        "D619",
+        "D6190",
+        "D649",
+        "D693",
+        "D6959",
+        "D696",
+        "D709",
+        "D72819",
+        "D849",
+        "J8410"
+      ],
+      "children_of": []
+    },
+    "bottom_left": {
+      "name": "Non-Cancers",
+      "color": "yellow",
+      "type": "disease",
+      "codes": [
+        "D45",
+        "D571",
+        "D6181",
+        "D72818",
+        "E139",
+        "E83110",
+        "I280",
+        "K1321",
+        "K740",
+        "K7460",
+        "K7681",
+        "Q249",
+        "Q2730",
+        "Q909"
+      ],
+      "children_of": []
+    },
+    "top_left": {
       "name": "Cancers",
       "color": "red",
       "type": "cancer",
@@ -178,47 +219,6 @@
           "morphology_exclude": []
         }
       ]
-    },
-    "bottom_left": {
-      "name": "Non-Cancers",
-      "color": "yellow",
-      "type": "disease",
-      "codes": [
-        "D45",
-        "D571",
-        "D6181",
-        "D72818",
-        "E139",
-        "E83110",
-        "I280",
-        "K1321",
-        "K740",
-        "K7460",
-        "K7681",
-        "Q249",
-        "Q2730",
-        "Q909"
-      ],
-      "children_of": []
-    },
-    "top_left": {
-      "name": "Hematologic",
-      "color": "orange",
-      "type": "disease",
-      "codes": [
-        "D569",
-        "D619",
-        "D6190",
-        "D649",
-        "D693",
-        "D6959",
-        "D696",
-        "D709",
-        "D72819",
-        "D849",
-        "J8410"
-      ],
-      "children_of": []
     }
   },
   "code_matching": {

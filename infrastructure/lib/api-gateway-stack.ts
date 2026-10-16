@@ -48,7 +48,7 @@ export class ApiGatewayStack extends cdk.Stack {
       {
         secretName,
         description: `OIDC configuration for FHHPB ${tier} environment`,
-        removalPolicy: cdk.RemovalPolicy.RETAIN,
+        removalPolicy: cdk.RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE,
         generateSecretString: {
           secretStringTemplate: JSON.stringify({
             CLIENT_ID: "",
