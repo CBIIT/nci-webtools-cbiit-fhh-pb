@@ -794,9 +794,9 @@ function set_study_summary() {
 
   if (config.quadrants && Object.keys(config.quadrants).length > 0) {
     add_quadrant_row_to_table(tbody, "Top Right", config.quadrants?.top_right);
-    add_quadrant_row_to_table(tbody, "Bottom Right", config.quadrants?.bottom_right);
-    add_quadrant_row_to_table(tbody, "Bottom Left", config.quadrants?.bottom_left);
     add_quadrant_row_to_table(tbody, "Top Left", config.quadrants?.top_left);
+    add_quadrant_row_to_table(tbody, "Bottom Left", config.quadrants?.bottom_left);
+    add_quadrant_row_to_table(tbody, "Bottom Right", config.quadrants?.bottom_right);
   } else {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
