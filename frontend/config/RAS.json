@@ -18,21 +18,21 @@
   "h_spacing": 120,
   "v_spacing": 200,
   "quadrants": {
-    "top_right": {
-      "name": "Cardiac COIs",
-      "color": "blue"
-    },
     "top_left": {
-      "name": "Neuro COIs",
-      "color": "purple"
-    },
-    "bottom_left": {
-      "name": "Endocrine COIs",
+      "name": "Endocrine",
       "color": "yellow"
     },
-    "bottom_right": {
-      "name": "Cancers",
+    "top_right": {
+      "name": "Cancer",
       "color": "red"
+    },
+    "bottom_left": {
+      "name": "Cardiac",
+      "color": "blue"
+    },
+    "bottom_right": {
+      "name": "Neuro",
+      "color": "purple"
     }
   }
 }
