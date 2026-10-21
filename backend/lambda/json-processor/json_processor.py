@@ -13,6 +13,7 @@ import sys
 import unicodedata
 from collections import defaultdict
 from datetime import datetime, timezone
+from itertools import zip_longest
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -198,6 +199,15 @@ class JSONProcessor:
         )
         type_abbr = record.get("Subject_cancer[CANCER.type_abbr]", "")
         type_abbr_list = [value.strip() for value in type_abbr.split(";")] if type_abbr else []
+        mole_abbr = record.get("Mole_Clinical[type_abbr]", "")
+        if mole_abbr:
+            mole_abbr_list = [value.strip() for value in mole_abbr.split(";")]
+            type_abbr_list = [
+                "/".join(value for value in (cancer, mole) if value)
+                for cancer, mole in zip_longest(
+                    type_abbr_list, mole_abbr_list, fillvalue=""
+                )
+            ]
 
         return {
             "topography": topography_title,
