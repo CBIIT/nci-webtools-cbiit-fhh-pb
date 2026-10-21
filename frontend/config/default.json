@@ -16,5 +16,23 @@
   "h_padding": 200,
   "v_padding": 30,
   "h_spacing": 120,
-  "v_spacing": 200
+  "v_spacing": 200,
+  "quadrants": {
+    "top_left": {
+      "name": "Quadrant 2",
+      "color": "yellow"
+    },
+    "top_right": {
+      "name": "Quadrant 1",
+      "color": "red"
+    },
+    "bottom_left": {
+      "name": "Quadrant 3",
+      "color": "blue"
+    },
+    "bottom_right": {
+      "name": "Quadrant 4",
+      "color": "purple"
+    }
+  }
 }
