@@ -28,20 +28,56 @@ body {
   top: 0;
   z-index: 20;
   width:100%;
-  min-height:100px;
+  min-height:74px;
   height:auto;
+  display:flex;
+  flex-wrap:nowrap;
+  align-items:center;
+  overflow-x:auto;
+  overflow-y:hidden;
   background-color:#DDD;
 }
 
 .alertbar {
-  grid-column: span 2;
   font-family: sans-serif, Arial;
-  position: sticky;
-  top: 0;
-  z-index: 19;
-  width:100%;
-  padding:2px;
+  position:static;
+  z-index:auto;
+  flex:1 0 220px;
+  min-width:0;
+  max-height:54px;
+  align-self:center;
+  margin:5px 5px 5px auto;
+  padding:1px;
+  grid-template-columns:repeat(auto-fit, minmax(min(100%, 210px), 1fr));
+  align-content:start;
+  gap:2px;
+  overflow:auto;
   display:none;
+}
+
+.alertbar .alert-line {
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(min(100%, 90px), 1fr));
+  align-items:start;
+  gap:2px;
+  min-width:0;
+  margin:0;
+  font-size:11px;
+}
+
+.alert-heading {
+  grid-column:1 / -1;
+  font-size:11px;
+  font-weight:bold;
+}
+
+.alert-status {
+  grid-column:1 / -1;
+  margin:0;
+  padding:4px 6px;
+  color:#222;
+  font-size:12px;
+  font-weight:bold;
 }
 
 .fhh_pedigree {
@@ -54,28 +90,57 @@ body {
 
 
 .alert-button {
-    margin:5px;
-    padding:5px;
+  min-width:0;
+  margin:0;
+  padding:1px 3px;
+  overflow-wrap:anywhere;
+  font-size:10px;
+  line-height:1.15;
     background-color:#FAA;
-    border-radius:5px;
+  border-radius:2px;
 }
 
 .debug-block {
-  float:left;
+  float:none;
+  flex:0 0 auto;
   margin: 5px;
   border:2px solid black;
   width:fit-content;
   padding:5px;
-  height:78px;
+  height:50px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+}
+
+.special-actions-heading {
+  font-family:sans-serif, Arial;
+  font-size:14px;
+  font-weight:bold;
+}
+
+.special-actions-buttons {
+  display:flex;
+  align-items:center;
+  gap:4px;
+  white-space:nowrap;
+}
+
+.special-actions-buttons button {
+  margin:0;
+  padding:4px 8px;
 }
 
 .file-block {
-  float:left;
+  float:none;
+  flex:0 0 auto;
   margin: 5px;
   border:2px solid black;
   width:fit-content;
   padding:5px;
-  min-height:78px;
+  min-height:50px;
   height:auto;
   position:relative;
 }
@@ -113,12 +178,93 @@ body {
 }
 
 .radio-block {
-  float:left;
+  float:none;
+  flex:0 0 auto;
   margin: 5px;
   border:2px solid black;
   width:fit-content;
   padding:5px;
-  height:78px;
+  height:50px;
+  display:flex;
+  align-items:center;
+  gap:14px;
+}
+
+.mode-group {
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:4px;
+}
+
+.mode-group-actions {
+  align-self:flex-start;
+}
+
+.mode-group-heading {
+  font-family:sans-serif, Arial;
+  font-size:14px;
+  font-weight:bold;
+  text-align:center;
+}
+
+.mode-options {
+  display:flex;
+  align-items:center;
+}
+
+.mode-group-annotations {
+  gap:3px;
+}
+
+.annotation-tools {
+  display:flex;
+  align-items:center;
+  gap:3px;
+}
+
+.annotation-tool {
+  display:flex;
+  align-items:center;
+}
+
+.annotation-color-swatch {
+  position:static;
+  flex:0 0 14px;
+  width:14px;
+  height:14px;
+  padding:0;
+  border:1px solid #333;
+  background:transparent;
+  appearance:none;
+  -webkit-appearance:none;
+  cursor:pointer;
+}
+
+.annotation-color-swatch::-webkit-color-swatch-wrapper {
+  padding:0;
+}
+
+.annotation-color-swatch::-webkit-color-swatch {
+  border:0;
+}
+
+.annotation-delete-button {
+  padding:2px 12px;
+}
+
+.annotation-text-editor {
+  position:fixed;
+  z-index:30;
+  min-width:180px;
+  min-height:32px;
+  padding:4px;
+  border:1px solid #444;
+  background:#fff;
+  color:#111;
+  font:20px sans-serif;
+  resize:none;
+  overflow:hidden;
 }
 
 .radio-block input[type="radio"] {
@@ -130,7 +276,7 @@ body {
 .radio-block label {
     display: inline-block;
     background-color: #ddd;
-    padding: 10px 20px;
+  padding: 3px 14px;
     font-family: sans-serif, Arial;
     font-size: 16px;
     border: 2px solid #444;
@@ -141,6 +287,10 @@ body {
   background-color: #dfd;
 }
 
+.annotation-color-swatch:hover {
+  border-color:#111;
+}
+
 .radio-block input[type="radio"]:focus + label {
     border: 2px solid #444;
 }
@@ -148,16 +298,6 @@ body {
 .radio-block input[type="radio"]:checked + label {
     background-color: #bfb;
     border-color: #4c4;
-}
-
-#save-button{
-  padding:5px;
-  margin:5px;
-}
-
-#save-svg-button{
-  padding:5px;
-  margin:5px;
 }
 
 .textblock {

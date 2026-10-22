@@ -33,6 +33,7 @@ import {
 } from "./fhh_move.js";
 
 const svgns = "http://www.w3.org/2000/svg";
+const pencil_cursor = 'url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2224%22 height=%2224%22 viewBox=%220 0 24 24%22%3E%3Cpath d=%22m4 20 4-.8L20 7.2 16.8 4 4.8 16z%22 fill=%22white%22 stroke=%22black%22 stroke-width=%222%22/%3E%3C/svg%3E") 4 20, crosshair';
 var config;
 var data;
 var annotations;
@@ -41,6 +42,22 @@ let other_alerts = {};
 
 let family_tree = [];
 let people_drawn = [];
+let pending_line_start = null;
+let pending_line_element = null;
+let pending_text_annotation = null;
+let selected_annotation = null;
+let alert_dismiss_timer = null;
+let alert_is_pinned = false;
+const alert_auto_dismiss_delay = 10000;
+const annotation_selection_tolerance = 14;
+const annotation_endpoint_tolerance = 18;
+const annotation_colors = {
+  lines: "#000000",
+  arrows: "#000000",
+  texts: "#000000",
+};
+let dragging_annotation = false;
+let annotation_move_origin = null;
 
 let increment = 0;
 
@@ -108,20 +125,43 @@ family_select.addEventListener("change", function (event) {
 let clear_alert_elem = document.getElementById("clear-alert-button");
 clear_alert_elem.addEventListener("click", function () {
   const alert_elem = document.getElementById("alert");
+  clearTimeout(alert_dismiss_timer);
+  alert_dismiss_timer = null;
+  alert_is_pinned = false;
   alert_elem.innerHTML = "";
   alert_elem.style.backgroundColor = "#FFF";
   alert_elem.style.border = "none";
+  alert_elem.style.display = "none";
 });
 
-let log_elem = document.getElementById("log-button");
-log_elem.addEventListener("click", function () {
-  log_data_vs_dom_positions();
+let warning_area_elem = document.getElementById("alert");
+warning_area_elem.addEventListener("click", function () {
+  if (warning_area_elem.style.display === "none") return;
+  alert_is_pinned = true;
+  clearTimeout(alert_dismiss_timer);
+  alert_dismiss_timer = null;
 });
 
 let save_elem = document.getElementById("save-button");
-save_elem.addEventListener("click", function () {
+save_elem.addEventListener("click", async function () {
+  finish_pending_text_annotation();
+  try {
+    await save_positions_and_annotations(data, annotations);
+    show_save_export_status("File saved.", true);
+  } catch (error) {
+    show_save_export_status(`File save failed: ${error?.message || "Unknown error"}`, false);
+  }
+});
 
-  save_positions_and_annotations(data);
+let delete_annotation_elem = document.getElementById("delete-annotation-button");
+delete_annotation_elem.addEventListener("click", delete_selected_annotation);
+const annotation_color_input = document.getElementById("annotation-color");
+annotation_color_input.addEventListener("input", function () {
+  const color = annotation_color_input.value;
+  Object.keys(annotation_colors).forEach((collection) => {
+    annotation_colors[collection] = color;
+  });
+  if (selected_annotation) update_annotation_color(selected_annotation, color);
 });
 
 // Non-standard attributes used internally to wire up interactivity (see fhh_move.js
@@ -148,26 +188,28 @@ function strip_custom_svg_attributes(svg_elem) {
 
 let save_svg_elem = document.getElementById("save-svg-button");
 save_svg_elem.addEventListener("click", function () {
-  const svg_elem = document.getElementById("svg");
-  if (!svg_elem) {
-    window.alert("No pedigree SVG to save. Please load a family first.");
-    return;
+  try {
+    const svg_elem = document.getElementById("svg");
+    if (!svg_elem) throw new Error("No pedigree SVG is available to export.");
+
+    const clean_svg_elem = strip_custom_svg_attributes(svg_elem);
+    const svg_markup = new XMLSerializer().serializeToString(clean_svg_elem);
+    const family_id = family_select.value?.trim() || "family";
+    const filename = `${family_id}.svg`;
+
+    const blob = new Blob([svg_markup], { type: "image/svg+xml" });
+    const download_url = URL.createObjectURL(blob);
+    const download_link = document.createElement("a");
+    download_link.href = download_url;
+    download_link.download = filename;
+    document.body.appendChild(download_link);
+    download_link.click();
+    download_link.remove();
+    URL.revokeObjectURL(download_url);
+    show_save_export_status("File exported.", true);
+  } catch (error) {
+    show_save_export_status(`File export failed: ${error?.message || "Unknown error"}`, false);
   }
-
-  const clean_svg_elem = strip_custom_svg_attributes(svg_elem);
-  const svg_markup = new XMLSerializer().serializeToString(clean_svg_elem);
-  const family_id = family_select.value?.trim() || "family";
-  const filename = `${family_id}.svg`;
-
-  const blob = new Blob([svg_markup], { type: "image/svg+xml" });
-  const download_url = URL.createObjectURL(blob);
-  const download_link = document.createElement("a");
-  download_link.href = download_url;
-  download_link.download = filename;
-  document.body.appendChild(download_link);
-  download_link.click();
-  download_link.remove();
-  URL.revokeObjectURL(download_url);
 });
 
 let save_family_elem = document.getElementById("save-family-button");
@@ -175,10 +217,10 @@ if (save_family_elem) {
   save_family_elem.addEventListener("click", async function () {
     try {
       await save_family_json(data);
-      window.alert("Family saved.");
+      show_save_export_status("File saved.", true);
     } catch (error) {
       console.error("Error saving family:", error);
-      window.alert("Unable to save family. " + (error?.message || ""));
+      show_save_export_status(`File save failed: ${error?.message || "Unknown error"}`, false);
     }
   });
 }
@@ -291,7 +333,12 @@ set_current_action_mode(get_checked_action_radio_value() || "details");
 
 action_mode_radio_elems.forEach((radio_elem) => {
   radio_elem.addEventListener("change", function () {
+    finish_pending_text_annotation();
     set_current_action_mode(radio_elem.value);
+    clear_pending_line();
+    if (radio_elem.value !== "annotation-select") {
+      clear_selected_annotation();
+    }
   });
 });
 
@@ -356,7 +403,7 @@ function show_all_blocks() {
 
   const alert_blocks = document.getElementsByClassName("alertbar");
   Array.from(alert_blocks).forEach(block => {
-    block.style.display = "block";
+    block.style.display = block.textContent.trim() ? "grid" : "none";
   });
 
   const pedigree_blocks = document.getElementsByClassName("fhh_pedigree");
@@ -377,6 +424,8 @@ function add_placeholder_children() {
 }
 
 export function display_pedigree() {
+  clear_pending_line();
+  clear_selected_annotation();
   set_data(data);
   other_alerts = {};
 
@@ -392,6 +441,9 @@ export function display_pedigree() {
 
   draw_frame();
   draw_family_tree(family_tree);
+  draw_annotation_lines();
+  draw_annotation_arrows();
+  draw_annotation_texts();
 
   add_alert_bar();
 }
@@ -399,16 +451,47 @@ export function display_pedigree() {
 function add_alert_bar() {
   let active_alerts = false;
   const alert_elem = document.getElementById("alert");
+  clearTimeout(alert_dismiss_timer);
+  alert_dismiss_timer = null;
+  alert_is_pinned = false;
   alert_elem.innerHTML = "";
 
   active_alerts |= add_overlap_alerts(alert_elem);
   active_alerts |= add_unplaced_people_alerts(alert_elem);
   active_alerts |= add_other_alerts(alert_elem);
+  alert_elem.style.display = active_alerts ? "grid" : "none";
 
   if (!active_alerts) {
     alert_elem.style.backgroundColor = "white";
     alert_elem.style.border = "";
+    return;
   }
+
+  alert_dismiss_timer = setTimeout(function () {
+    if (!alert_is_pinned) alert_elem.style.display = "none";
+    alert_dismiss_timer = null;
+  }, alert_auto_dismiss_delay);
+}
+
+function show_save_export_status(message, succeeded) {
+  const alert_elem = document.getElementById("alert");
+  clearTimeout(alert_dismiss_timer);
+  alert_dismiss_timer = null;
+  alert_is_pinned = false;
+  alert_elem.innerHTML = "";
+
+  const status_elem = document.createElement("div");
+  status_elem.className = "alert-status";
+  status_elem.textContent = message;
+  alert_elem.append(status_elem);
+  alert_elem.style.backgroundColor = succeeded ? "#DFF0D8" : "#FDD";
+  alert_elem.style.border = succeeded ? "1px solid #39824A" : "1px dashed #F00";
+  alert_elem.style.display = "grid";
+
+  alert_dismiss_timer = setTimeout(function () {
+    if (!alert_is_pinned) alert_elem.style.display = "none";
+    alert_dismiss_timer = null;
+  }, alert_auto_dismiss_delay);
 }
 
 function add_overlap_alerts(alert_elem) {
@@ -420,7 +503,7 @@ function add_overlap_alerts(alert_elem) {
     const p = document.createElement("p");
     p.classList.add("alert-line");
     alert_elem.append(p);
-    p.append("Overlaps: ");
+    add_alert_heading(p, "Overlaps:");
     for (const person_name in overlaps) {
       const button = create_button(person_name);
       p.append(button);
@@ -440,7 +523,7 @@ function add_unplaced_people_alerts(alert_elem) {
     const p = document.createElement("p");
     p.classList.add("alert-line");
     alert_elem.append(p);
-    p.append("Missing People: ");
+    add_alert_heading(p, "Missing People:");
     for (const index in missing_people) {
       const person_id = missing_people[index];
       const children = find_all_children(person_id);
@@ -465,7 +548,7 @@ function add_other_alerts(alert_elem) {
     const p = document.createElement("p");
     p.classList.add("alert-line");
     alert_elem.append(p);
-    p.append("Other Alerts: ");
+    add_alert_heading(p, "Other Alerts:");
     for (const person_id of person_ids) {
       const text = person_id + ": " + other_alerts[person_id];
       const button = create_button(text);
@@ -477,59 +560,18 @@ function add_other_alerts(alert_elem) {
   }    
 } 
 
-// Debug helper: compares each person's in-memory x/y (what gets saved) against
-// their live SVG shape's actual rendered position, to catch drag/save desync bugs.
-function log_data_vs_dom_positions() {
-  const mismatches = [];
-  const rows = [];
-
-  for (const person_id in data["people"]) {
-    const person = data["people"][person_id];
-    const el =
-      document.querySelector(`rect[id="${person_id}"]`) ||
-      document.querySelector(`circle[id="${person_id}"]`) ||
-      document.querySelector(`polygon[id="${person_id}"]`);
-
-    if (!el) continue;
-
-    let dom_x, dom_y;
-    if (el.tagName === "polygon") {
-      const points = el.getAttribute("points").trim().split(/\s+/).map((p) => p.split(",").map(Number));
-      const xs = points.map((p) => p[0]);
-      const ys = points.map((p) => p[1]);
-      dom_x = (Math.min(...xs) + Math.max(...xs)) / 2;
-      dom_y = (Math.min(...ys) + Math.max(...ys)) / 2;
-    } else if (el.hasAttribute("cx")) {
-      dom_x = Number(el.getAttribute("cx"));
-      dom_y = Number(el.getAttribute("cy"));
-    } else {
-      dom_x = Number(el.getAttribute("x")) + config.size / 2;
-      dom_y = Number(el.getAttribute("y")) + config.size / 2;
-    }
-
-    const data_x = person.x;
-    const data_y = person.y;
-    const mismatch = Math.abs(dom_x - data_x) > 0.5 || Math.abs(dom_y - data_y) > 0.5;
-
-    rows.push({ person_id, data_x, data_y, dom_x, dom_y, mismatch });
-    if (mismatch) mismatches.push(person_id);
-  }
-
-  console.table(rows);
-  if (mismatches.length > 0) {
-    console.warn("DATA/DOM MISMATCH for:", mismatches);
-  } else {
-    console.log("No data/DOM position mismatches found.");
-  }
-}
-
-
-
 function create_button(text) {
   let button = document.createElement("button");
   button.textContent = text;
   button.className = "alert-button";
   return button;
+}
+
+function add_alert_heading(alert_line, text) {
+  const heading = document.createElement("span");
+  heading.classList.add("alert-heading");
+  heading.textContent = text;
+  alert_line.append(heading);
 }
 
 function draw_frame() {
@@ -616,13 +658,541 @@ export function create_svg(width, height) {
 
   svgElem.style.display = "block";
   svgElem.id = "svg";
+  add_annotation_arrow_marker(svgElem);
 
   var svgContainer = document.getElementById("main");
   svgContainer.innerHTML = "";
   svgContainer.appendChild(svgElem);
 
   addSvgListeners(svgElem);
+  svgElem.addEventListener("click", handle_line_annotation_click);
+  svgElem.addEventListener("dblclick", handle_text_annotation_double_click);
+  svgElem.addEventListener("mousemove", update_line_annotation_preview);
+  svgElem.addEventListener("mousemove", update_annotation_hover);
+  svgElem.addEventListener("mousedown", select_annotation_on_mousedown);
+  svgElem.addEventListener("mousedown", start_annotation_move);
+  svgElem.addEventListener("mousemove", move_selected_annotation);
+  svgElem.addEventListener("mouseup", finish_annotation_move);
+  svgElem.addEventListener("mouseleave", finish_annotation_move);
+  update_line_cursor();
   return svgElem;
+}
+
+function update_line_cursor() {
+  const svg_elem = document.getElementById("svg");
+  if (!svg_elem) return;
+  if (dragging_annotation) {
+    svg_elem.style.cursor = "grabbing";
+  } else if (current_action_mode === "annotation-select" && selected_annotation) {
+    svg_elem.style.cursor = "grab";
+  } else if (current_action_mode !== "annotation-line" && current_action_mode !== "annotation-arrow") {
+    svg_elem.style.cursor = "";
+  } else {
+    svg_elem.style.cursor = pending_line_start ? "crosshair" : pencil_cursor;
+  }
+}
+
+function get_svg_point(svg_elem, event) {
+  const screen_matrix = svg_elem.getScreenCTM();
+  if (!screen_matrix) return null;
+
+  const screen_point = svg_elem.createSVGPoint();
+  screen_point.x = event.clientX;
+  screen_point.y = event.clientY;
+  return screen_point.matrixTransform(screen_matrix.inverse());
+}
+
+function update_annotation_hover(event) {
+  if (dragging_annotation) return;
+
+  if (pending_line_start && (current_action_mode === "annotation-line" || current_action_mode === "annotation-arrow")) {
+    update_line_cursor();
+    return;
+  }
+
+  const point = get_svg_point(event.currentTarget, event);
+  if (point && find_annotation_at_point(point)) {
+    event.currentTarget.style.cursor = "grab";
+  } else {
+    update_line_cursor();
+  }
+}
+
+function select_annotation_on_mousedown(event) {
+  if (pending_line_start && (current_action_mode === "annotation-line" || current_action_mode === "annotation-arrow")) return;
+
+  const point = get_svg_point(event.currentTarget, event);
+  const hit_annotation = point ? find_annotation_at_point(point) : null;
+  if (hit_annotation) activate_annotation_selection(event.currentTarget, hit_annotation);
+}
+
+function activate_annotation_selection(svg_elem, annotation) {
+  clear_pending_line();
+  const select_radio = document.getElementById("annotation-select");
+  if (select_radio && !select_radio.checked) {
+    select_radio.checked = true;
+    select_radio.dispatchEvent(new Event("change"));
+  }
+  set_selected_annotation(annotation);
+  svg_elem.style.cursor = "grab";
+}
+
+function handle_line_annotation_click(event) {
+  const svg_elem = event.currentTarget;
+  const point = get_svg_point(svg_elem, event);
+  if (!point) return;
+
+  const completing_line = pending_line_start &&
+    (current_action_mode === "annotation-line" || current_action_mode === "annotation-arrow");
+  const hit_annotation = completing_line ? null : find_annotation_at_point(point);
+  if (hit_annotation) {
+    activate_annotation_selection(svg_elem, hit_annotation);
+    return;
+  }
+
+  if (current_action_mode === "annotation-text") {
+    start_text_annotation(event, point);
+    return;
+  }
+
+  if (current_action_mode === "annotation-select") {
+    set_selected_annotation(null);
+    return;
+  }
+
+  if (current_action_mode !== "annotation-line" && current_action_mode !== "annotation-arrow") return;
+
+  if (!pending_line_start) {
+    pending_line_start = { x: point.x, y: point.y };
+    const collection = current_action_mode === "annotation-arrow" ? "arrows" : "lines";
+    pending_line_element = current_action_mode === "annotation-arrow"
+      ? draw_arrow(point.x, point.y, point.x, point.y, annotation_colors.arrows)
+      : draw_line(point.x, point.y, point.x, point.y);
+    pending_line_element.setAttribute("stroke", annotation_colors[collection]);
+    pending_line_element.setAttribute("stroke-width", "2");
+    pending_line_element.setAttribute("pointer-events", "none");
+    update_line_cursor();
+    return;
+  }
+
+  pending_line_element.setAttribute("x2", point.x);
+  pending_line_element.setAttribute("y2", point.y);
+  annotations = annotations || {};
+  const collection = current_action_mode === "annotation-arrow" ? "arrows" : "lines";
+  annotations[collection] = Array.isArray(annotations[collection]) ? annotations[collection] : [];
+  const annotation_index = annotations[collection].length;
+  annotations[collection].push({
+    x1: pending_line_start.x,
+    y1: pending_line_start.y,
+    x2: point.x,
+    y2: point.y,
+    color: annotation_colors[collection],
+  });
+  pending_line_element.setAttribute("data-annotation-collection", collection);
+  pending_line_element.setAttribute("data-annotation-index", annotation_index);
+  pending_line_start = null;
+  pending_line_element = null;
+  update_line_cursor();
+}
+
+function handle_text_annotation_double_click(event) {
+  const point = get_svg_point(event.currentTarget, event);
+  if (!point) return;
+
+  const hit_annotation = find_annotation_at_point(point);
+  if (!hit_annotation || hit_annotation.collection !== "texts") return;
+
+  event.preventDefault();
+  const select_radio = document.getElementById("annotation-select");
+  if (select_radio && !select_radio.checked) {
+    select_radio.checked = true;
+    select_radio.dispatchEvent(new Event("change"));
+  }
+  set_selected_annotation(hit_annotation);
+  start_text_annotation_edit(event, hit_annotation);
+}
+
+function update_line_annotation_preview(event) {
+  if ((current_action_mode !== "annotation-line" && current_action_mode !== "annotation-arrow") || !pending_line_element) return;
+
+  const point = get_svg_point(event.currentTarget, event);
+  if (!point) return;
+  pending_line_element.setAttribute("x2", point.x);
+  pending_line_element.setAttribute("y2", point.y);
+}
+
+function clear_pending_line() {
+  pending_line_start = null;
+  pending_line_element?.remove();
+  pending_line_element = null;
+  update_line_cursor();
+}
+
+function draw_annotation_lines() {
+  if (!Array.isArray(annotations?.lines)) return;
+
+  annotations.lines.forEach((line, index) => {
+    const line_elem = draw_line(line.x1, line.y1, line.x2, line.y2);
+    line_elem.setAttribute("stroke", line.color || "#000000");
+    line_elem.setAttribute("stroke-width", "2");
+    line_elem.setAttribute("pointer-events", "none");
+    line_elem.setAttribute("data-annotation-collection", "lines");
+    line_elem.setAttribute("data-annotation-index", index);
+  });
+}
+
+function draw_annotation_arrows() {
+  if (!Array.isArray(annotations?.arrows)) return;
+
+  annotations.arrows.forEach((arrow, index) => {
+    const arrow_elem = draw_arrow(arrow.x1, arrow.y1, arrow.x2, arrow.y2, arrow.color || "#000000");
+    arrow_elem.setAttribute("stroke-width", "2");
+    arrow_elem.setAttribute("pointer-events", "none");
+    arrow_elem.setAttribute("data-annotation-collection", "arrows");
+    arrow_elem.setAttribute("data-annotation-index", index);
+  });
+}
+
+function draw_annotation_texts() {
+  if (!Array.isArray(annotations?.texts)) return;
+
+  annotations.texts.forEach((text, index) => {
+    create_annotation_text_element(text, index);
+  });
+}
+
+function create_annotation_text_element(text, index) {
+  const text_elem = document.createElementNS(svgns, "text");
+  text_elem.setAttribute("x", text.x);
+  text_elem.setAttribute("y", text.y);
+  text_elem.setAttribute("dominant-baseline", "hanging");
+  text_elem.setAttribute("font-family", "Arial, sans-serif");
+  text_elem.setAttribute("font-size", Math.max(16, (config?.size || 40) * 0.5));
+  text_elem.setAttribute("fill", text.color || "#000000");
+  text_elem.setAttribute("stroke", "none");
+  text_elem.setAttribute("pointer-events", "none");
+  text_elem.setAttribute("data-annotation-collection", "texts");
+  text_elem.setAttribute("data-annotation-index", index);
+  text_elem.textContent = text.text || "";
+  document.getElementById("svg").appendChild(text_elem);
+  return text_elem;
+}
+
+function start_text_annotation(event, point) {
+  finish_pending_text_annotation();
+  annotations = annotations || {};
+  annotations.texts = Array.isArray(annotations.texts) ? annotations.texts : [];
+
+  const text_annotation = { x: point.x, y: point.y, text: "", color: annotation_colors.texts };
+  const text_index = annotations.texts.length;
+  annotations.texts.push(text_annotation);
+  const text_element = create_annotation_text_element(text_annotation, text_index);
+  open_text_annotation_editor(event, text_annotation, text_element, text_index, true);
+}
+
+function start_text_annotation_edit(event, annotation) {
+  finish_pending_text_annotation();
+  const text_annotation = annotations.texts[annotation.index];
+  open_text_annotation_editor(event, text_annotation, annotation.element, annotation.index, false);
+}
+
+function open_text_annotation_editor(event, text_annotation, text_element, text_index, is_new) {
+  const editor = document.createElement("textarea");
+  editor.className = "annotation-text-editor";
+  editor.setAttribute("aria-label", "Annotation text");
+  editor.rows = 1;
+  editor.style.left = `${event.clientX}px`;
+  editor.style.top = `${event.clientY}px`;
+  editor.value = text_annotation.text || "";
+  document.body.appendChild(editor);
+
+  pending_text_annotation = {
+    collection: "texts",
+    index: text_index,
+    item: text_annotation,
+    element: text_element,
+    editor,
+    is_new,
+    original_text: text_annotation.text || "",
+  };
+  editor.addEventListener("input", function () {
+    text_annotation.text = editor.value;
+    text_element.textContent = editor.value;
+  });
+  editor.addEventListener("keydown", function (key_event) {
+    if (key_event.key === "Enter") {
+      key_event.preventDefault();
+      finish_pending_text_annotation();
+    } else if (key_event.key === "Escape") {
+      key_event.preventDefault();
+      cancel_pending_text_annotation();
+    }
+  });
+  editor.focus();
+}
+
+function finish_pending_text_annotation() {
+  if (!pending_text_annotation) return;
+
+  const pending = pending_text_annotation;
+  pending.item.text = pending.editor.value;
+  pending.element.textContent = pending.editor.value;
+  pending.editor.remove();
+  pending_text_annotation = null;
+
+  if (!pending.item.text.trim()) {
+    remove_annotation_at(pending.collection, pending.index);
+  }
+}
+
+function cancel_pending_text_annotation() {
+  if (!pending_text_annotation) return;
+
+  const pending = pending_text_annotation;
+  pending.editor.remove();
+  pending_text_annotation = null;
+  if (pending.is_new) {
+    remove_annotation_at(pending.collection, pending.index);
+  } else {
+    pending.item.text = pending.original_text;
+    pending.element.textContent = pending.original_text;
+  }
+}
+
+function find_annotation_at_point(point) {
+  let nearest_annotation = null;
+  let nearest_distance = annotation_endpoint_tolerance;
+
+  ["lines", "arrows", "texts"].forEach((collection) => {
+    const items = annotations?.[collection];
+    if (!Array.isArray(items)) return;
+
+    items.forEach((item, index) => {
+      const element = document.querySelector(
+        `#svg [data-annotation-collection="${collection}"][data-annotation-index="${index}"]`
+      );
+      if (!element) return;
+
+      const distance = collection === "texts"
+        ? distance_to_text(point, element)
+        : distance_to_segment(point, item);
+      if (distance <= nearest_distance) {
+        nearest_distance = distance;
+        nearest_annotation = { collection, index, element };
+      }
+    });
+  });
+
+  return nearest_annotation;
+}
+
+function distance_to_segment(point, segment) {
+  const delta_x = segment.x2 - segment.x1;
+  const delta_y = segment.y2 - segment.y1;
+  const length_squared = delta_x * delta_x + delta_y * delta_y;
+  const projection = length_squared === 0
+    ? 0
+    : Math.max(0, Math.min(1, ((point.x - segment.x1) * delta_x + (point.y - segment.y1) * delta_y) / length_squared));
+  const nearest_x = segment.x1 + projection * delta_x;
+  const nearest_y = segment.y1 + projection * delta_y;
+  return Math.hypot(point.x - nearest_x, point.y - nearest_y);
+}
+
+function distance_to_text(point, element) {
+  const bounds = element.getBBox();
+  const distance_x = Math.max(bounds.x - point.x, 0, point.x - bounds.x - bounds.width);
+  const distance_y = Math.max(bounds.y - point.y, 0, point.y - bounds.y - bounds.height);
+  return Math.hypot(distance_x, distance_y);
+}
+
+function get_annotation_move_target(point, annotation) {
+  if (annotation.collection === "texts") {
+    return distance_to_text(point, annotation.element) <= annotation_selection_tolerance ? "whole" : null;
+  }
+
+  const item = annotations[annotation.collection][annotation.index];
+  const start_distance = Math.hypot(point.x - item.x1, point.y - item.y1);
+  const end_distance = Math.hypot(point.x - item.x2, point.y - item.y2);
+  if (Math.min(start_distance, end_distance) <= annotation_endpoint_tolerance) {
+    return start_distance <= end_distance ? "start" : "end";
+  }
+  return distance_to_segment(point, item) <= annotation_selection_tolerance ? "whole" : null;
+}
+
+function start_annotation_move(event) {
+  if (current_action_mode !== "annotation-select") return;
+
+  const point = get_svg_point(event.currentTarget, event);
+  if (!point) return;
+  const hit_annotation = find_annotation_at_point(point);
+  if (!hit_annotation) return;
+
+  set_selected_annotation(hit_annotation);
+  const move_target = get_annotation_move_target(point, hit_annotation);
+  if (!move_target) return;
+
+  const item = annotations[hit_annotation.collection][hit_annotation.index];
+  annotation_move_origin = {
+    target: move_target,
+    point,
+    x: item.x,
+    y: item.y,
+    x1: item.x1,
+    y1: item.y1,
+    x2: item.x2,
+    y2: item.y2,
+  };
+  dragging_annotation = true;
+  event.preventDefault();
+  update_line_cursor();
+}
+
+function move_selected_annotation(event) {
+  if (!dragging_annotation || !selected_annotation || !annotation_move_origin) return;
+
+  const point = get_svg_point(event.currentTarget, event);
+  if (!point) return;
+
+  const delta_x = point.x - annotation_move_origin.point.x;
+  const delta_y = point.y - annotation_move_origin.point.y;
+  const item = annotations[selected_annotation.collection][selected_annotation.index];
+  if (selected_annotation.collection === "texts") {
+    item.x = annotation_move_origin.x + delta_x;
+    item.y = annotation_move_origin.y + delta_y;
+    selected_annotation.element.setAttribute("x", item.x);
+    selected_annotation.element.setAttribute("y", item.y);
+  } else if (annotation_move_origin.target === "start") {
+    item.x1 = annotation_move_origin.x1 + delta_x;
+    item.y1 = annotation_move_origin.y1 + delta_y;
+    selected_annotation.element.setAttribute("x1", item.x1);
+    selected_annotation.element.setAttribute("y1", item.y1);
+  } else if (annotation_move_origin.target === "end") {
+    item.x2 = annotation_move_origin.x2 + delta_x;
+    item.y2 = annotation_move_origin.y2 + delta_y;
+    selected_annotation.element.setAttribute("x2", item.x2);
+    selected_annotation.element.setAttribute("y2", item.y2);
+  } else {
+    item.x1 = annotation_move_origin.x1 + delta_x;
+    item.y1 = annotation_move_origin.y1 + delta_y;
+    item.x2 = annotation_move_origin.x2 + delta_x;
+    item.y2 = annotation_move_origin.y2 + delta_y;
+    selected_annotation.element.setAttribute("x1", item.x1);
+    selected_annotation.element.setAttribute("y1", item.y1);
+    selected_annotation.element.setAttribute("x2", item.x2);
+    selected_annotation.element.setAttribute("y2", item.y2);
+  }
+  event.preventDefault();
+}
+
+function finish_annotation_move() {
+  if (!dragging_annotation) return;
+  dragging_annotation = false;
+  annotation_move_origin = null;
+  update_line_cursor();
+}
+
+function set_selected_annotation(annotation) {
+  if (selected_annotation?.element) {
+    const previous_item = annotations?.[selected_annotation.collection]?.[selected_annotation.index];
+    const previous_color = previous_item?.color || "#000000";
+    if (selected_annotation.collection === "texts") {
+      selected_annotation.element.setAttribute("fill", previous_color);
+    } else {
+      selected_annotation.element.setAttribute("stroke", previous_color);
+      selected_annotation.element.setAttribute("stroke-width", "2");
+    }
+  }
+
+  selected_annotation = annotation;
+  if (selected_annotation?.element) {
+    const item = annotations?.[selected_annotation.collection]?.[selected_annotation.index];
+    const color = item?.color || "#000000";
+    Object.keys(annotation_colors).forEach((collection) => {
+      annotation_colors[collection] = color;
+    });
+    annotation_color_input.value = color;
+    if (selected_annotation.collection === "texts") {
+      selected_annotation.element.setAttribute("fill", "#d34b35");
+    } else {
+      selected_annotation.element.setAttribute("stroke", "#d34b35");
+      selected_annotation.element.setAttribute("stroke-width", "5");
+    }
+  }
+  delete_annotation_elem.disabled = !selected_annotation;
+  update_line_cursor();
+}
+
+function update_annotation_color(annotation, color) {
+  const item = annotations?.[annotation.collection]?.[annotation.index];
+  if (!item) return;
+  item.color = color;
+
+  const is_selected = selected_annotation?.collection === annotation.collection && selected_annotation.index === annotation.index;
+  if (annotation.collection === "texts") {
+    annotation.element.setAttribute("fill", is_selected ? "#d34b35" : color);
+  } else {
+    annotation.element.setAttribute("stroke", is_selected ? "#d34b35" : color);
+    if (annotation.collection === "arrows") {
+      const marker_id = add_annotation_arrow_marker(document.getElementById("svg"), color);
+      annotation.element.setAttribute("marker-end", `url(#${marker_id})`);
+    }
+  }
+}
+
+function clear_selected_annotation() {
+  set_selected_annotation(null);
+}
+
+function delete_selected_annotation() {
+  finish_pending_text_annotation();
+  if (!selected_annotation) return;
+
+  const { collection, index, element } = selected_annotation;
+  element.remove();
+  remove_annotation_at(collection, index);
+}
+
+function remove_annotation_at(collection, index) {
+  if (!Array.isArray(annotations?.[collection])) return;
+  annotations[collection].splice(index, 1);
+  if (selected_annotation?.collection === collection) {
+    if (selected_annotation.index === index) {
+      clear_selected_annotation();
+    } else if (selected_annotation.index > index) {
+      selected_annotation.index -= 1;
+    }
+  }
+  document
+    .querySelectorAll(`#svg [data-annotation-collection="${collection}"]`)
+    .forEach((annotation_element, remaining_index) => {
+      annotation_element.setAttribute("data-annotation-index", remaining_index);
+    });
+}
+
+function add_annotation_arrow_marker(svg_elem, color = "#000000") {
+  const defs = document.createElementNS(svgns, "defs");
+  const marker = document.createElementNS(svgns, "marker");
+  const color_id = color.toLowerCase().replace(/[^a-z0-9]/g, "") || "000000";
+  const marker_id = `annotation-arrowhead-${color_id}`;
+  const existing_marker = svg_elem.querySelector(`#${marker_id}`);
+  if (existing_marker) return marker_id;
+
+  marker.setAttribute("id", marker_id);
+  marker.setAttribute("markerWidth", "8");
+  marker.setAttribute("markerHeight", "8");
+  marker.setAttribute("markerUnits", "userSpaceOnUse");
+  marker.setAttribute("refX", "8");
+  marker.setAttribute("refY", "4");
+  marker.setAttribute("orient", "auto");
+
+  const arrowhead = document.createElementNS(svgns, "path");
+  arrowhead.setAttribute("d", "M 0 0 L 8 4 L 0 8 z");
+  arrowhead.setAttribute("fill", color);
+  arrowhead.setAttribute("stroke", "none");
+  marker.appendChild(arrowhead);
+  defs.appendChild(marker);
+  svg_elem.appendChild(defs);
+  return marker_id;
 }
 ///////////////////////////////////////////////
 
@@ -2780,6 +3350,14 @@ function draw_line(x1, y1, x2, y2) {
   svg.appendChild(lineElem);
 
   return lineElem;
+}
+
+function draw_arrow(x1, y1, x2, y2, color = "#000000") {
+  const arrow_elem = draw_line(x1, y1, x2, y2);
+  arrow_elem.setAttribute("stroke", color);
+  const marker_id = add_annotation_arrow_marker(document.getElementById("svg"), color);
+  arrow_elem.setAttribute("marker-end", `url(#${marker_id})`);
+  return arrow_elem;
 }
 
 /////. Helper functions /////
