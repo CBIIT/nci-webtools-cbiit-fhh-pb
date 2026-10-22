@@ -73,6 +73,14 @@ to a UTC-aware ISO 8601 string matching the format used for
 assumed to already be in UTC; values with an explicit offset are converted
 to UTC. If `ranAt` cannot be parsed as a datetime, it is kept as-is.
 
+Cancer abbreviations from `Subject_cancer[CANCER.type_abbr]` and
+`Mole_Clinical[type_abbr]` are split on semicolons, trimmed, and merged by
+position into `quad_abbrs`. Non-empty values in the same position are joined
+with `/`, with the cancer value first. For example, `"Melanoma;;;"` and
+`";;;YES"` produce `["Melanoma", "", "", "YES"]`. The merged values also
+populate the semicolon-delimited `abbr` and contribute to the person's
+`quad_flags`. Records without a cancer code do not produce a cancer disease.
+
 ## Output Format
 
 The function produces structured JSON with person-centric organization:

@@ -10,6 +10,8 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
+
 # Add the current directory to the Python path
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -151,6 +153,56 @@ def test_disease_abbr_joins_multiple_values_with_semicolon():
 
     assert cancer_disease["abbr"] == "something;else"
     assert non_cancer_disease["abbr"] == "something;else"
+
+
+@pytest.mark.parametrize(
+    ("cancer_abbr", "mole_abbr", "expected_quads", "expected_abbr"),
+    [
+        ("Melanoma;;;", ";;;YES", ["Melanoma", "", "", "YES"], "Melanoma;YES"),
+        ("Melanoma;;;A", ";;;YES", ["Melanoma", "", "", "A/YES"], "Melanoma;A/YES"),
+        (" Melanoma ;;; A ", " ; ; ; YES ", ["Melanoma", "", "", "A/YES"], "Melanoma;A/YES"),
+        ("Melanoma;;;", "", ["Melanoma", "", "", ""], "Melanoma"),
+        ("Melanoma;;;", None, ["Melanoma", "", "", ""], "Melanoma"),
+        ("", ";;;YES", ["", "", "", "YES"], "YES"),
+        (None, ";;;YES", ["", "", "", "YES"], "YES"),
+        ("Melanoma", ";;;YES", ["Melanoma", "", "", "YES"], "Melanoma;YES"),
+        ("Melanoma;;;", "YES", ["Melanoma/YES", "", "", ""], "Melanoma/YES"),
+        ("", "", [], ""),
+    ],
+)
+def test_cancer_disease_merges_mole_clinical_abbreviations(
+    cancer_abbr, mole_abbr, expected_quads, expected_abbr
+):
+    record = {
+        "Subject_cancer[CANCER.ICD03]": "C44.9",
+        "Subject_cancer[CANCER.type_abbr]": cancer_abbr,
+        "Mole_Clinical[type_abbr]": mole_abbr,
+    }
+
+    disease = JSONProcessor()._extract_cancer_disease(record)
+
+    assert disease is not None
+    assert disease["quad_abbrs"] == expected_quads
+    assert disease["abbr"] == expected_abbr
+
+
+def test_mole_clinical_abbreviations_update_person_quad_flags():
+    record = {
+        "Merge1[Subject]": "00101",
+        "Merge1[project]": "Test Study",
+        "Subject_cancer[CANCER.ICD03]": "C44.9",
+        "Subject_cancer[CANCER.NUM]": "1",
+        "Subject_cancer[CANCER.type_abbr]": "Melanoma;;;",
+        "Mole_Clinical[type_abbr]": ";;;YES",
+    }
+    processor = JSONProcessor()
+
+    processor.process_records([record])
+
+    person = processor.people["00101"]
+    assert person["diseases"][0]["quad_abbrs"] == ["Melanoma", "", "", "YES"]
+    assert person["diseases"][0]["abbr"] == "Melanoma;YES"
+    assert person["quad_flags"] == [True, False, False, True]
 
 
 def test_procedure_includes_abbr():
