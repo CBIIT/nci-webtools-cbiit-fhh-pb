@@ -27,7 +27,6 @@
       <div class='debug-block'>
         <div class="special-actions-heading">Special Actions</div>
         <div class="special-actions-buttons">
-          <button id="clear-alert-button" type="button">Clear Alerts</button>
           <button id="save-button" type="button">Save</button>
           <button id="save-svg-button" type="button">Export</button>
         </div>
@@ -93,7 +92,9 @@
           </div>
         </div>
       </DIV>
-      <div class="alertbar" id="alert"></div>
+      <div class="alertbar" id="alert">
+        <button id="clear-alert-button" class="alert-clear-button" type="button" aria-label="Clear alerts" title="Clear alerts">&times;</button>
+      </div>
     </DIV>
     <DIV class="textblock grid-item" id="details_textbox">  
         <div id="study_text" class="study-display-section"> <button> Close </button> </div>

@@ -128,7 +128,7 @@ clear_alert_elem.addEventListener("click", function () {
   clearTimeout(alert_dismiss_timer);
   alert_dismiss_timer = null;
   alert_is_pinned = false;
-  alert_elem.innerHTML = "";
+  alert_elem.replaceChildren(clear_alert_elem);
   alert_elem.style.backgroundColor = "#FFF";
   alert_elem.style.border = "none";
   alert_elem.style.display = "none";
@@ -403,7 +403,7 @@ function show_all_blocks() {
 
   const alert_blocks = document.getElementsByClassName("alertbar");
   Array.from(alert_blocks).forEach(block => {
-    block.style.display = block.textContent.trim() ? "grid" : "none";
+    block.style.display = block.querySelector(".alert-line, .alert-status") ? "grid" : "none";
   });
 
   const pedigree_blocks = document.getElementsByClassName("fhh_pedigree");
@@ -454,7 +454,7 @@ function add_alert_bar() {
   clearTimeout(alert_dismiss_timer);
   alert_dismiss_timer = null;
   alert_is_pinned = false;
-  alert_elem.innerHTML = "";
+  alert_elem.replaceChildren(clear_alert_elem);
 
   active_alerts |= add_overlap_alerts(alert_elem);
   active_alerts |= add_unplaced_people_alerts(alert_elem);
@@ -478,7 +478,7 @@ function show_save_export_status(message, succeeded) {
   clearTimeout(alert_dismiss_timer);
   alert_dismiss_timer = null;
   alert_is_pinned = false;
-  alert_elem.innerHTML = "";
+  alert_elem.replaceChildren(clear_alert_elem);
 
   const status_elem = document.createElement("div");
   status_elem.className = "alert-status";
