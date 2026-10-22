@@ -669,6 +669,8 @@ export function create_svg(width, height) {
   svgElem.addEventListener("dblclick", handle_text_annotation_double_click);
   svgElem.addEventListener("mousemove", update_line_annotation_preview);
   svgElem.addEventListener("mousemove", update_annotation_hover);
+  svgElem.addEventListener("mousedown", handle_person_mode_shortcut, true);
+  svgElem.addEventListener("contextmenu", suppress_person_context_menu, true);
   svgElem.addEventListener("mousedown", select_annotation_on_mousedown);
   svgElem.addEventListener("mousedown", start_annotation_move);
   svgElem.addEventListener("mousemove", move_selected_annotation);
@@ -702,8 +704,64 @@ function get_svg_point(svg_elem, event) {
   return screen_point.matrixTransform(screen_matrix.inverse());
 }
 
+function find_person_symbol_at_event(svg_elem, event) {
+  const screen_point = svg_elem.createSVGPoint();
+  screen_point.x = event.clientX;
+  screen_point.y = event.clientY;
+
+  for (const element of svg_elem.querySelectorAll("rect[name], circle[name], polygon[name]")) {
+    const person_id = element.getAttribute("name");
+    if (!data?.people?.[person_id]) continue;
+
+    const transform = element.getScreenCTM();
+    if (!transform) continue;
+    const local_point = screen_point.matrixTransform(transform.inverse());
+    const in_fill = typeof element.isPointInFill === "function" && element.isPointInFill(local_point);
+    const in_stroke = typeof element.isPointInStroke === "function" && element.isPointInStroke(local_point);
+    if (in_fill || in_stroke) return { person_id, element };
+  }
+  return null;
+}
+
+function handle_person_mode_shortcut(event) {
+  const annotation_mode = current_action_mode.startsWith("annotation-");
+  const has_modifier = event.shiftKey || event.ctrlKey;
+  if (!annotation_mode && !(current_action_mode === "details" && has_modifier)) return;
+
+  const person = find_person_symbol_at_event(event.currentTarget, event);
+  if (!person) return;
+
+  event.stopPropagation();
+  if (has_modifier) event.preventDefault();
+  if (annotation_mode) {
+    finish_pending_text_annotation();
+    clear_pending_line();
+  }
+
+  const action = event.ctrlKey ? "free" : event.shiftKey ? "slide" : "details";
+  if (action === "details") {
+    set_study_summary();
+    set_details_of_person(person.person_id);
+  } else if (action === "free") {
+    start_free_move(event, person.element);
+  } else {
+    start_slide_move(event, person.element);
+  }
+}
+
+function suppress_person_context_menu(event) {
+  if (!event.ctrlKey) return;
+  if (current_action_mode !== "details" && !current_action_mode.startsWith("annotation-")) return;
+  if (find_person_symbol_at_event(event.currentTarget, event)) event.preventDefault();
+}
+
 function update_annotation_hover(event) {
   if (dragging_annotation) return;
+
+  if ((current_action_mode === "annotation-line" || current_action_mode === "annotation-arrow") && find_person_symbol_at_event(event.currentTarget, event)) {
+    event.currentTarget.style.cursor = "default";
+    return;
+  }
 
   if (pending_line_start && (current_action_mode === "annotation-line" || current_action_mode === "annotation-arrow")) {
     update_line_cursor();
@@ -739,6 +797,8 @@ function activate_annotation_selection(svg_elem, annotation) {
 
 function handle_line_annotation_click(event) {
   const svg_elem = event.currentTarget;
+  if (find_person_symbol_at_event(svg_elem, event)) return;
+
   const point = get_svg_point(svg_elem, event);
   if (!point) return;
 
@@ -2850,19 +2910,36 @@ function set_details_of_person(person_id) {
 }
 
 function add_clicking_to_element(el, person_id) {
+  let suppress_next_context_menu = false;
+
   el.addEventListener("mousedown", (e) => {
-    const selectedValue = current_action_mode;
+    let selectedValue = current_action_mode;
+    suppress_next_context_menu = false;
+    const is_annotation_mode = selectedValue.startsWith("annotation-");
+    const has_modifier = e.shiftKey || e.ctrlKey;
+    if (is_annotation_mode || (selectedValue === "details" && has_modifier)) {
+      suppress_next_context_menu = e.ctrlKey;
+      selectedValue = e.ctrlKey ? "free" : e.shiftKey ? "slide" : "details";
+      e.stopPropagation();
+      if (has_modifier) e.preventDefault();
+      if (is_annotation_mode) clear_pending_line();
+    }
 
     if (selectedValue == "details") {
-      // Log the person data to the console
       set_study_summary();
       set_details_of_person(person_id);
 
     } else if (selectedValue == "free") {
-      start_free_move(e);
+      start_free_move(e, el);
     } else if (selectedValue == "slide") {
-      start_slide_move(e);
+      start_slide_move(e, el);
     }
+  });
+
+  el.addEventListener("contextmenu", (e) => {
+    if (!suppress_next_context_menu) return;
+    e.preventDefault();
+    suppress_next_context_menu = false;
   });
 }
 
