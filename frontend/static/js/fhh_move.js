@@ -14,8 +14,8 @@ var target = null;
 
 /// Free Move Functions
 
-export function start_free_move(e) {
-  target = e.target;
+export function start_free_move(e, move_target = e.target) {
+  target = move_target;
 
   let id = e.target.attributes.name.value;
 
@@ -102,8 +102,8 @@ function stop_free_move(e) {
 
 // Tree Slide functions
 
-export function start_slide_move(e) {
-  target = e.target;
+export function start_slide_move(e, move_target = e.target) {
+  target = move_target;
 
   let id = e.target.attributes.name.value;
 
