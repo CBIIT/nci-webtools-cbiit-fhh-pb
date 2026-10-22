@@ -25,13 +25,11 @@
   <DIV class="grid-container">
     <DIV class='navbar grid-item'>
       <div class='debug-block'>
-        Special Actions:<br/>
-        <BUTTON id='log-button'>LOG</BUTTON>
-        <BUTTON id='clear-alert-button'>Clear Alerts</BUTTON>
-        <br/><button id="save-family-button" style="display:none;"> Save Family </button>
-        <button id="save-button"> Save Locations </button>
-        <button id="save-svg-button"> Save to SVG </button>
-
+        <div class="special-actions-heading">Special Actions</div>
+        <div class="special-actions-buttons">
+          <button id="save-button" type="button">Save</button>
+          <button id="save-svg-button" type="button">Export</button>
+        </div>
       </div>
       <div class="file-block">
         <div id="selection-loading-overlay" class="selection-loading-overlay" aria-hidden="true" style="display:none;">
@@ -51,20 +49,52 @@
         <div id="build-mode-actions" class="build-mode-actions" style="display:none;">
           <button id="new-study-button" type="button">New Study</button>
           <button id="new-family-button" type="button">New Family</button>
+          <button id="save-family-button" type="button" style="display:none;">Save Family</button>
         </div>
       </div>
-      <div class="radio-block"> Action Mode: <br />
-        <input type="radio" id="details" name="action_choice" value="details" checked="checked">
-        <label for="details">Details</label>
+      <div class="radio-block">
+        <div class="mode-group mode-group-actions">
+          <div class="mode-group-heading">Action Mode</div>
+          <div class="mode-options">
+            <input type="radio" id="details" name="action_choice" value="details" checked="checked">
+            <label for="details">Details</label>
 
-        <input type="radio" id="slide" name="action_choice" value="slide">
-        <label for="slide">Slide</label>
+            <input type="radio" id="slide" name="action_choice" value="slide">
+            <label for="slide">Slide</label>
 
-        <input type="radio" id="free" name="action_choice" value="free">
-        <label for="free">Free</label>
+            <input type="radio" id="free" name="action_choice" value="free">
+            <label for="free">Free</label>
+          </div>
+        </div>
+        <div class="mode-group mode-group-annotations">
+          <div class="mode-group-heading">Annotations</div>
+          <div class="annotation-tools">
+            <input type="color" id="annotation-color" class="annotation-color-swatch" value="#000000" aria-label="Annotation color" title="Annotation color">
+            <div class="mode-options annotation-mode-options">
+            <div class="annotation-tool">
+              <input type="radio" id="annotation-line" name="action_choice" value="annotation-line">
+              <label for="annotation-line">Line</label>
+            </div>
+            <div class="annotation-tool">
+              <input type="radio" id="annotation-arrow" name="action_choice" value="annotation-arrow">
+              <label for="annotation-arrow">Arrow</label>
+            </div>
+            <div class="annotation-tool">
+              <input type="radio" id="annotation-text" name="action_choice" value="annotation-text">
+              <label for="annotation-text">Text</label>
+            </div>
+            <div class="annotation-tool">
+              <input type="radio" id="annotation-select" name="action_choice" value="annotation-select">
+              <label for="annotation-select">Select</label>
+            </div>
+            </div>
+            <button id="delete-annotation-button" class="annotation-delete-button" type="button" disabled>Delete</button>
+          </div>
+        </div>
       </DIV>
-    </DIV>
-    <DIV class='alertbar grid-item' id='alert'>
+      <div class="alertbar" id="alert">
+        <button id="clear-alert-button" class="alert-clear-button" type="button" aria-label="Clear alerts" title="Clear alerts">&times;</button>
+      </div>
     </DIV>
     <DIV class="textblock grid-item" id="details_textbox">  
         <div id="study_text" class="study-display-section"> <button> Close </button> </div>
