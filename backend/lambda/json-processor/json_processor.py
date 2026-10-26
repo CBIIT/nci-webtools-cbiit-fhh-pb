@@ -303,8 +303,9 @@ class JSONProcessor:
         Compute a 4-position boolean array across all of a person's diseases.
 
         Each disease's "quad_abbrs" is a 4-value array (split from a
-        semicolon-delimited field). Position i of the returned array is True
-        if any disease has a non-empty value at position i.
+        semicolon-delimited field) ordered top-right, top-left, bottom-left,
+        bottom-right. Position i of the returned array is True if any disease
+        has a non-empty value at position i.
 
         Args:
             diseases: List of disease dictionaries (cancer and non-cancer)
