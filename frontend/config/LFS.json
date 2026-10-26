@@ -22,7 +22,7 @@
       "name": "Non Cancer COIs",
       "color": "yellow"
     },
-    "bottom_right": {
+    "top_left": {
       "name": "Cancer COIs",
       "color": "red"
     }
