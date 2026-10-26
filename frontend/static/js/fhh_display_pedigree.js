@@ -3446,12 +3446,12 @@ export function set_other_alert(person_id, message) {
 ///
 // Quadrants
 
-// person.quad_flags and disease.quad_abbrs (formerly quad_abbr) are indexed [top_right, bottom_right, bottom_left, top_left].
+// person.quad_flags and disease.quad_abbrs (formerly quad_abbr) are indexed [top_right, top_left, bottom_left, bottom_right].
 function check_quadrant_tr(person_id) {
   return !!data["people"][person_id]?.quad_flags?.[0];
 }
 
-function check_quadrant_br(person_id) {
+function check_quadrant_tl(person_id) {
   return !!data["people"][person_id]?.quad_flags?.[1];
 }
 
@@ -3459,7 +3459,7 @@ function check_quadrant_bl(person_id) {
   return !!data["people"][person_id]?.quad_flags?.[2];
 }
 
-function check_quadrant_tl(person_id) {
+function check_quadrant_br(person_id) {
   return !!data["people"][person_id]?.quad_flags?.[3];
 }
 
@@ -3470,9 +3470,9 @@ function get_matching_quadrants_for_disease(disease) {
 
   const ordered_quadrants = [
     quadrants.top_right,
-    quadrants.bottom_right,
-    quadrants.bottom_left,
     quadrants.top_left,
+    quadrants.bottom_left,
+    quadrants.bottom_right,
   ];
 
   const matches = [];
