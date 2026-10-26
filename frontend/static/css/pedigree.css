@@ -308,6 +308,11 @@ body {
   background-color: #dfd;
 }
 
+.radio-block label.modifier-preview {
+  background-color:#bfb;
+  border-color:#4c4;
+}
+
 .annotation-color-swatch:hover {
   border-color:#111;
 }
@@ -319,6 +324,11 @@ body {
 .radio-block input[type="radio"]:checked + label {
     background-color: #bfb;
     border-color: #4c4;
+}
+
+.radio-block input[type="radio"]:checked + label.modifier-suppressed {
+  background-color:#ddd;
+  border-color:#444;
 }
 
 .textblock {

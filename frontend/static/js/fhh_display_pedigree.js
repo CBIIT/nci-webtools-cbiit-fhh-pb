@@ -314,6 +314,8 @@ if (new_family_button_elem) {
 
 let action_mode_radio_elems = document.querySelectorAll('input[name="action_choice"]');
 let current_action_mode = "details";
+let shift_key_down = false;
+let control_key_down = false;
 
 function get_checked_action_radio_value() {
   const checked_radio = document.querySelector('input[name="action_choice"]:checked');
@@ -323,6 +325,27 @@ function get_checked_action_radio_value() {
 
 function set_current_action_mode(mode) {
   current_action_mode = mode;
+  update_modifier_action_preview();
+}
+
+function update_modifier_action_preview() {
+  document.querySelectorAll(".radio-block label.modifier-preview, .radio-block label.modifier-suppressed").forEach((label) => {
+    label.classList.remove("modifier-preview");
+    label.classList.remove("modifier-suppressed");
+  });
+
+  if (current_action_mode !== "details" && !current_action_mode.startsWith("annotation-")) return;
+
+  const preview_mode = control_key_down ? "free" : shift_key_down ? "slide" : null;
+  if (preview_mode) {
+    document.querySelector(`.radio-block label[for="${preview_mode}"]`)?.classList.add("modifier-preview");
+    if (preview_mode !== current_action_mode) {
+      const selected_radio = document.querySelector('input[name="action_choice"]:checked');
+      if (selected_radio) {
+        document.querySelector(`.radio-block label[for="${selected_radio.id}"]`)?.classList.add("modifier-suppressed");
+      }
+    }
+  }
 }
 
 function is_pedigree_build_mode() {
@@ -330,6 +353,25 @@ function is_pedigree_build_mode() {
 }
 
 set_current_action_mode(get_checked_action_radio_value() || "details");
+
+document.addEventListener("keydown", function (event) {
+  if (event.target instanceof Element && event.target.closest("input[type='color'], textarea, [contenteditable='true']")) return;
+  if (event.key === "Shift") shift_key_down = true;
+  if (event.key === "Control") control_key_down = true;
+  update_modifier_action_preview();
+});
+
+document.addEventListener("keyup", function (event) {
+  if (event.key === "Shift") shift_key_down = false;
+  if (event.key === "Control") control_key_down = false;
+  update_modifier_action_preview();
+});
+
+window.addEventListener("blur", function () {
+  shift_key_down = false;
+  control_key_down = false;
+  update_modifier_action_preview();
+});
 
 action_mode_radio_elems.forEach((radio_elem) => {
   radio_elem.addEventListener("change", function () {
