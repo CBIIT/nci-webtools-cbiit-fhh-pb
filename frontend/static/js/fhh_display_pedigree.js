@@ -3732,9 +3732,14 @@ function draw_line_connecting_parents_down(
   elem.setAttributeNS(null, "p_father_id", father_id);
 }
 
+// Baseline of the first label line under a person's symbol.
+function label_top(center) {
+  return center.y + config.size / 2 + config.v_padding / 2;
+}
+
 function draw_name(center, person_id) {
   const loc_x = center.x;
-  const loc_y = center.y + config.size / 2 + config.v_padding;
+  const loc_y = label_top(center);
 
   //  if (data["people"][person_id] && data["people"][person_id].name) {
   //    text = data["people"][person_id].name;
@@ -3766,7 +3771,7 @@ function draw_born_and_deceased(center, person_id) {
 
   if (born_deceased) {
     const loc_x = center.x;
-    const loc_y = center.y + config.size / 2 + 2 * config.v_padding;
+    const loc_y = label_top(center) + config.v_padding;
     const elem = draw_label(born_deceased, loc_x , loc_y );
     if (born_deceased.length > 15) {
       elem.setAttribute("font-size", 10);
@@ -3788,7 +3793,7 @@ function draw_highlighted_diseases(center, person_id) {
   if (matches.length === 0) return;
 
   const loc_x = center.x;
-  const loc_y = center.y + config.size / 2 + 2 * config.v_padding + 14;
+  const loc_y = label_top(center) + config.v_padding + 14;
   const elem = draw_label(matches.join(", "), loc_x, loc_y);
   elem.setAttribute("id", person_id);
 }
