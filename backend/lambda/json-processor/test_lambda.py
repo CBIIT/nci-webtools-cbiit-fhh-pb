@@ -45,6 +45,9 @@ def create_test_data() -> list:
             "CORE[MPT_ID3]": "00103",
             "Merge2[Pedigree_Symbol]": "%",
             "Merge2[individual_genetic_status]": "Positive",
+            "CORE_ADD[PT_IDENTICAL_SIBS]": "Twin, Identical",
+            "CORE_ADD[PT_ADPT_IND]": "Yes-Adopted in",
+            "CORE[PRSN_MARST_CAT]": "Divorced",
             "DEMO[SEX_OLD]": "M",
             "Subject_cancer[CANCER.ICD03]": "C50.9",
             "Subject_cancer[CANCER.NUM]": "1",
@@ -160,6 +163,21 @@ def test_person_includes_individual_genetic_status():
     processor.process_records(create_test_data())
 
     assert processor.people["00101"]["individual_genetic_status"] == "Positive"
+
+
+def test_person_includes_multiple_birth_adoption_and_marital_status():
+    """Ensure multiple birth type, adoption, and marital status are mapped onto the person."""
+    processor = JSONProcessor()
+    processor.process_records(create_test_data())
+
+    person = processor.people["00101"]
+    assert person["multiple_birth_type"] == "Twin, Identical"
+    assert person["adoption"] == "Yes-Adopted in"
+    assert person["marital_status"] == "Divorced"
+
+    # Blank values are dropped from the output like other empty fields
+    for field in ("multiple_birth_type", "adoption", "marital_status"):
+        assert field not in processor.people["00102"]
 
 
 def test_disease_abbr_joins_multiple_values_with_semicolon():
