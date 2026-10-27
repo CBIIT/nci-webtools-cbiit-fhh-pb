@@ -793,8 +793,8 @@ function show_save_export_status(message, succeeded) {
   status_elem.className = "alert-status";
   status_elem.textContent = message;
   alert_elem.append(status_elem);
-  alert_elem.style.backgroundColor = succeeded ? "#DFF0D8" : "#FDD";
-  alert_elem.style.border = succeeded ? "1px solid #39824A" : "1px dashed #F00";
+  alert_elem.style.backgroundColor = succeeded ? ALERT_TONES.success.background : ALERT_TONES.error.background;
+  alert_elem.style.border = succeeded ? ALERT_TONES.success.border : ALERT_TONES.error.border;
   alert_elem.style.display = "grid";
 
   alert_dismiss_timer = setTimeout(function () {
@@ -807,8 +807,8 @@ function add_overlap_alerts(alert_elem) {
   const overlaps = check_for_overlaps(family_tree);
 
   if (overlaps && Object.keys(overlaps).length > 0) {
-    alert_elem.style.backgroundColor = "#FDD";
-    alert_elem.style.border = "1px dashed #F00";
+    alert_elem.style.backgroundColor = ALERT_TONES.error.background;
+    alert_elem.style.border = ALERT_TONES.error.border;
     const p = document.createElement("p");
     p.classList.add("alert-line");
     alert_elem.append(p);
@@ -827,8 +827,8 @@ function add_unplaced_people_alerts(alert_elem) {
   const missing_people = check_for_unplaced_people(data);
 
   if (missing_people && Object.keys(missing_people).length > 0) {
-    alert_elem.style.backgroundColor = "#FDD";
-    alert_elem.style.border = "1px dashed #F00";
+    alert_elem.style.backgroundColor = ALERT_TONES.error.background;
+    alert_elem.style.border = ALERT_TONES.error.border;
     const p = document.createElement("p");
     p.classList.add("alert-line");
     alert_elem.append(p);
@@ -847,6 +847,11 @@ function add_unplaced_people_alerts(alert_elem) {
 }
 
 let layout_problems = { crossings: [], hits: [], multi_partner: [] };
+const ALERT_TONES = {
+  error: { background: "#FFF5F5", border: "1px solid #F1B0B0" },
+  warning: { background: "#FFFBEA", border: "1px solid #EBCB72" },
+  success: { background: "#F0F9F1", border: "1px solid #9BD3A6" },
+};
 let reported_problem_keys = new Set();
 const MAX_PROBLEM_BUTTONS = 20;
 
@@ -923,8 +928,9 @@ function set_alert_colors(alert_elem) {
       ? !line.querySelector(".alert-button:not(.alert-button-soft)")
       : false
   );
-  alert_elem.style.backgroundColor = only_soft ? "#FFF4D6" : "#FDD";
-  alert_elem.style.border = only_soft ? "1px dashed #C90" : "1px dashed #F00";
+  const tone = only_soft ? ALERT_TONES.warning : ALERT_TONES.error;
+  alert_elem.style.backgroundColor = tone.background;
+  alert_elem.style.border = tone.border;
 }
 
 function segment_key(segment) {
@@ -1021,8 +1027,8 @@ function add_other_alerts(alert_elem) {
   const person_ids = Object.keys(other_alerts);
 
   if (person_ids.length > 0) {
-    alert_elem.style.backgroundColor = "#FDD";
-    alert_elem.style.border = "1px dashed #F00";
+    alert_elem.style.backgroundColor = ALERT_TONES.error.background;
+    alert_elem.style.border = ALERT_TONES.error.border;
     const p = document.createElement("p");
     p.classList.add("alert-line");
     alert_elem.append(p);
