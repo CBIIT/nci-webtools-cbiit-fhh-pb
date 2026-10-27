@@ -32,6 +32,8 @@ import {
   start_slide_move,
 } from "./fhh_move.js";
 
+import * as history from "./fhh_history.js";
+
 const svgns = "http://www.w3.org/2000/svg";
 const pencil_cursor = 'url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2224%22 height=%2224%22 viewBox=%220 0 24 24%22%3E%3Cpath d=%22m4 20 4-.8L20 7.2 16.8 4 4.8 16z%22 fill=%22white%22 stroke=%22black%22 stroke-width=%222%22/%3E%3C/svg%3E") 4 20, crosshair';
 var config;
@@ -77,7 +79,13 @@ export function get_config() {
 
 
 let study_select = document.getElementById("study_select");
+let previous_study_value = study_select.value;
 study_select.addEventListener("change", function (event) {
+  if (!confirm_discard_unsaved_changes()) {
+    study_select.value = previous_study_value;
+    return;
+  }
+  previous_study_value = study_select.value;
   study_name = event.target.value;
   set_selection_loading(true);
   Promise.all([
@@ -97,10 +105,16 @@ study_select.addEventListener("change", function (event) {
 });
 
 let family_select = document.getElementById("families_select");
+let previous_family_value = family_select.value;
 family_select.addEventListener("change", function (event) {
   if (!study_name) {
     return;
   }
+  if (!confirm_discard_unsaved_changes()) {
+    family_select.value = previous_family_value;
+    return;
+  }
+  previous_family_value = family_select.value;
 
   set_selection_loading(true);
   load_config_and_data(study_name, event.target.value, study_name)
@@ -109,6 +123,7 @@ family_select.addEventListener("change", function (event) {
       annotations = a;
       config = c;
       display_pedigree();
+      history.reset(take_snapshot());
       show_all_blocks();
       show_summary_block();
       set_study_summary();
@@ -147,10 +162,84 @@ save_elem.addEventListener("click", async function () {
   finish_pending_text_annotation();
   try {
     await save_positions_and_annotations(data, annotations);
+    history.mark_saved();
     show_save_export_status("File saved.", true);
   } catch (error) {
     show_save_export_status(`File save failed: ${error?.message || "Unknown error"}`, false);
   }
+});
+
+////////////////////// Undo / redo and saved state
+
+const undo_elem = document.getElementById("undo-button");
+const redo_elem = document.getElementById("redo-button");
+undo_elem.addEventListener("click", undo_change);
+redo_elem.addEventListener("click", redo_change);
+
+history.on_change(function () {
+  undo_elem.disabled = !history.can_undo();
+  redo_elem.disabled = !history.can_redo();
+  save_elem.disabled = !history.is_dirty();
+});
+
+function take_snapshot() {
+  const positions = {};
+  for (const [person_id, person] of Object.entries(data?.people || {})) {
+    if (person.x != null && person.y != null) positions[person_id] = { x: person.x, y: person.y };
+  }
+  return {
+    positions,
+    lines: annotations?.lines ?? [],
+    arrows: annotations?.arrows ?? [],
+    texts: annotations?.texts ?? [],
+  };
+}
+
+// Called after every completed user change (drag, annotation edit) to record an undo step.
+export function record_change() {
+  if (data) history.commit(take_snapshot());
+}
+
+function restore_snapshot(snapshot) {
+  if (!snapshot) return;
+  annotations = annotations || {};
+  annotations.positions = Object.fromEntries(
+    Object.entries(snapshot.positions).filter(([person_id]) => data.people[person_id])
+  );
+  annotations.lines = snapshot.lines;
+  annotations.arrows = snapshot.arrows;
+  annotations.texts = snapshot.texts;
+  display_pedigree();
+}
+
+function undo_change() {
+  finish_pending_text_annotation();
+  restore_snapshot(history.undo());
+}
+
+function redo_change() {
+  finish_pending_text_annotation();
+  restore_snapshot(history.redo());
+}
+
+function confirm_discard_unsaved_changes() {
+  return !history.is_dirty() || window.confirm("You have unsaved changes. Discard them?");
+}
+
+window.addEventListener("beforeunload", function (event) {
+  if (!history.is_dirty()) return;
+  event.preventDefault();
+  event.returnValue = "";
+});
+
+document.addEventListener("keydown", function (event) {
+  if (!(event.metaKey || event.ctrlKey)) return;
+  const key = event.key.toLowerCase();
+  if (key !== "z" && key !== "y") return;
+  if (event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable='true']")) return;
+  event.preventDefault();
+  if (key === "y" || event.shiftKey) redo_change();
+  else undo_change();
 });
 
 let delete_annotation_elem = document.getElementById("delete-annotation-button");
@@ -163,6 +252,7 @@ annotation_color_input.addEventListener("input", function () {
   });
   if (selected_annotation) update_annotation_color(selected_annotation, color);
 });
+annotation_color_input.addEventListener("change", record_change);
 
 // Non-standard attributes used internally to wire up interactivity (see fhh_move.js
 // attribute selectors); PowerPoint's SVG parser rejects them, so strip them on export.
@@ -429,6 +519,9 @@ document.addEventListener("DOMContentLoaded", async function () {
         set_study_summary();
         set_family_summary();
         display_pedigree();
+        history.reset(take_snapshot());
+        previous_study_value = study_select.value;
+        previous_family_value = family_select.value;
       }
     }
   } catch (error) {
@@ -896,6 +989,7 @@ function handle_line_annotation_click(event) {
   pending_line_start = null;
   pending_line_element = null;
   update_line_cursor();
+  record_change();
 }
 
 function handle_text_annotation_double_click(event) {
@@ -1046,6 +1140,7 @@ function finish_pending_text_annotation() {
   if (!pending.item.text.trim()) {
     remove_annotation_at(pending.collection, pending.index);
   }
+  record_change();
 }
 
 function cancel_pending_text_annotation() {
@@ -1192,6 +1287,7 @@ function finish_annotation_move() {
   dragging_annotation = false;
   annotation_move_origin = null;
   update_line_cursor();
+  record_change();
 }
 
 function set_selected_annotation(annotation) {
@@ -1253,6 +1349,7 @@ function delete_selected_annotation() {
   const { collection, index, element } = selected_annotation;
   element.remove();
   remove_annotation_at(collection, index);
+  record_change();
 }
 
 function remove_annotation_at(collection, index) {

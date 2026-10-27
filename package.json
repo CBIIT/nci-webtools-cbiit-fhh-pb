@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "test:frontend:pedigree": "node --test frontend/static/js/fhh_build_pedigree.test.cjs"
+    "test:frontend:pedigree": "node --test frontend/static/js/fhh_build_pedigree.test.cjs frontend/static/js/fhh_history.test.cjs"
   },
   "repository": {
     "type": "git",

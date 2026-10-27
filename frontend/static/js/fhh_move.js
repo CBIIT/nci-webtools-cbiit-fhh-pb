@@ -1,6 +1,6 @@
 
 import { find_all_partners, find_all_children, find_all_descendants, get_data } from "./fhh_build_pedigree.js";
-import { get_config, ensure_canvas_fits_point, sibship_bar_y } from "./fhh_display_pedigree.js";
+import { get_config, ensure_canvas_fits_point, sibship_bar_y, record_change } from "./fhh_display_pedigree.js";
 
 var free_move = false;
 var slide_move = false;
@@ -114,6 +114,7 @@ function stop_free_move(e) {
 
 
   free_move = false;
+  if (diff_x || diff_y) record_change();
 }
 
 // Tree Slide functions
@@ -161,6 +162,7 @@ function stop_slide_move(e) {
   let diff_y = e.pageY - original_y;
 
   slide_move = false;
+  if (diff_x) record_change();
 }
 
 ////  General Move Functions

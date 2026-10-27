@@ -27,7 +27,7 @@
       <div class='debug-block'>
         <div class="special-actions-heading">Special Actions</div>
         <div class="special-actions-buttons">
-          <button id="save-button" type="button">Save</button>
+          <button id="save-button" type="button" disabled>Save</button>
           <button id="save-svg-button" type="button">Export</button>
         </div>
       </div>
@@ -50,6 +50,13 @@
           <button id="new-study-button" type="button">New Study</button>
           <button id="new-family-button" type="button">New Family</button>
           <button id="save-family-button" type="button" style="display:none;">Save Family</button>
+        </div>
+      </div>
+      <div class="debug-block view-block">
+        <div class="special-actions-heading">View</div>
+        <div class="special-actions-buttons">
+          <button id="undo-button" type="button" title="Undo (Cmd/Ctrl+Z)" aria-label="Undo" disabled>&#8630; Undo</button>
+          <button id="redo-button" type="button" title="Redo (Cmd/Ctrl+Shift+Z)" aria-label="Redo" disabled>&#8631; Redo</button>
         </div>
       </div>
       <div class="radio-block">
