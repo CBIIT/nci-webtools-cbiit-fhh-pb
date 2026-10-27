@@ -201,6 +201,7 @@ export function record_change() {
   if (!data) return;
   history.commit(take_snapshot());
   update_layout_problems();
+  refresh_layout_problem_alerts();
 }
 
 function restore_snapshot(snapshot) {
@@ -905,18 +906,27 @@ function describe_segment(segment) {
   return short_id(segment.child);
 }
 
-function add_crossing_alerts(alert_elem) {
+function set_alert_colors(alert_elem) {
+  const lines = alert_elem.querySelectorAll(".alert-line");
+  if (lines.length === 0) return;
+  const only_soft = Array.from(lines).every((line) => line.classList.contains("soft-line"));
+  alert_elem.style.backgroundColor = only_soft ? "#FFF4D6" : "#FDD";
+  alert_elem.style.border = only_soft ? "1px dashed #C90" : "1px dashed #F00";
+}
+
+function add_crossing_alerts(alert_elem, insert_before = null) {
   const { crossings, hits, multi_partner } = layout_problems;
   let shown = false;
+  const add_line = (soft) => {
+    const p = document.createElement("p");
+    p.classList.add("alert-line", "layout-problem-line");
+    if (soft) p.classList.add("soft-line");
+    alert_elem.insertBefore(p, insert_before);
+    return p;
+  };
 
   if (multi_partner.length > 0) {
-    if (!alert_elem.querySelector(".alert-line")) {
-      alert_elem.style.backgroundColor = "#FFF4D6";
-      alert_elem.style.border = "1px dashed #C90";
-    }
-    const p = document.createElement("p");
-    p.classList.add("alert-line");
-    alert_elem.append(p);
+    const p = add_line(true);
     add_alert_heading(p, "Multiple partners:");
     for (const item of multi_partner) {
       const button = create_button(short_id(item.person_id));
@@ -928,31 +938,51 @@ function add_crossing_alerts(alert_elem) {
     shown = true;
   }
 
-  if (crossings.length === 0 && hits.length === 0) return shown;
+  if (crossings.length > 0 || hits.length > 0) {
+    const p = add_line(false);
+    add_alert_heading(p, `Line problems (${crossings.length + hits.length}):`);
 
-  alert_elem.style.backgroundColor = "#FDD";
-  alert_elem.style.border = "1px dashed #F00";
-  const p = document.createElement("p");
-  p.classList.add("alert-line");
-  alert_elem.append(p);
-  add_alert_heading(p, `Line problems (${crossings.length + hits.length}):`);
+    const items = [
+      ...hits.map((hit) => ({ text: `${describe_segment(hit.segment)} over ${short_id(hit.person_id)}`, target: hit.person_id })),
+      ...crossings.map(([s, t]) => ({ text: `${describe_segment(s)} × ${describe_segment(t)}`, target: s.child || s.members[0] })),
+    ];
+    for (const item of items.slice(0, MAX_PROBLEM_BUTTONS)) {
+      const button = create_button(item.text);
+      button.addEventListener("click", () => go_to_person(item.target));
+      p.append(button);
+    }
+    if (items.length > MAX_PROBLEM_BUTTONS) {
+      const more = document.createElement("span");
+      more.className = "alert-heading";
+      more.textContent = `…and ${items.length - MAX_PROBLEM_BUTTONS} more (highlighted in red)`;
+      p.append(more);
+    }
+    shown = true;
+  }
 
-  const items = [
-    ...hits.map((hit) => ({ text: `${describe_segment(hit.segment)} over ${short_id(hit.person_id)}`, target: hit.person_id })),
-    ...crossings.map(([s, t]) => ({ text: `${describe_segment(s)} × ${describe_segment(t)}`, target: s.child || s.members[0] })),
-  ];
-  for (const item of items.slice(0, MAX_PROBLEM_BUTTONS)) {
-    const button = create_button(item.text);
-    button.addEventListener("click", () => go_to_person(item.target));
-    p.append(button);
+  set_alert_colors(alert_elem);
+  return shown;
+}
+
+// After a hand edit, swap in the current line problems so fixed ones drop out of the bar.
+function refresh_layout_problem_alerts() {
+  const alert_elem = document.getElementById("alert");
+  if (!alert_elem || alert_elem.querySelector(".alert-status")) return;
+  const old_lines = alert_elem.querySelectorAll(".layout-problem-line");
+  const insert_before = old_lines.length > 0 ? old_lines[old_lines.length - 1].nextSibling : null;
+  const was_visible = alert_elem.style.display !== "none";
+
+  add_crossing_alerts(alert_elem, insert_before);
+  old_lines.forEach((line) => line.remove());
+
+  if (!alert_elem.querySelector(".alert-line")) {
+    alert_elem.style.display = "none";
+    alert_elem.style.backgroundColor = "white";
+    alert_elem.style.border = "";
+  } else {
+    set_alert_colors(alert_elem);
+    if (was_visible) alert_elem.style.display = "grid";
   }
-  if (items.length > MAX_PROBLEM_BUTTONS) {
-    const more = document.createElement("span");
-    more.className = "alert-heading";
-    more.textContent = `…and ${items.length - MAX_PROBLEM_BUTTONS} more (highlighted in red)`;
-    p.append(more);
-  }
-  return true;
 }
 
 function add_other_alerts(alert_elem) {
