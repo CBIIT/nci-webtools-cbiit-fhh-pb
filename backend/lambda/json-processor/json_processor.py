@@ -158,18 +158,18 @@ class JSONProcessor:
         # Build person structure
         person_data = {
             "name": full_name,
+            "demographics": self._extract_demographics(record),
             "born": record.get("DEMO[BRTHDAT_RAW]", ""),
+            "life_status": record.get("CORE_ADD[life_status]", ""),
             "deceased": record.get("DEMO[DTHDAT_RAW]", ""),
             "father": record.get("CORE[FPT_ID3]", ""),
             "mother": record.get("CORE[MPT_ID3]", ""),
-            "pedigree_symbol": record.get("Merge2[Pedigree_Symbol]", ""),
-            "individual_genetic_status": record.get("Merge2[individual_genetic_status]", ""),
-            "life_status": record.get("CORE_ADD[life_status]", ""),
-            "multiple_birth_type": record.get("CORE_ADD[PT_IDENTICAL_SIBS]", ""),
             "adoption": record.get("CORE_ADD[PT_ADPT_IND]", ""),
-            "demographics": self._extract_demographics(record),
+            "multiple_birth_type": record.get("CORE_ADD[PT_IDENTICAL_SIBS]", ""),
             "marital_status": record.get("CORE[PRSN_MARST_CAT]", ""),
             "partners": [],
+            "individual_genetic_status": record.get("Merge2[individual_genetic_status]", ""),
+            "pedigree_symbol": record.get("Merge2[Pedigree_Symbol]", ""),
             "diseases": [],
             "procedures": [],
         }
