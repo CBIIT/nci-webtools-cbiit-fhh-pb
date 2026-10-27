@@ -155,21 +155,30 @@ class JSONProcessor:
         last_name = record.get("Merge1[participant.last_name]", "")
         full_name = f"{first_name} {last_name}".strip()
 
-        # Build person structure
+        # Build person structure. Key order sets the output order and is grouped
+        # by topic; consumers look fields up by name, so order is for readability.
         person_data = {
+            # Identity and vital status (gender drives the pedigree symbol shape)
             "name": full_name,
             "demographics": self._extract_demographics(record),
             "born": record.get("DEMO[BRTHDAT_RAW]", ""),
             "life_status": record.get("CORE_ADD[life_status]", ""),
             "deceased": record.get("DEMO[DTHDAT_RAW]", ""),
+            # Parentage: how the person relates to parents and siblings
             "father": record.get("CORE[FPT_ID3]", ""),
             "mother": record.get("CORE[MPT_ID3]", ""),
             "adoption": record.get("CORE_ADD[PT_ADPT_IND]", ""),
             "multiple_birth_type": record.get("CORE_ADD[PT_IDENTICAL_SIBS]", ""),
+            # Relationships: marital status sits directly before partners
             "marital_status": record.get("CORE[PRSN_MARST_CAT]", ""),
             "partners": [],
-            "individual_genetic_status": record.get("Merge2[individual_genetic_status]", ""),
+            # Genetic status and pedigree markings
+            "individual_genetic_status": record.get(
+                "Merge2[individual_genetic_status]", ""
+            ),
             "pedigree_symbol": record.get("Merge2[Pedigree_Symbol]", ""),
+            # Clinical history (quad_flags is appended last in process_records,
+            # since it is derived from diseases)
             "diseases": [],
             "procedures": [],
         }
