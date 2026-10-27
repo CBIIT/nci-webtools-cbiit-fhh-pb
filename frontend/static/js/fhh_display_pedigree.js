@@ -131,6 +131,7 @@ family_select.addEventListener("change", function (event) {
       show_summary_block();
       set_study_summary();
       set_family_summary();
+      zoom_to_fit();
     })
     .catch((error) => {
       console.error("Failed to load family data:", error);
@@ -749,6 +750,7 @@ document.addEventListener("DOMContentLoaded", async function () {
         reset_collapsed();
         display_pedigree();
         history.reset(take_snapshot());
+        zoom_to_fit();
         previous_study_value = study_select.value;
         previous_family_value = family_select.value;
       }
