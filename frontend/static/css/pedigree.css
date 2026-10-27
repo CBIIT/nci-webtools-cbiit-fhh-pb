@@ -154,6 +154,33 @@ body {
   padding:4px 8px;
 }
 
+.view-separator {
+  width:1px;
+  align-self:stretch;
+  background:#888;
+  margin:0 4px;
+}
+
+#zoom-level-button {
+  min-width:5ch;
+}
+
+#find-input {
+  width:16ch;
+}
+
+.find-highlight {
+  fill:none;
+  stroke:#f28c28;
+  stroke-width:6;
+  pointer-events:none;
+  animation:find-highlight-pulse 0.6s ease-in-out 3;
+}
+
+@keyframes find-highlight-pulse {
+  50% { stroke-opacity:0.2; }
+}
+
 .file-block {
   float:none;
   flex:0 0 auto;

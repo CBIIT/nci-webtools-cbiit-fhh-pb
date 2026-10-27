@@ -1,6 +1,6 @@
 
 import { find_all_partners, find_all_children, find_all_descendants, get_data } from "./fhh_build_pedigree.js";
-import { get_config, ensure_canvas_fits_point, sibship_bar_y, record_change } from "./fhh_display_pedigree.js";
+import { get_config, ensure_canvas_fits_point, sibship_bar_y, record_change, get_zoom } from "./fhh_display_pedigree.js";
 
 var free_move = false;
 var slide_move = false;
@@ -28,8 +28,8 @@ export function start_free_move(e, move_target = e.target) {
 }
 
 function free_move_element(e) {
-  let diff_x = page_x - e.pageX;
-  let diff_y = page_y - e.pageY;
+  let diff_x = (page_x - e.pageX) / get_zoom();
+  let diff_y = (page_y - e.pageY) / get_zoom();
   page_x = e.pageX;
   page_y = e.pageY;
 
@@ -134,7 +134,7 @@ export function start_slide_move(e, move_target = e.target) {
 
 // Sliding does not allow vertical movement, so zero that youngest_gen
 function slide_move_element(e) {
-  let diff_x = page_x - e.pageX;
+  let diff_x = (page_x - e.pageX) / get_zoom();
   let diff_y = 0;
   page_x = e.pageX;
   page_y = e.pageY;

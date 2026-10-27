@@ -242,6 +242,164 @@ document.addEventListener("keydown", function (event) {
   else undo_change();
 });
 
+////////////////////// View: zoom, find, reset layout
+
+let zoom = 1;
+const MIN_ZOOM = 0.1;
+const MAX_ZOOM = 4;
+const main_elem = document.getElementById("main");
+const zoom_level_elem = document.getElementById("zoom-level-button");
+const find_input_elem = document.getElementById("find-input");
+
+export function get_zoom() {
+  return zoom;
+}
+
+function get_view_box() {
+  const svg_elem = document.getElementById("svg");
+  const view_box = svg_elem?.getAttribute("viewBox");
+  if (!view_box) return null;
+  const [x, y, width, height] = view_box.split(" ").map(Number);
+  return { svg_elem, x, y, width, height };
+}
+
+// Zooms keeping the content under `anchor` (a point in #main's visible area) still.
+function set_zoom(new_zoom, anchor = { x: main_elem.clientWidth / 2, y: main_elem.clientHeight / 2 }) {
+  const view = get_view_box();
+  new_zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, new_zoom));
+  zoom_level_elem.textContent = Math.round(new_zoom * 100) + "%";
+  if (!view) {
+    zoom = new_zoom;
+    return;
+  }
+  const content_x = (main_elem.scrollLeft + anchor.x) / zoom;
+  const content_y = (main_elem.scrollTop + anchor.y) / zoom;
+  zoom = new_zoom;
+  view.svg_elem.setAttribute("width", view.width * zoom);
+  view.svg_elem.setAttribute("height", view.height * zoom);
+  main_elem.scrollLeft = content_x * zoom - anchor.x;
+  main_elem.scrollTop = content_y * zoom - anchor.y;
+}
+
+function zoom_to_fit() {
+  const view = get_view_box();
+  if (!view) return;
+  set_zoom(Math.min((main_elem.clientWidth - 20) / view.width, (main_elem.clientHeight - 20) / view.height));
+  main_elem.scrollLeft = 0;
+  main_elem.scrollTop = 0;
+}
+
+document.getElementById("zoom-in-button").addEventListener("click", () => set_zoom(zoom * 1.25));
+document.getElementById("zoom-out-button").addEventListener("click", () => set_zoom(zoom / 1.25));
+zoom_level_elem.addEventListener("click", () => set_zoom(1));
+document.getElementById("zoom-fit-button").addEventListener("click", zoom_to_fit);
+
+// Cmd/Ctrl + wheel (and trackpad pinch, which reports ctrlKey) zooms around the pointer.
+main_elem.addEventListener("wheel", function (event) {
+  if (!(event.ctrlKey || event.metaKey)) return;
+  event.preventDefault();
+  const bounds = main_elem.getBoundingClientRect();
+  const factor = Math.exp(-event.deltaY * 0.002);
+  set_zoom(zoom * factor, { x: event.clientX - bounds.left, y: event.clientY - bounds.top });
+}, { passive: false });
+
+function populate_find_list() {
+  const list_elem = document.getElementById("find-list");
+  list_elem.replaceChildren();
+  for (const person_id of family_tree) {
+    const person = data["people"][person_id];
+    if (!person || person.placeholder) continue;
+    const option = document.createElement("option");
+    option.value = person.name && person.name != "Unknown" ? `${person_id} ${person.name}` : person_id;
+    list_elem.appendChild(option);
+  }
+}
+
+function find_person(query) {
+  const text = query.trim();
+  if (!text || !data) return null;
+  const first_word = text.split(/\s+/)[0];
+  if (family_tree.includes(first_word)) return first_word;
+  const lower = text.toLowerCase();
+  return family_tree.find((id) => {
+    const person = data["people"][id];
+    return !person?.placeholder && (id.toLowerCase().includes(lower) || (person?.name || "").toLowerCase().includes(lower));
+  }) || null;
+}
+
+function go_to_person(person_id) {
+  const person = data?.["people"]?.[person_id];
+  const view = get_view_box();
+  if (!person || person.x == null || !view) return;
+
+  main_elem.scrollLeft = (person.x - view.x) * zoom - main_elem.clientWidth / 2;
+  main_elem.scrollTop = (person.y - view.y) * zoom - main_elem.clientHeight / 2;
+
+  document.querySelectorAll("#svg .find-highlight").forEach((el) => el.remove());
+  const ring = document.createElementNS(svgns, "circle");
+  ring.setAttribute("cx", person.x);
+  ring.setAttribute("cy", person.y);
+  ring.setAttribute("r", config.size * 0.85);
+  ring.setAttribute("class", "find-highlight");
+  view.svg_elem.appendChild(ring);
+  setTimeout(() => ring.remove(), 2500);
+
+  set_study_summary();
+  set_details_of_person(person_id);
+}
+
+function run_find() {
+  const person_id = find_person(find_input_elem.value);
+  if (person_id) go_to_person(person_id);
+}
+
+find_input_elem.addEventListener("change", run_find);
+find_input_elem.addEventListener("keydown", function (event) {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    run_find();
+  } else if (event.key === "Escape") {
+    find_input_elem.value = "";
+    find_input_elem.blur();
+  }
+});
+
+document.getElementById("find-proband-button").addEventListener("click", function () {
+  if (data?.general?.proband) go_to_person(data.general.proband);
+});
+
+document.getElementById("reset-layout-button").addEventListener("click", function () {
+  if (!data) return;
+  if (!window.confirm("Discard all hand-placed positions and re-run the automatic layout? (You can undo this.)")) return;
+  finish_pending_text_annotation();
+  annotations = annotations || {};
+  annotations.positions = {};
+  display_pedigree();
+  record_change();
+});
+
+document.addEventListener("keydown", function (event) {
+  if (!(event.metaKey || event.ctrlKey)) return;
+  const key = event.key.toLowerCase();
+  if (key === "f") {
+    event.preventDefault();
+    find_input_elem.focus();
+    find_input_elem.select();
+    return;
+  }
+  if (event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable='true']")) return;
+  if (key === "0") {
+    event.preventDefault();
+    zoom_to_fit();
+  } else if (key === "=" || key === "+") {
+    event.preventDefault();
+    set_zoom(zoom * 1.25);
+  } else if (key === "-") {
+    event.preventDefault();
+    set_zoom(zoom / 1.25);
+  }
+});
+
 let delete_annotation_elem = document.getElementById("delete-annotation-button");
 delete_annotation_elem.addEventListener("click", delete_selected_annotation);
 const annotation_color_input = document.getElementById("annotation-color");
@@ -582,6 +740,7 @@ export function display_pedigree() {
   draw_annotation_texts();
 
   add_alert_bar();
+  populate_find_list();
 }
 
 function add_alert_bar() {
@@ -773,8 +932,8 @@ function expand_canvas_to_fit(x, y) {
   const new_height = new_max_y - new_min_y;
 
   svgElem.setAttributeNS(null, "viewBox", new_min_x + " " + new_min_y + " " + new_width + " " + new_height);
-  svgElem.setAttributeNS(null, "width", new_width);
-  svgElem.setAttributeNS(null, "height", new_height);
+  svgElem.setAttributeNS(null, "width", new_width * zoom);
+  svgElem.setAttributeNS(null, "height", new_height * zoom);
 }
 
 // Called from fhh_move.js while the user drags a person outside the current canvas.
@@ -786,8 +945,8 @@ export function create_svg(width, height) {
   const default_color = config.default_color || "lightblue";
   let svgElem = document.createElementNS(svgns, "svg");
   svgElem.setAttributeNS(null, "viewBox", "0 0 " + width + " " + height);
-  svgElem.setAttributeNS(null, "width", width);
-  svgElem.setAttributeNS(null, "height", height);
+  svgElem.setAttributeNS(null, "width", width * zoom);
+  svgElem.setAttributeNS(null, "height", height * zoom);
   svgElem.setAttributeNS(null, "fill", default_color);
   svgElem.setAttributeNS(null, "stroke", "black");
   svgElem.setAttributeNS(null, "stroke-width", "5");
