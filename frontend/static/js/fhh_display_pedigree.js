@@ -392,6 +392,7 @@ document.getElementById("reset-layout-button").addEventListener("click", functio
   finish_pending_text_annotation();
   annotations = annotations || {};
   annotations.positions = {};
+  Object.values(data["people"]).forEach((person) => { person.moved = false; });
   display_pedigree();
   record_change();
 });
@@ -892,10 +893,22 @@ function toggle_collapse(couple) {
   if (collapsed_couples.has(couple)) collapsed_couples.delete(couple);
   else collapsed_couples.add(couple);
   set_hidden_people(compute_hidden_people());
+  remember_moved_positions();
   display_pedigree();
 
   const after = marker_rect();
   if (before && after) keep_point_on_screen(after.left - before.left, after.top - before.top);
+}
+
+// Hand moves live only on the drawn people until saved; copy them over so a redraw keeps them.
+function remember_moved_positions() {
+  annotations = annotations || {};
+  annotations.positions = annotations.positions || {};
+  for (const [person_id, person] of Object.entries(data["people"])) {
+    if (person.moved && person.x != null && person.y != null) {
+      annotations.positions[person_id] = { x: person.x, y: person.y };
+    }
+  }
 }
 
 // Scrolls (padding the drawing if scrolling alone can't) so content that moved by dx/dy appears not to move.
