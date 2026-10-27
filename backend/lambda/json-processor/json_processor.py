@@ -163,6 +163,7 @@ class JSONProcessor:
             "father": record.get("CORE[FPT_ID3]", ""),
             "mother": record.get("CORE[MPT_ID3]", ""),
             "pedigree_symbol": record.get("Merge2[Pedigree_Symbol]", ""),
+            "individual_genetic_status": record.get("Merge2[individual_genetic_status]", ""),
             "life_status": record.get("CORE_ADD[life_status]", ""),
             "demographics": self._extract_demographics(record),
             "partners": [],

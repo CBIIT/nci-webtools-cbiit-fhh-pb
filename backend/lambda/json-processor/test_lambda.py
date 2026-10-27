@@ -39,6 +39,8 @@ def create_test_data() -> list:
             "DEMO[DTHDAT_RAW]": "",
             "CORE[FPT_ID3]": "00102",
             "CORE[MPT_ID3]": "00103",
+            "Merge2[Pedigree_Symbol]": "%",
+            "Merge2[individual_genetic_status]": "Positive",
             "DEMO[SEX_OLD]": "M",
             "Subject_cancer[CANCER.ICD03]": "C50.9",
             "Subject_cancer[CANCER.NUM]": "1",
@@ -130,6 +132,20 @@ def test_disease_includes_quad_abbrs():
     assert non_cancer_disease["quad_abbrs"] == ["", "", "", "NCMH"]
     assert cancer_disease["abbr"] == "PPB Type III"
     assert non_cancer_disease["abbr"] == "NCMH"
+
+
+def test_person_includes_individual_genetic_status_after_pedigree_symbol():
+    """Ensure individual genetic status is mapped and ordered after pedigree symbol."""
+    processor = JSONProcessor()
+    processor.process_records(create_test_data())
+
+    person = processor.people["00101"]
+    person_keys = list(person)
+
+    assert person["individual_genetic_status"] == "Positive"
+    assert person_keys.index("individual_genetic_status") == (
+        person_keys.index("pedigree_symbol") + 1
+    )
 
 
 def test_disease_abbr_joins_multiple_values_with_semicolon():
