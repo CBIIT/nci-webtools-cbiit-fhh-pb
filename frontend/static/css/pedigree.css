@@ -154,19 +154,63 @@ body {
   padding:4px 8px;
 }
 
-.view-separator {
-  width:1px;
-  align-self:stretch;
-  background:#888;
-  margin:0 4px;
+.view-block {
+  flex:0 0 auto;
+  margin:5px;
+  border:2px solid black;
+  padding:5px;
+  height:50px;
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+
+.view-column {
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+}
+
+.view-column button,
+.zoom-controls button {
+  margin:0;
+  padding:1px 6px;
+  font-size:12px;
+}
+
+.zoom-controls {
+  display:flex;
+  gap:2px;
+}
+
+.zoom-controls button {
+  flex:1 1 auto;
 }
 
 #zoom-level-button {
   min-width:5ch;
 }
 
+.find-dialog {
+  border:2px solid black;
+  padding:10px 12px;
+  font-family:sans-serif, Arial;
+}
+
+.find-dialog-form {
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+
 #find-input {
-  width:16ch;
+  width:28ch;
+}
+
+.find-dialog-buttons {
+  display:flex;
+  gap:6px;
+  justify-content:flex-end;
 }
 
 .find-highlight {

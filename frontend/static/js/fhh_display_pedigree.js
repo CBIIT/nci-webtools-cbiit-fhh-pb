@@ -348,24 +348,35 @@ function go_to_person(person_id) {
   set_details_of_person(person_id);
 }
 
-function run_find() {
-  const person_id = find_person(find_input_elem.value);
-  if (person_id) go_to_person(person_id);
+const find_dialog_elem = document.getElementById("find-dialog");
+
+function open_find_dialog() {
+  if (!find_dialog_elem.open) find_dialog_elem.showModal();
+  find_input_elem.focus();
+  find_input_elem.select();
 }
 
+function run_find() {
+  const person_id = find_person(find_input_elem.value);
+  if (!person_id) return;
+  find_dialog_elem.close();
+  go_to_person(person_id);
+}
+
+document.getElementById("find-button").addEventListener("click", open_find_dialog);
+document.getElementById("find-go-button").addEventListener("click", run_find);
 find_input_elem.addEventListener("change", run_find);
 find_input_elem.addEventListener("keydown", function (event) {
   if (event.key === "Enter") {
     event.preventDefault();
     run_find();
-  } else if (event.key === "Escape") {
-    find_input_elem.value = "";
-    find_input_elem.blur();
   }
 });
 
 document.getElementById("find-proband-button").addEventListener("click", function () {
-  if (data?.general?.proband) go_to_person(data.general.proband);
+  if (!data?.general?.proband) return;
+  find_dialog_elem.close();
+  go_to_person(data.general.proband);
 });
 
 document.getElementById("reset-layout-button").addEventListener("click", function () {
@@ -383,8 +394,7 @@ document.addEventListener("keydown", function (event) {
   const key = event.key.toLowerCase();
   if (key === "f") {
     event.preventDefault();
-    find_input_elem.focus();
-    find_input_elem.select();
+    open_find_dialog();
     return;
   }
   if (event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable='true']")) return;
