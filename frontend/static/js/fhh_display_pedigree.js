@@ -803,6 +803,9 @@ export function display_pedigree() {
   }
 
   family_tree = build_entire_family_tree(proband_id);
+  for (const id of ["save-svg-button", "save-pdf-button", "reset-layout-button"]) {
+    document.getElementById(id).disabled = false;
+  }
 
   draw_frame();
   draw_family_tree(family_tree);
