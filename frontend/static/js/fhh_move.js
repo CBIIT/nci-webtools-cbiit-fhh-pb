@@ -1,6 +1,6 @@
 
 import { find_all_partners, find_all_children, find_all_descendants, get_data } from "./fhh_build_pedigree.js";
-import { get_config, ensure_canvas_fits_point } from "./fhh_display_pedigree.js";
+import { get_config, ensure_canvas_fits_point, sibship_bar_y } from "./fhh_display_pedigree.js";
 
 var free_move = false;
 var slide_move = false;
@@ -47,19 +47,7 @@ function move_all_elements_of_a_person(person_id, diff_x, diff_y) {
   // And the label
   const elements = document.querySelectorAll("[id=\"" + person_id + "\"]");
   for (const el of elements) {
-    if (el.hasAttribute("stub_id")) {
-      // The stub stretches so its top stays on the parents' horizontal sibship line.
-      move_first_point_of_line(el, diff_x, diff_y);
-      move_last_point_of_line(el, diff_x, 0);
-    } else {
-      move_element(el, diff_x, diff_y);
-    }
-  }
-
-  // Then if this is a child, slide its end of the sibship line sideways only
-  const parent_connector_line = document.querySelectorAll("[child_id=\"" + person_id + "\"]");
-  for (const el of parent_connector_line) {
-    move_last_point_of_line(el, diff_x, 0);
+    if (!el.hasAttribute("stub_id")) move_element(el, diff_x, diff_y);
   }
 
   // Then move the line to the other partner
@@ -74,30 +62,50 @@ function move_all_elements_of_a_person(person_id, diff_x, diff_y) {
     move_last_point_of_line(el, diff_x, diff_y);
   }
 
-  // These connector lines are anchored to the midpoint of both parents (X and Y both
-  // move by half when either parent moves, since the anchor is the average of the two).
-  const mother_line_down = document.querySelectorAll("[p_mother_id=\"" + person_id + "\"]");
-  for (const el of mother_line_down) {
-    move_first_point_of_line(el, diff_x/2, diff_y/2);
-    move_last_point_of_line(el, diff_x/2, diff_y/2);
-  }
-  const father_line_down = document.querySelectorAll("[p_father_id=\"" + person_id + "\"]");
-  for (const el of father_line_down) {
-    move_first_point_of_line(el, diff_x/2, diff_y/2);
-    move_last_point_of_line(el, diff_x/2, diff_y/2);
+  refresh_family_connectors(person_id);
+}
+
+// Redraws the drop, horizontal sibship line and child stubs of every family the person belongs to.
+function refresh_family_connectors(person_id) {
+  const people = get_data()["people"];
+  const person = people[person_id];
+  if (!person) return;
+  const couples = new Set();
+  if (person.mother && person.father) couples.add(person.mother + "|" + person.father);
+  for (const id in people) {
+    if (people[id].mother == person_id || people[id].father == person_id) couples.add(people[id].mother + "|" + people[id].father);
   }
 
-  // The sibship line follows the parents' drop down and stays horizontal; the children's stubs stretch to meet it.
-  const child_lines = document.querySelectorAll("[c_mother_id=\"" + person_id + "\"], [c_father_id=\"" + person_id + "\"]");
-  for (const el of child_lines) {
-    move_first_point_of_line(el, diff_x/2, diff_y/2);
-    move_last_point_of_line(el, 0, diff_y/2);
-    const child_id = el.getAttribute("child_id");
-    for (const stub of document.querySelectorAll("[stub_id=\"" + child_id + "\"]")) {
-      move_last_point_of_line(stub, 0, diff_y/2);
+  for (const couple of couples) {
+    const [mother_id, father_id] = couple.split("|");
+    const mother = people[mother_id];
+    const father = people[father_id];
+    if (!mother || !father || mother.x == null || father.x == null) continue;
+    const children = Object.keys(people).filter((id) => people[id].mother == mother_id && people[id].father == father_id && people[id].x != null);
+    const drop_x = (mother.x + father.x) / 2;
+    const parents_y = (mother.y + father.y) / 2;
+    const bar_y = sibship_bar_y(parents_y, children.map((id) => people[id].y));
+
+    for (const drop of document.querySelectorAll("[p_mother_id=\"" + mother_id + "\"][p_father_id=\"" + father_id + "\"]")) {
+      set_line(drop, drop_x, parents_y, drop_x, bar_y);
+    }
+    for (const child_id of children) {
+      const child = people[child_id];
+      for (const bar of document.querySelectorAll("[child_id=\"" + child_id + "\"][c_mother_id=\"" + mother_id + "\"]")) {
+        set_line(bar, drop_x, bar_y, child.x, bar_y);
+      }
+      for (const stub of document.querySelectorAll("[stub_id=\"" + child_id + "\"]")) {
+        set_line(stub, child.x, child.y, child.x, bar_y);
+      }
     }
   }
+}
 
+function set_line(el, x1, y1, x2, y2) {
+  el.setAttribute("x1", x1);
+  el.setAttribute("y1", y1);
+  el.setAttribute("x2", x2);
+  el.setAttribute("y2", y2);
 }
 
 function stop_free_move(e) {

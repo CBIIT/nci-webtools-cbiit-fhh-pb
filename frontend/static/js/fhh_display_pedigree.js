@@ -3199,13 +3199,19 @@ function draw_connector(person_id, mother_id, father_id) {
     }
 
 
-    draw_line_top_of_child(child_loc, person_id, (mother_loc.y + father_loc.y) / 2 + config.v_spacing / 2);
+    const child_ys = Object.values(data["people"])
+      .filter((p) => p.mother == mother_id && p.father == father_id && p.gen != null && p.loc != null)
+      .map((p) => get_center(p).y);
+    const bar_y = sibship_bar_y((mother_loc.y + father_loc.y) / 2, child_ys);
+
+    draw_line_top_of_child(child_loc, person_id, bar_y);
     draw_line_between_parents(mother_loc, father_loc, mother_id, father_id);
     draw_line_connecting_parents_down(
       mother_loc,
       father_loc,
       mother_id,
-      father_id
+      father_id,
+      bar_y
     );
     draw_line_child_to_parents(
       child_loc,
@@ -3213,10 +3219,18 @@ function draw_connector(person_id, mother_id, father_id) {
       father_loc,
       person_id,
       mother_id,
-      father_id
+      father_id,
+      bar_y
     );
     //    console.log(person_id + ":" + mother_id + "," +    father_id);
   }
+}
+
+// Half a row below the parents, but raised to stay above any child dragged higher than that.
+export function sibship_bar_y(parents_y, child_ys) {
+  let bar_y = parents_y + config.v_spacing / 2;
+  for (const y of child_ys) bar_y = Math.min(bar_y, y - config.size);
+  return Math.max(bar_y, parents_y + config.size / 4);
 }
 
 function draw_line_child_to_parents(
@@ -3225,11 +3239,12 @@ function draw_line_child_to_parents(
   father_loc,
   person_id,
   mother_id,
-  father_id
+  father_id,
+  bar_y
 ) {
   //  const x1 = mother_loc.x + config.h_spacing;
   const x1 = (mother_loc.x + father_loc.x) / 2;
-  const y1 = (mother_loc.y + father_loc.y) / 2 + config.v_spacing / 2;
+  const y1 = bar_y;
 
   const x2 = child_loc.x;
   const y2 = y1;
@@ -3265,12 +3280,13 @@ function draw_line_connecting_parents_down(
   mother_loc,
   father_loc,
   mother_id,
-  father_id
+  father_id,
+  bar_y
 ) {
   const x = (mother_loc.x + father_loc.x) / 2;
   //  const x = mother_loc.x + config.h_spacing;
   const y1 = (mother_loc.y + father_loc.y) / 2;
-  const y2 = y1 + config.v_spacing / 2;
+  const y2 = bar_y;
   let elem = draw_line(x, y1, x, y2);
   elem.setAttributeNS(null, "stroke-width", "2");
   elem.setAttributeNS(null, "p_mother_id", mother_id);
