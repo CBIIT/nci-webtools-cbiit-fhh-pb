@@ -77,7 +77,8 @@ export function segment_hits_box(segment, center, half) {
 }
 
 // people: id -> {x, y, mother, father}; bar_y(parents_y, child_ys) gives the sibship line height.
-// People with 3+ partners are skipped, since their lines can't avoid each other.
+// Overlaps among the lines of someone with 3+ partners can't always be avoided, so they are
+// reported separately in `multi_partner` (person id -> segments involved).
 export function find_layout_problems(people, size, bar_y) {
   const placed = (id) => people[id] && people[id].x != null && people[id].y != null;
   const families = new Map();
@@ -87,6 +88,15 @@ export function find_layout_problems(people, size, bar_y) {
     const key = person.mother + "|" + person.father;
     if (!families.has(key)) families.set(key, { mother: person.mother, father: person.father, children: [] });
     families.get(key).children.push(id);
+  }
+  // Childless couples are only known from `partners` records but still get a marriage line.
+  for (const id of Object.keys(people)) {
+    for (const partner of people[id].partners || []) {
+      const spouse_id = partner?.spouse_id;
+      if (!placed(id) || !placed(spouse_id) || spouse_id === id) continue;
+      if (families.has(id + "|" + spouse_id) || families.has(spouse_id + "|" + id)) continue;
+      families.set(id + "|" + spouse_id, { mother: id, father: spouse_id, children: [] });
+    }
   }
 
   const partners = {};
@@ -105,7 +115,7 @@ export function find_layout_problems(people, size, bar_y) {
     const line_y = bar_y(parents_y, family.children.map((id) => people[id].y));
     const members = [family.mother, family.father];
     segments.push({ key, members, owners: members, kind: "marriage", a: [mother.x, mother.y], b: [father.x, father.y] });
-    segments.push({ key, members, owners: [], kind: "drop", a: [drop_x, parents_y], b: [drop_x, line_y] });
+    if (family.children.length > 0) segments.push({ key, members, owners: [], kind: "drop", a: [drop_x, parents_y], b: [drop_x, line_y] });
     for (const child_id of family.children) {
       const child = people[child_id];
       segments.push({ key, members, owners: [], kind: "bar", child: child_id, a: [drop_x, line_y], b: [child.x, line_y] });
@@ -114,25 +124,38 @@ export function find_layout_problems(people, size, bar_y) {
   }
 
   const crossings = [];
+  const multi_partner = new Map();
+  const note_multi = (id, ...involved) => {
+    if (!multi_partner.has(id)) multi_partner.set(id, new Set());
+    involved.forEach((segment) => multi_partner.get(id).add(segment));
+  };
   for (let i = 0; i < segments.length; i++) {
     for (let j = i + 1; j < segments.length; j++) {
       const s = segments[i];
       const t = segments[j];
       if (s.key === t.key) continue;
-      if (s.members.some((id) => t.members.includes(id) && many_partners(id))) continue;
-      if (segments_cross(s, t)) crossings.push([s, t]);
+      if (!segments_cross(s, t)) continue;
+      const shared = s.members.find((id) => t.members.includes(id) && many_partners(id));
+      if (shared) note_multi(shared, s, t);
+      else crossings.push([s, t]);
     }
   }
 
   const hits = [];
   const half = size / 2;
   for (const s of segments) {
-    if (s.kind === "marriage" && s.members.some(many_partners)) continue;
+    const crowded = s.kind === "marriage" || s.kind === "drop" ? s.members.find(many_partners) : null;
     for (const id of Object.keys(people)) {
       if (!placed(id) || s.owners.includes(id)) continue;
-      if (segment_hits_box(s, [people[id].x, people[id].y], half)) hits.push({ segment: s, person_id: id });
+      if (!segment_hits_box(s, [people[id].x, people[id].y], half)) continue;
+      if (crowded) note_multi(crowded, s);
+      else hits.push({ segment: s, person_id: id });
     }
   }
 
-  return { crossings, hits };
+  return {
+    crossings,
+    hits,
+    multi_partner: [...multi_partner].map(([person_id, involved]) => ({ person_id, segments: [...involved] })),
+  };
 }

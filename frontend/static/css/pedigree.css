@@ -229,6 +229,18 @@ body {
   pointer-events:none;
 }
 
+.problem-highlight-soft {
+  fill:none;
+  stroke:#f2a900;
+  stroke-width:6;
+  stroke-opacity:0.45;
+  pointer-events:none;
+}
+
+.alert-button.alert-button-soft {
+  background-color:#FFE08A;
+}
+
 @keyframes find-highlight-pulse {
   50% { stroke-opacity:0.2; }
 }

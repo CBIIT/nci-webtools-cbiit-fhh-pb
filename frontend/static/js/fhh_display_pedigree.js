@@ -848,7 +848,7 @@ function add_unplaced_people_alerts(alert_elem) {
   }
 }
 
-let layout_problems = { crossings: [], hits: [] };
+let layout_problems = { crossings: [], hits: [], multi_partner: [] };
 const MAX_PROBLEM_BUTTONS = 20;
 
 // Recomputes crossings from current positions and redraws their highlights.
@@ -859,25 +859,29 @@ function update_layout_problems() {
   layout_problems = find_layout_problems(drawn_people, config.size, sibship_bar_y);
 
   svg_elem.querySelector("#problem-highlights")?.remove();
-  if (layout_problems.crossings.length === 0 && layout_problems.hits.length === 0) return;
+  const { crossings, hits, multi_partner } = layout_problems;
+  if (crossings.length === 0 && hits.length === 0 && multi_partner.length === 0) return;
 
   const group = document.createElementNS(svgns, "g");
   group.setAttribute("id", "problem-highlights");
   group.setAttribute("pointer-events", "none");
-  const highlight_segment = (segment) => {
+  const highlight_segment = (segment, css_class = "problem-highlight") => {
     const line = document.createElementNS(svgns, "line");
     line.setAttribute("x1", segment.a[0]);
     line.setAttribute("y1", segment.a[1]);
     line.setAttribute("x2", segment.b[0]);
     line.setAttribute("y2", segment.b[1]);
-    line.setAttribute("class", "problem-highlight");
+    line.setAttribute("class", css_class);
     group.appendChild(line);
   };
-  for (const [s, t] of layout_problems.crossings) {
+  for (const item of multi_partner) {
+    item.segments.forEach((segment) => highlight_segment(segment, "problem-highlight-soft"));
+  }
+  for (const [s, t] of crossings) {
     highlight_segment(s);
     highlight_segment(t);
   }
-  for (const hit of layout_problems.hits) {
+  for (const hit of hits) {
     highlight_segment(hit.segment);
     const person = data["people"][hit.person_id];
     const ring = document.createElementNS(svgns, "circle");
@@ -896,8 +900,28 @@ function describe_segment(segment) {
 }
 
 function add_crossing_alerts(alert_elem) {
-  const { crossings, hits } = layout_problems;
-  if (crossings.length === 0 && hits.length === 0) return false;
+  const { crossings, hits, multi_partner } = layout_problems;
+  let shown = false;
+
+  if (multi_partner.length > 0) {
+    if (!alert_elem.querySelector(".alert-line")) {
+      alert_elem.style.backgroundColor = "#FFF4D6";
+      alert_elem.style.border = "1px dashed #C90";
+    }
+    const p = document.createElement("p");
+    p.classList.add("alert-line");
+    alert_elem.append(p);
+    add_alert_heading(p, "Multiple partners overlap (move a partner by hand):");
+    for (const item of multi_partner) {
+      const button = create_button(item.person_id);
+      button.classList.add("alert-button-soft");
+      button.addEventListener("click", () => go_to_person(item.person_id));
+      p.append(button);
+    }
+    shown = true;
+  }
+
+  if (crossings.length === 0 && hits.length === 0) return shown;
 
   alert_elem.style.backgroundColor = "#FDD";
   alert_elem.style.border = "1px dashed #F00";

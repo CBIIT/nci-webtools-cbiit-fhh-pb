@@ -56,3 +56,20 @@ test("moving a child under another family is reported", () => {
   const problems = crossings.find_layout_problems(people, 50, bar_y);
   assert.ok(problems.crossings.length + problems.hits.length > 0);
 });
+
+test("overlaps among a person's 3+ partners are reported separately", () => {
+  const people = {
+    a: { x: 0, y: 0 },
+    b: { x: 120, y: 0 },
+    c: { x: 240, y: 0 },
+    d: { x: 360, y: 0 },
+    k1: { x: 60, y: 200, mother: "b", father: "a" },
+    k2: { x: 180, y: 200, mother: "c", father: "a" },
+    k3: { x: 300, y: 200, mother: "d", father: "a" },
+  };
+  const problems = crossings.find_layout_problems(people, 50, bar_y);
+
+  assert.equal(problems.crossings.length, 0);
+  assert.equal(problems.hits.length, 0);
+  assert.deepEqual(problems.multi_partner.map((item) => item.person_id), ["a"]);
+});
