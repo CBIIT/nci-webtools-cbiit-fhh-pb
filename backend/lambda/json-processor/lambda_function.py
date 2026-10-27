@@ -111,18 +111,18 @@ def lambda_handler(event, context):
             logger.info(
                 f"JSON data successfully dumped to s3://{s3_bucket_name}/{s3_object_key}"
             )
+
+            # Log summary
+            logger.info(
+                "Processing complete",
+                extra={
+                    "records_processed": len(input_data.get("data", [])),
+                    "people_generated": len(processor.people),
+                    "proband": processor.general.get("proband", "unknown"),
+                },
+            )
         except Exception as e:
             logger.error(f"Error processing JSON data: {e}")
-
-        # Log summary
-        logger.info(
-            "Processing complete",
-            extra={
-                "records_processed": len(input_data.get("data", [])),
-                "people_generated": len(processor.people),
-                "proband": processor.general.get("proband", "unknown"),
-            },
-        )
     else:
         logger.info(f"Skipping non-raw file: {s3_file_name}")
 

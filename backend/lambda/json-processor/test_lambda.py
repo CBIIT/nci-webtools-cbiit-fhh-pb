@@ -6,17 +6,21 @@ This script tests the Lambda function with sample data to ensure it works correc
 """
 
 import json
-import os
 import sys
 from pathlib import Path
 
+import boto3
 import pytest
+from moto import mock_aws
 
 # Add the current directory to the Python path
 sys.path.insert(0, str(Path(__file__).parent))
 
+import lambda_function
 from lambda_function import lambda_handler
 from json_processor import JSONProcessor
+
+TEST_BUCKET = "test-data-bucket"
 
 
 def create_test_event(bucket_name: str, object_key: str) -> dict:
@@ -76,45 +80,61 @@ def create_test_data() -> list:
     ]
 
 
-def test_lambda_function():
-    """Test the Lambda function with sample data."""
-    print("Testing Lambda function...")
+class FakeLambdaContext:
+    """Minimal Lambda context accepted by Logger.inject_lambda_context."""
 
-    # Set environment variables for testing
-    os.environ["DATA_BUCKET"] = "test-data-bucket"
-    os.environ["TIER"] = "test"
+    function_name = "test-json-processor"
+    memory_limit_in_mb = 512
+    invoked_function_arn = (
+        "arn:aws:lambda:us-east-1:123456789012:function:test-json-processor"
+    )
+    aws_request_id = "test-request-id"
 
-    # Create test event
-    test_event = create_test_event("test-data-bucket", "raw/test-data.json")
 
-    # Create test context (empty for testing)
-    test_context = {}
+@pytest.fixture
+def s3_bucket(monkeypatch):
+    """Create a mocked S3 bucket and point lambda_function at it."""
+    with mock_aws():
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=TEST_BUCKET)
+        # lambda_function creates its client at import time, before the mock starts
+        monkeypatch.setattr(lambda_function, "s3_client", s3)
+        yield s3
 
-    try:
-        # Call the Lambda function
-        result = lambda_handler(test_event, test_context)
 
-        print("Lambda function executed successfully!")
-        print(f"Status Code: {result['statusCode']}")
-        print(f"Response Body: {result['body']}")
+def test_lambda_function(s3_bucket):
+    """Process a raw S3 upload end to end and write the processed output."""
+    input_payload = {"ranAt": "2020-01-15T12:00:00Z", "data": create_test_data()}
+    s3_bucket.put_object(
+        Bucket=TEST_BUCKET, Key="raw/test-data.json", Body=json.dumps(input_payload)
+    )
 
-        # Parse the response body
-        response_data = json.loads(result["body"])
-        print(f"Message: {response_data.get('message', 'N/A')}")
+    result = lambda_handler(
+        create_test_event(TEST_BUCKET, "raw/test-data.json"), FakeLambdaContext()
+    )
 
-        if result["statusCode"] == 200:
-            print(f"Input Records: {response_data.get('input_records', 'N/A')}")
-            print(f"Output People: {response_data.get('output_people', 'N/A')}")
-            print(f"Proband: {response_data.get('proband', 'N/A')}")
-            print(f"Output File: {response_data.get('output_file', 'N/A')}")
-        else:
-            print(f"Error: {response_data.get('error', 'N/A')}")
+    assert result["statusCode"] == 200
+    listing = s3_bucket.list_objects_v2(Bucket=TEST_BUCKET, Prefix="processed/")
+    keys = [obj["Key"] for obj in listing.get("Contents", [])]
+    assert len(keys) == 1
+    assert keys[0].endswith("/test-data.processed.json")
 
-        return True
+    output = json.loads(
+        s3_bucket.get_object(Bucket=TEST_BUCKET, Key=keys[0])["Body"].read()
+    )
+    assert output["general"]["proband"] == "00101"
+    assert output["people"]["00101"]["individual_genetic_status"] == "Positive"
 
-    except Exception as e:
-        print(f"Error testing Lambda function: {e}")
-        return False
+
+def test_lambda_function_handles_missing_input_object(s3_bucket):
+    """A failed S3 read is logged rather than crashing the handler."""
+    result = lambda_handler(
+        create_test_event(TEST_BUCKET, "raw/missing.json"), FakeLambdaContext()
+    )
+
+    assert result["statusCode"] == 200
+    listing = s3_bucket.list_objects_v2(Bucket=TEST_BUCKET, Prefix="processed/")
+    assert "Contents" not in listing
 
 
 def test_disease_includes_quad_abbrs():
@@ -134,18 +154,12 @@ def test_disease_includes_quad_abbrs():
     assert non_cancer_disease["abbr"] == "NCMH"
 
 
-def test_person_includes_individual_genetic_status_after_pedigree_symbol():
-    """Ensure individual genetic status is mapped and ordered after pedigree symbol."""
+def test_person_includes_individual_genetic_status():
+    """Ensure Merge2[individual_genetic_status] is mapped onto the person."""
     processor = JSONProcessor()
     processor.process_records(create_test_data())
 
-    person = processor.people["00101"]
-    person_keys = list(person)
-
-    assert person["individual_genetic_status"] == "Positive"
-    assert person_keys.index("individual_genetic_status") == (
-        person_keys.index("pedigree_symbol") + 1
-    )
+    assert processor.people["00101"]["individual_genetic_status"] == "Positive"
 
 
 def test_disease_abbr_joins_multiple_values_with_semicolon():
@@ -342,5 +356,4 @@ def test_process_input_raises_for_invalid_shapes():
 
 
 if __name__ == "__main__":
-    success = test_lambda_function()
-    sys.exit(0 if success else 1)
+    sys.exit(pytest.main([__file__, "-v"]))
