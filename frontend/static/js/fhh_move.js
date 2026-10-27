@@ -47,13 +47,19 @@ function move_all_elements_of_a_person(person_id, diff_x, diff_y) {
   // And the label
   const elements = document.querySelectorAll("[id=\"" + person_id + "\"]");
   for (const el of elements) {
-    move_element(el, diff_x, diff_y);
+    if (el.hasAttribute("stub_id")) {
+      // The stub stretches so its top stays on the parents' horizontal sibship line.
+      move_first_point_of_line(el, diff_x, diff_y);
+      move_last_point_of_line(el, diff_x, 0);
+    } else {
+      move_element(el, diff_x, diff_y);
+    }
   }
 
-  // Then if this is a child, move the connector above the child
+  // Then if this is a child, slide its end of the sibship line sideways only
   const parent_connector_line = document.querySelectorAll("[child_id=\"" + person_id + "\"]");
   for (const el of parent_connector_line) {
-    move_last_point_of_line(el, diff_x, diff_y);
+    move_last_point_of_line(el, diff_x, 0);
   }
 
   // Then move the line to the other partner
@@ -81,13 +87,15 @@ function move_all_elements_of_a_person(person_id, diff_x, diff_y) {
     move_last_point_of_line(el, diff_x/2, diff_y/2);
   }
 
-  const child_mother_line_down = document.querySelectorAll("[c_mother_id=\"" + person_id + "\"]");
-  for (const el of child_mother_line_down) {
+  // The sibship line follows the parents' drop down and stays horizontal; the children's stubs stretch to meet it.
+  const child_lines = document.querySelectorAll("[c_mother_id=\"" + person_id + "\"], [c_father_id=\"" + person_id + "\"]");
+  for (const el of child_lines) {
     move_first_point_of_line(el, diff_x/2, diff_y/2);
-  }
-  const child_father_line_down = document.querySelectorAll("[c_father_id=\"" + person_id + "\"]");
-  for (const el of child_father_line_down) {
-    move_first_point_of_line(el, diff_x/2, diff_y/2);
+    move_last_point_of_line(el, 0, diff_y/2);
+    const child_id = el.getAttribute("child_id");
+    for (const stub of document.querySelectorAll("[stub_id=\"" + child_id + "\"]")) {
+      move_last_point_of_line(stub, 0, diff_y/2);
+    }
   }
 
 }

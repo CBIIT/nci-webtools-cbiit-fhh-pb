@@ -176,6 +176,7 @@ const CUSTOM_SVG_ATTRIBUTES = [
   "child_id",
   "c_mother_id",
   "c_father_id",
+  "stub_id",
 ];
 
 function strip_custom_svg_attributes(svg_elem) {
@@ -3198,7 +3199,7 @@ function draw_connector(person_id, mother_id, father_id) {
     }
 
 
-    draw_line_top_of_child(child_loc, person_id);
+    draw_line_top_of_child(child_loc, person_id, (mother_loc.y + father_loc.y) / 2 + config.v_spacing / 2);
     draw_line_between_parents(mother_loc, father_loc, mother_id, father_id);
     draw_line_connecting_parents_down(
       mother_loc,
@@ -3231,7 +3232,7 @@ function draw_line_child_to_parents(
   const y1 = (mother_loc.y + father_loc.y) / 2 + config.v_spacing / 2;
 
   const x2 = child_loc.x;
-  const y2 = child_loc.y - config.v_spacing / 2;
+  const y2 = y1;
 
   let elem = draw_line(x1, y1, x2, y2);
   elem.setAttributeNS(null, "stroke-width", "2");
@@ -3240,15 +3241,11 @@ function draw_line_child_to_parents(
   elem.setAttributeNS(null, "c_father_id", father_id);
 }
 
-function draw_line_top_of_child(child_loc, person_id) {
-  //  let elem = draw_line(child_loc.x, child_loc.y - config.size/2, child_loc.x, child_loc.y - config.size - config.v_spacing/2);
-  let elem = draw_line(
-    child_loc.x,
-    child_loc.y,
-    child_loc.x,
-    child_loc.y - config.v_spacing / 2
-  );
+// Vertical line from the child up (or down) to its parents' horizontal sibship line at bar_y.
+function draw_line_top_of_child(child_loc, person_id, bar_y) {
+  let elem = draw_line(child_loc.x, child_loc.y, child_loc.x, bar_y);
   elem.setAttributeNS(null, "id", person_id);
+  elem.setAttributeNS(null, "stub_id", person_id);
   elem.setAttributeNS(null, "stroke-width", "2");
 }
 
