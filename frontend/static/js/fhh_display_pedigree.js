@@ -837,9 +837,13 @@ function draw_collapse_toggles() {
   group.setAttribute("id", "collapse-toggles");
 
   const couples = new Set(collapsed_couples);
+  const ancestor = (id) => kept.has(id) && id != data.general?.proband;
   for (const id of family_tree) {
     const person = data["people"][id];
-    if (person?.mother && person?.father && !kept.has(id)) couples.add(person.mother + "|" + person.father);
+    if (!person?.mother || !person?.father || kept.has(id)) continue;
+    // Collapsing under the proband's direct ancestors doesn't behave well, so it isn't offered there.
+    if (ancestor(person.mother) || ancestor(person.father)) continue;
+    couples.add(person.mother + "|" + person.father);
   }
 
   for (const couple of couples) {
