@@ -1308,6 +1308,8 @@ function draw_family_tree(family_tree) {
     }
   }
 
+  draw_childless_partner_lines();
+
   for (const person_id in data["people"]) {
     const person = data["people"][person_id];
     if (person.gen != null && person.loc != null) {
@@ -1400,6 +1402,33 @@ function draw_person_connectors(person_id) {
   const person = data["people"][person_id];
 
   if (person) draw_connector(person_id, person.mother, person.father);
+}
+
+// Couples with children get their line from draw_connector; this covers couples known only from `partners`.
+function draw_childless_partner_lines() {
+  const people = data["people"];
+  const has_child = new Set();
+  for (const id in people) {
+    if (people[id].mother && people[id].father) {
+      has_child.add(people[id].mother + "|" + people[id].father);
+      has_child.add(people[id].father + "|" + people[id].mother);
+    }
+  }
+  const drawn = new Set();
+  for (const id in people) {
+    const person = people[id];
+    if (person.gen == null || person.loc == null) continue;
+    for (const partner of person.partners || []) {
+      const spouse = people[partner?.spouse_id];
+      if (!spouse || spouse.gen == null || spouse.loc == null) continue;
+      const key = [id, partner.spouse_id].sort().join("|");
+      if (drawn.has(key) || has_child.has(id + "|" + partner.spouse_id)) continue;
+      drawn.add(key);
+      const female_first = person.demographics?.gender == "Female";
+      const [mother_id, father_id] = female_first ? [id, partner.spouse_id] : [partner.spouse_id, id];
+      draw_line_between_parents(get_center(people[mother_id]), get_center(people[father_id]), mother_id, father_id);
+    }
+  }
 }
 
 function get_center(person) {

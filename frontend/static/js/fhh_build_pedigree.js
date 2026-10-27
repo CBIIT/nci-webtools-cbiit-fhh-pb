@@ -164,6 +164,22 @@ function index_families() {
     }
     family.children.push(id);
   }
+
+  // Childless couples are only recorded in each person's `partners` list.
+  for (const id of Object.keys(data["people"])) {
+    for (const partner of data["people"][id].partners || []) {
+      const spouse_id = partner?.spouse_id;
+      if (!exists(spouse_id) || spouse_id == id) continue;
+      if (families.has(id + "|" + spouse_id) || families.has(spouse_id + "|" + id)) continue;
+      const [mother, father] = gender_of(id) == "Female" || gender_of(spouse_id) == "Male" ? [id, spouse_id] : [spouse_id, id];
+      const family = { mother, father, children: [] };
+      families.set(mother + "|" + father, family);
+      for (const parent_id of [mother, father]) {
+        if (!families_of.has(parent_id)) families_of.set(parent_id, []);
+        families_of.get(parent_id).push(family);
+      }
+    }
+  }
 }
 
 function birth_family(id) {
@@ -184,18 +200,37 @@ function assign_generations(proband_id) {
       queue.push(id);
     }
   };
-  while (queue.length) {
-    const id = queue.shift();
-    const gen = generations.get(id);
-    const parents = birth_family(id);
-    if (parents) {
-      visit(parents.mother, gen - 1);
-      visit(parents.father, gen - 1);
+  const spread = () => {
+    while (queue.length) {
+      const id = queue.shift();
+      const gen = generations.get(id);
+      const parents = birth_family(id);
+      if (parents) {
+        visit(parents.mother, gen - 1);
+        visit(parents.father, gen - 1);
+      }
+      for (const family of families_of.get(id) || []) {
+        if (family.children.length == 0) continue;
+        visit(partner_in(family, id), gen);
+        for (const child_id of family.children) visit(child_id, gen + 1);
+      }
     }
-    for (const family of families_of.get(id) || []) {
-      visit(partner_in(family, id), gen);
-      for (const child_id of family.children) visit(child_id, gen + 1);
+  };
+  spread();
+  // Childless partner records are sometimes inconsistent, so they only place people nothing else reaches.
+  let added = true;
+  while (added) {
+    added = false;
+    for (const family of families.values()) {
+      if (family.children.length > 0) continue;
+      const [a, b] = [family.mother, family.father];
+      if (generations.has(a) != generations.has(b)) {
+        if (generations.has(a)) visit(b, generations.get(a));
+        else visit(a, generations.get(b));
+        added = true;
+      }
     }
+    spread();
   }
 }
 
@@ -484,6 +519,8 @@ function build_own(p, exclude, side, strict = false) {
       if (kids) hang_children(B, p, kids);
       return;
     }
+    // A childless couple only brings in a spouse who has no other place in the tree.
+    if (family.children.length == 0 && (birth_family(q) || generations.get(q) != generations.get(p) || (families_of.get(q) || []).some((f) => f.children.length > 0))) return;
     const Q = anc_side(q, q_left ? "right" : "left", p);
     if (family == deferred || (side && own_families.length == 1 && birth_family(q))) {
       B.pend[q_left ? "left" : "right"] = { p, q, Q, kids };
