@@ -25,7 +25,22 @@ function runSilently(callback) {
 
 beforeEach(() => {
   pedigree.reset_furthest_locations();
+  pedigree.set_hidden_people([]);
   pedigree.set_data(cloneFixture());
+});
+
+test("hidden (collapsed) children are left out while their parents stay a couple", () => {
+  const hidden = ["10001-03-001", "10001-03-002", "10001-03-003"];
+  pedigree.set_hidden_people(hidden);
+  const tree = runSilently(() => pedigree.build_entire_family_tree(fixture.proband));
+  const people = pedigree.get_data().people;
+
+  for (const id of hidden) {
+    assert.ok(!tree.includes(id));
+    assert.equal(people[id].loc, null);
+  }
+  assert.ok(tree.includes("10001-01-005"));
+  assert.equal(Math.abs(people[fixture.proband].loc - people["10001-01-005"].loc), 1);
 });
 
 test("set_data and get_data use the active dataset", () => {

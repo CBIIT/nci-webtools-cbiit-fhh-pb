@@ -10,6 +10,7 @@ import {
   check_for_overlaps,
   check_for_unplaced_people,
   reset_furthest_locations,
+  set_hidden_people,
   find_all_children
 } from "./fhh_build_pedigree.js";
 
@@ -123,6 +124,7 @@ family_select.addEventListener("change", function (event) {
       data = d;
       annotations = a;
       config = c;
+      reset_collapsed();
       display_pedigree();
       history.reset(take_snapshot());
       show_all_blocks();
@@ -202,6 +204,7 @@ export function record_change() {
   history.commit(take_snapshot());
   update_layout_problems(true);
   refresh_layout_problem_alerts();
+  draw_collapse_toggles();
 }
 
 function restore_snapshot(snapshot) {
@@ -443,7 +446,7 @@ const CUSTOM_SVG_ATTRIBUTES = [
 
 function strip_custom_svg_attributes(svg_elem) {
   const clone = svg_elem.cloneNode(true);
-  clone.querySelectorAll("#problem-highlights, .find-highlight").forEach((el) => el.remove());
+  clone.querySelectorAll("#problem-highlights, .find-highlight, #collapse-toggles").forEach((el) => el.remove());
   clone.querySelectorAll("*").forEach((el) => {
     CUSTOM_SVG_ATTRIBUTES.forEach((attr) => el.removeAttribute(attr));
   });
@@ -691,6 +694,7 @@ document.addEventListener("DOMContentLoaded", async function () {
         show_summary_block();
         set_study_summary();
         set_family_summary();
+        reset_collapsed();
         display_pedigree();
         history.reset(take_snapshot());
         previous_study_value = study_select.value;
@@ -750,13 +754,145 @@ export function display_pedigree() {
 
   draw_frame();
   draw_family_tree(family_tree);
+  draw_collapsed_couple_lines();
   draw_annotation_lines();
   draw_annotation_arrows();
   draw_annotation_texts();
+  draw_collapse_toggles();
 
   update_layout_problems();
   add_alert_bar();
   populate_find_list();
+}
+
+////////////////////// Collapsing branches
+
+let collapsed_couples = new Set();
+
+function couple_children(mother_id, father_id) {
+  return Object.keys(data["people"]).filter((id) => data["people"][id].mother == mother_id && data["people"][id].father == father_id);
+}
+
+// The proband and their direct ancestors are never hidden.
+function protected_people() {
+  const kept = new Set();
+  const walk = (id) => {
+    if (!id || kept.has(id) || !data["people"][id]) return;
+    kept.add(id);
+    walk(data["people"][id].mother);
+    walk(data["people"][id].father);
+  };
+  walk(data.general?.proband);
+  return kept;
+}
+
+// Everyone below each collapsed couple, plus spouses who only married into those branches.
+function compute_hidden_people() {
+  const kept = protected_people();
+  const hidden = new Set();
+  const hide_branch = (id) => {
+    if (kept.has(id) || hidden.has(id)) return;
+    hidden.add(id);
+    for (const child_id of find_all_children(id)) hide_branch(child_id);
+  };
+  for (const couple of collapsed_couples) {
+    const [mother_id, father_id] = couple.split("|");
+    couple_children(mother_id, father_id).forEach(hide_branch);
+  }
+
+  const people = data["people"];
+  const married_in = (id) => !kept.has(id) && !hidden.has(id) && !people[id]?.mother && !people[id]?.father;
+  for (const id of [...hidden]) {
+    for (const child_id of find_all_children(id)) {
+      const child = people[child_id];
+      const other = child.mother == id ? child.father : child.mother;
+      if (married_in(other) && find_all_children(other).every((c) => hidden.has(c))) hidden.add(other);
+    }
+    for (const partner of people[id].partners || []) {
+      const spouse_id = partner?.spouse_id;
+      if (married_in(spouse_id) && find_all_children(spouse_id).every((c) => hidden.has(c))) hidden.add(spouse_id);
+    }
+  }
+  return hidden;
+}
+
+// Couples whose only children are collapsed get no connector from draw_connector, so draw their line here.
+function draw_collapsed_couple_lines() {
+  for (const couple of collapsed_couples) {
+    const [mother_id, father_id] = couple.split("|");
+    const mother = data["people"][mother_id];
+    const father = data["people"][father_id];
+    if (!mother || !father || mother.gen == null || father.gen == null) continue;
+    if (couple_children(mother_id, father_id).some((id) => data["people"][id].gen != null)) continue;
+    draw_line_between_parents(get_center(mother), get_center(father), mother_id, father_id);
+  }
+}
+
+function draw_collapse_toggles() {
+  const svg_elem = document.getElementById("svg");
+  if (!svg_elem) return;
+  svg_elem.querySelector("#collapse-toggles")?.remove();
+  const kept = protected_people();
+  const group = document.createElementNS(svgns, "g");
+  group.setAttribute("id", "collapse-toggles");
+
+  const couples = new Set(collapsed_couples);
+  for (const id of family_tree) {
+    const person = data["people"][id];
+    if (person?.mother && person?.father && !kept.has(id)) couples.add(person.mother + "|" + person.father);
+  }
+
+  for (const couple of couples) {
+    const [mother_id, father_id] = couple.split("|");
+    const mother = data["people"][mother_id];
+    const father = data["people"][father_id];
+    if (!mother || !father || mother.gen == null || father.gen == null || mother.x == null || father.x == null) continue;
+    const is_collapsed = collapsed_couples.has(couple);
+
+    const toggle = document.createElementNS(svgns, "g");
+    toggle.setAttribute("class", is_collapsed ? "collapse-toggle collapsed" : "collapse-toggle");
+    const x = (mother.x + father.x) / 2;
+    const y = (mother.y + father.y) / 2;
+    const hit = document.createElementNS(svgns, "circle");
+    hit.setAttribute("cx", x);
+    hit.setAttribute("cy", y);
+    hit.setAttribute("r", 14);
+    hit.setAttribute("class", "collapse-hit");
+    const marker = document.createElementNS(svgns, "circle");
+    marker.setAttribute("cx", x);
+    marker.setAttribute("cy", y);
+    marker.setAttribute("r", 7);
+    marker.setAttribute("class", "collapse-marker");
+    const title = document.createElementNS(svgns, "title");
+    title.textContent = is_collapsed ? "Show this couple's descendants" : "Hide this couple's descendants";
+    toggle.append(title, hit, marker);
+
+    toggle.addEventListener("mousedown", (event) => {
+      event.stopPropagation();
+      event.preventDefault();
+    });
+    toggle.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggle_collapse(couple);
+    });
+    group.appendChild(toggle);
+  }
+  svg_elem.appendChild(group);
+}
+
+function toggle_collapse(couple) {
+  if (collapsed_couples.has(couple)) collapsed_couples.delete(couple);
+  else collapsed_couples.add(couple);
+  set_hidden_people(compute_hidden_people());
+  const scroll = { left: main_elem.scrollLeft, top: main_elem.scrollTop };
+  display_pedigree();
+  main_elem.scrollLeft = scroll.left;
+  main_elem.scrollTop = scroll.top;
+}
+
+function reset_collapsed() {
+  collapsed_couples = new Set();
+  set_hidden_people([]);
 }
 
 function add_alert_bar() {

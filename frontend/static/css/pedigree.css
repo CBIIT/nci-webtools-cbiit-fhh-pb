@@ -257,6 +257,33 @@ body {
   border-color:#EBC86A;
 }
 
+.collapse-toggle {
+  cursor:pointer;
+}
+
+.collapse-hit {
+  fill:transparent;
+  stroke:none;
+  pointer-events:all;
+}
+
+.collapse-marker {
+  fill:#FFF;
+  stroke:#000;
+  stroke-width:2;
+  opacity:0;
+  transition:opacity 0.15s;
+}
+
+.collapse-toggle:hover .collapse-marker {
+  opacity:1;
+}
+
+.collapse-toggle.collapsed .collapse-marker {
+  fill:#000;
+  opacity:1;
+}
+
 .alert-button.alert-button-soft:hover {
   background-color:#FFE7A3;
   border-color:#D9AE3E;

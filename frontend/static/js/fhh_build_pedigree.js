@@ -134,6 +134,7 @@ let families_of = new Map();
 let generations = new Map();
 let visited = new Set();
 let ancestors = new Set();
+let hidden_people = new Set();
 
 function exists(id) {
   return !!(id && data["people"][id]);
@@ -160,6 +161,7 @@ function index_families() {
   for (const id of Object.keys(data["people"])) {
     const person = data["people"][id];
     if (!exists(person.mother) || !exists(person.father) || person.mother == person.father) continue;
+    if (hidden_people.has(person.mother) || hidden_people.has(person.father)) continue;
     const key = person.mother + "|" + person.father;
     let family = families.get(key);
     if (!family) {
@@ -170,14 +172,16 @@ function index_families() {
         families_of.get(parent_id).push(family);
       }
     }
-    family.children.push(id);
+    // A couple whose children are all collapsed stays a (childless) couple.
+    if (!hidden_people.has(id)) family.children.push(id);
   }
 
   // Childless couples are only recorded in each person's `partners` list.
   for (const id of Object.keys(data["people"])) {
+    if (hidden_people.has(id)) continue;
     for (const partner of data["people"][id].partners || []) {
       const spouse_id = partner?.spouse_id;
-      if (!exists(spouse_id) || spouse_id == id) continue;
+      if (!exists(spouse_id) || spouse_id == id || hidden_people.has(spouse_id)) continue;
       if (families.has(id + "|" + spouse_id) || families.has(spouse_id + "|" + id)) continue;
       const [mother, father] = gender_of(id) == "Female" || gender_of(spouse_id) == "Male" ? [id, spouse_id] : [spouse_id, id];
       const family = { mother, father, children: [] };
@@ -203,7 +207,7 @@ function assign_generations(proband_id) {
   generations = new Map([[proband_id, 0]]);
   const queue = [proband_id];
   const visit = (id, gen) => {
-    if (exists(id) && !generations.has(id)) {
+    if (exists(id) && !generations.has(id) && !hidden_people.has(id)) {
       generations.set(id, gen);
       queue.push(id);
     }
@@ -660,7 +664,19 @@ export function build_entire_family_tree(proband_id) {
   furthest_left = min;
   furthest_right = max;
 
+  for (const id of hidden_people) {
+    if (data["people"][id]) {
+      data["people"][id].gen = null;
+      data["people"][id].loc = null;
+    }
+  }
+
   return family_tree;
+}
+
+// People in collapsed branches; they are left out of the layout entirely.
+export function set_hidden_people(ids) {
+  hidden_people = new Set(ids);
 }
 
 /////////////
