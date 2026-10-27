@@ -25,7 +25,22 @@ function runSilently(callback) {
 
 beforeEach(() => {
   pedigree.reset_furthest_locations();
+  pedigree.set_hidden_people([]);
   pedigree.set_data(cloneFixture());
+});
+
+test("hidden (collapsed) children are left out while their parents stay a couple", () => {
+  const hidden = ["10001-03-001", "10001-03-002", "10001-03-003"];
+  pedigree.set_hidden_people(hidden);
+  const tree = runSilently(() => pedigree.build_entire_family_tree(fixture.proband));
+  const people = pedigree.get_data().people;
+
+  for (const id of hidden) {
+    assert.ok(!tree.includes(id));
+    assert.equal(people[id].loc, null);
+  }
+  assert.ok(tree.includes("10001-01-005"));
+  assert.equal(Math.abs(people[fixture.proband].loc - people["10001-01-005"].loc), 1);
 });
 
 test("set_data and get_data use the active dataset", () => {
@@ -63,10 +78,10 @@ test("build_entire_family_tree adds placeholder ancestors and generation metadat
   assert.ok(tree.includes("10001-01-005"));
   assert.ok(tree.includes("m_10001-04-021"));
   assert.equal(data.people["m_10001-04-021"].placeholder, true);
-  assert.equal(data.people[fixture.proband].gen, 1);
-  assert.equal(data.people["10001-04-021"].gen, -1);
-  assert.equal(pedigree.get_oldest_generation(), -1);
-  assert.equal(pedigree.get_youngest_generation(), 2);
+  assert.equal(data.people[fixture.proband].gen, 0);
+  assert.equal(data.people["10001-04-021"].gen, -2);
+  assert.equal(pedigree.get_oldest_generation(), -2);
+  assert.equal(pedigree.get_youngest_generation(), 1);
   assert.equal(pedigree.get_generation_count(), 4);
 });
 
@@ -75,15 +90,39 @@ test("build_entire_family_tree assigns locations without overlaps on the sample 
   const data = pedigree.get_data();
 
   assert.equal(Object.keys(pedigree.check_for_overlaps(tree)).length, 0);
-  assert.notEqual(data.people[fixture.proband].loc, undefined);
-  assert.ok(pedigree.get_furthest_left() < 0);
-  assert.equal(pedigree.get_furthest_right(), 0);
+  const proband_loc = data.people[fixture.proband].loc;
+  assert.ok(pedigree.get_furthest_left() <= proband_loc);
+  assert.ok(pedigree.get_furthest_right() >= proband_loc);
+  assert.ok(pedigree.get_furthest_left() < pedigree.get_furthest_right());
+});
+
+test("build_entire_family_tree keeps sibship lines of different families apart", () => {
+  const tree = runSilently(() => pedigree.build_entire_family_tree(fixture.proband));
+  const people = pedigree.get_data().people;
+  const bars = {};
+  for (const id of tree) {
+    const person = people[id];
+    if (!people[person.mother] || !people[person.father]) continue;
+    const drop = (people[person.mother].loc + people[person.father].loc) / 2;
+    const key = person.mother + "|" + person.father;
+    const bar = (bars[key] ||= { gen: person.gen, lo: drop, hi: drop });
+    bar.lo = Math.min(bar.lo, person.loc);
+    bar.hi = Math.max(bar.hi, person.loc);
+  }
+  const list = Object.values(bars);
+  for (let i = 0; i < list.length; i++) {
+    for (let j = i + 1; j < list.length; j++) {
+      const a = list[i];
+      const b = list[j];
+      if (a.gen == b.gen) assert.ok(a.hi < b.lo || b.hi < a.lo, "sibship lines overlap");
+    }
+  }
 });
 
 test("reset_furthest_locations clears placement bounds", () => {
   runSilently(() => pedigree.build_entire_family_tree(fixture.proband));
 
-  assert.ok(pedigree.get_furthest_left() < 0);
+  assert.ok(pedigree.get_furthest_left() < pedigree.get_furthest_right());
 
   pedigree.reset_furthest_locations();
 

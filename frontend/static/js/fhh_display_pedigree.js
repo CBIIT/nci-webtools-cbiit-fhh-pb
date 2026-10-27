@@ -10,6 +10,7 @@ import {
   check_for_overlaps,
   check_for_unplaced_people,
   reset_furthest_locations,
+  set_hidden_people,
   find_all_children
 } from "./fhh_build_pedigree.js";
 
@@ -31,6 +32,9 @@ import {
   start_free_move,
   start_slide_move,
 } from "./fhh_move.js";
+
+import * as history from "./fhh_history.js";
+import { find_layout_problems } from "./fhh_crossings.js";
 
 const svgns = "http://www.w3.org/2000/svg";
 const pencil_cursor = 'url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2224%22 height=%2224%22 viewBox=%220 0 24 24%22%3E%3Cpath d=%22m4 20 4-.8L20 7.2 16.8 4 4.8 16z%22 fill=%22white%22 stroke=%22black%22 stroke-width=%222%22/%3E%3C/svg%3E") 4 20, crosshair';
@@ -77,7 +81,13 @@ export function get_config() {
 
 
 let study_select = document.getElementById("study_select");
+let previous_study_value = study_select.value;
 study_select.addEventListener("change", function (event) {
+  if (!confirm_discard_unsaved_changes()) {
+    study_select.value = previous_study_value;
+    return;
+  }
+  previous_study_value = study_select.value;
   study_name = event.target.value;
   set_selection_loading(true);
   Promise.all([
@@ -97,10 +107,16 @@ study_select.addEventListener("change", function (event) {
 });
 
 let family_select = document.getElementById("families_select");
+let previous_family_value = family_select.value;
 family_select.addEventListener("change", function (event) {
   if (!study_name) {
     return;
   }
+  if (!confirm_discard_unsaved_changes()) {
+    family_select.value = previous_family_value;
+    return;
+  }
+  previous_family_value = family_select.value;
 
   set_selection_loading(true);
   load_config_and_data(study_name, event.target.value, study_name)
@@ -108,11 +124,14 @@ family_select.addEventListener("change", function (event) {
       data = d;
       annotations = a;
       config = c;
+      reset_collapsed();
       display_pedigree();
+      history.reset(take_snapshot());
       show_all_blocks();
       show_summary_block();
       set_study_summary();
       set_family_summary();
+      zoom_to_fit();
     })
     .catch((error) => {
       console.error("Failed to load family data:", error);
@@ -147,9 +166,256 @@ save_elem.addEventListener("click", async function () {
   finish_pending_text_annotation();
   try {
     await save_positions_and_annotations(data, annotations);
+    history.mark_saved();
     show_save_export_status("File saved.", true);
   } catch (error) {
     show_save_export_status(`File save failed: ${error?.message || "Unknown error"}`, false);
+  }
+});
+
+////////////////////// Undo / redo and saved state
+
+const undo_elem = document.getElementById("undo-button");
+const redo_elem = document.getElementById("redo-button");
+undo_elem.addEventListener("click", undo_change);
+redo_elem.addEventListener("click", redo_change);
+
+history.on_change(function () {
+  undo_elem.disabled = !history.can_undo();
+  redo_elem.disabled = !history.can_redo();
+  save_elem.disabled = !history.is_dirty();
+});
+
+function take_snapshot() {
+  const positions = {};
+  for (const [person_id, person] of Object.entries(data?.people || {})) {
+    if (person.x != null && person.y != null) positions[person_id] = { x: person.x, y: person.y };
+  }
+  return {
+    positions,
+    lines: annotations?.lines ?? [],
+    arrows: annotations?.arrows ?? [],
+    texts: annotations?.texts ?? [],
+  };
+}
+
+// Called after every completed user change (drag, annotation edit) to record an undo step.
+export function record_change() {
+  if (!data) return;
+  history.commit(take_snapshot());
+  update_layout_problems(true);
+  refresh_layout_problem_alerts();
+  draw_collapse_toggles();
+}
+
+function restore_snapshot(snapshot) {
+  if (!snapshot) return;
+  annotations = annotations || {};
+  annotations.positions = Object.fromEntries(
+    Object.entries(snapshot.positions).filter(([person_id]) => data.people[person_id])
+  );
+  annotations.lines = snapshot.lines;
+  annotations.arrows = snapshot.arrows;
+  annotations.texts = snapshot.texts;
+  display_pedigree();
+}
+
+function undo_change() {
+  finish_pending_text_annotation();
+  restore_snapshot(history.undo());
+}
+
+function redo_change() {
+  finish_pending_text_annotation();
+  restore_snapshot(history.redo());
+}
+
+function confirm_discard_unsaved_changes() {
+  return !history.is_dirty() || window.confirm("You have unsaved changes. Discard them?");
+}
+
+window.addEventListener("beforeunload", function (event) {
+  if (!history.is_dirty()) return;
+  event.preventDefault();
+  event.returnValue = "";
+});
+
+document.addEventListener("keydown", function (event) {
+  if (!(event.metaKey || event.ctrlKey)) return;
+  const key = event.key.toLowerCase();
+  if (key !== "z" && key !== "y") return;
+  if (event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable='true']")) return;
+  event.preventDefault();
+  if (key === "y" || event.shiftKey) redo_change();
+  else undo_change();
+});
+
+////////////////////// View: zoom, find, reset layout
+
+let zoom = 1;
+const MIN_ZOOM = 0.1;
+const MAX_ZOOM = 4;
+const main_elem = document.getElementById("main");
+const zoom_level_elem = document.getElementById("zoom-level-button");
+const find_input_elem = document.getElementById("find-input");
+
+export function get_zoom() {
+  return zoom;
+}
+
+function get_view_box() {
+  const svg_elem = document.getElementById("svg");
+  const view_box = svg_elem?.getAttribute("viewBox");
+  if (!view_box) return null;
+  const [x, y, width, height] = view_box.split(" ").map(Number);
+  return { svg_elem, x, y, width, height };
+}
+
+// Zooms keeping the content under `anchor` (a point in #main's visible area) still.
+function set_zoom(new_zoom, anchor = { x: main_elem.clientWidth / 2, y: main_elem.clientHeight / 2 }) {
+  const view = get_view_box();
+  new_zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, new_zoom));
+  zoom_level_elem.textContent = Math.round(new_zoom * 100) + "%";
+  if (!view) {
+    zoom = new_zoom;
+    return;
+  }
+  const content_x = (main_elem.scrollLeft + anchor.x) / zoom;
+  const content_y = (main_elem.scrollTop + anchor.y) / zoom;
+  zoom = new_zoom;
+  view.svg_elem.setAttribute("width", view.width * zoom);
+  view.svg_elem.setAttribute("height", view.height * zoom);
+  main_elem.scrollLeft = content_x * zoom - anchor.x;
+  main_elem.scrollTop = content_y * zoom - anchor.y;
+}
+
+function zoom_to_fit() {
+  const view = get_view_box();
+  if (!view) return;
+  set_zoom(Math.min((main_elem.clientWidth - 20) / view.width, (main_elem.clientHeight - 20) / view.height));
+  main_elem.scrollLeft = 0;
+  main_elem.scrollTop = 0;
+}
+
+document.getElementById("zoom-in-button").addEventListener("click", () => set_zoom(zoom * 1.25));
+document.getElementById("zoom-out-button").addEventListener("click", () => set_zoom(zoom / 1.25));
+zoom_level_elem.addEventListener("click", () => set_zoom(1));
+document.getElementById("zoom-fit-button").addEventListener("click", zoom_to_fit);
+
+// Cmd/Ctrl + wheel (and trackpad pinch, which reports ctrlKey) zooms around the pointer.
+main_elem.addEventListener("wheel", function (event) {
+  if (!(event.ctrlKey || event.metaKey)) return;
+  event.preventDefault();
+  const bounds = main_elem.getBoundingClientRect();
+  const factor = Math.exp(-event.deltaY * 0.002);
+  set_zoom(zoom * factor, { x: event.clientX - bounds.left, y: event.clientY - bounds.top });
+}, { passive: false });
+
+function populate_find_list() {
+  const list_elem = document.getElementById("find-list");
+  list_elem.replaceChildren();
+  for (const person_id of family_tree) {
+    const person = data["people"][person_id];
+    if (!person || person.placeholder) continue;
+    const option = document.createElement("option");
+    option.value = person.name && person.name != "Unknown" ? `${person_id} ${person.name}` : person_id;
+    list_elem.appendChild(option);
+  }
+}
+
+function find_person(query) {
+  const text = query.trim();
+  if (!text || !data) return null;
+  const first_word = text.split(/\s+/)[0];
+  if (family_tree.includes(first_word)) return first_word;
+  const lower = text.toLowerCase();
+  return family_tree.find((id) => {
+    const person = data["people"][id];
+    return !person?.placeholder && (id.toLowerCase().includes(lower) || (person?.name || "").toLowerCase().includes(lower));
+  }) || null;
+}
+
+function go_to_person(person_id) {
+  const person = data?.["people"]?.[person_id];
+  const view = get_view_box();
+  if (!person || person.x == null || !view) return;
+
+  main_elem.scrollLeft = (person.x - view.x) * zoom - main_elem.clientWidth / 2;
+  main_elem.scrollTop = (person.y - view.y) * zoom - main_elem.clientHeight / 2;
+
+  document.querySelectorAll("#svg .find-highlight").forEach((el) => el.remove());
+  const ring = document.createElementNS(svgns, "circle");
+  ring.setAttribute("cx", person.x);
+  ring.setAttribute("cy", person.y);
+  ring.setAttribute("r", config.size * 0.85);
+  ring.setAttribute("class", "find-highlight");
+  view.svg_elem.appendChild(ring);
+  setTimeout(() => ring.remove(), 2500);
+
+  set_study_summary();
+  set_details_of_person(person_id);
+}
+
+const find_dialog_elem = document.getElementById("find-dialog");
+
+function open_find_dialog() {
+  if (!find_dialog_elem.open) find_dialog_elem.showModal();
+  find_input_elem.focus();
+  find_input_elem.select();
+}
+
+function run_find() {
+  const person_id = find_person(find_input_elem.value);
+  if (!person_id) return;
+  find_dialog_elem.close();
+  go_to_person(person_id);
+}
+
+document.getElementById("find-button").addEventListener("click", open_find_dialog);
+document.getElementById("find-go-button").addEventListener("click", run_find);
+find_input_elem.addEventListener("change", run_find);
+find_input_elem.addEventListener("keydown", function (event) {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    run_find();
+  }
+});
+
+document.getElementById("find-proband-button").addEventListener("click", function () {
+  if (!data?.general?.proband) return;
+  find_dialog_elem.close();
+  go_to_person(data.general.proband);
+});
+
+document.getElementById("reset-layout-button").addEventListener("click", function () {
+  if (!data) return;
+  if (!window.confirm("Discard all hand-placed positions and re-run the automatic layout? (You can undo this.)")) return;
+  finish_pending_text_annotation();
+  annotations = annotations || {};
+  annotations.positions = {};
+  Object.values(data["people"]).forEach((person) => { person.moved = false; });
+  display_pedigree();
+  record_change();
+});
+
+document.addEventListener("keydown", function (event) {
+  if (!(event.metaKey || event.ctrlKey)) return;
+  const key = event.key.toLowerCase();
+  if (key === "f") {
+    event.preventDefault();
+    open_find_dialog();
+    return;
+  }
+  if (event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable='true']")) return;
+  if (key === "0") {
+    event.preventDefault();
+    zoom_to_fit();
+  } else if (key === "=" || key === "+") {
+    event.preventDefault();
+    set_zoom(zoom * 1.25);
+  } else if (key === "-") {
+    event.preventDefault();
+    set_zoom(zoom / 1.25);
   }
 });
 
@@ -163,6 +429,7 @@ annotation_color_input.addEventListener("input", function () {
   });
   if (selected_annotation) update_annotation_color(selected_annotation, color);
 });
+annotation_color_input.addEventListener("change", record_change);
 
 // Non-standard attributes used internally to wire up interactivity (see fhh_move.js
 // attribute selectors); PowerPoint's SVG parser rejects them, so strip them on export.
@@ -176,10 +443,12 @@ const CUSTOM_SVG_ATTRIBUTES = [
   "child_id",
   "c_mother_id",
   "c_father_id",
+  "stub_id",
 ];
 
 function strip_custom_svg_attributes(svg_elem) {
   const clone = svg_elem.cloneNode(true);
+  clone.querySelectorAll("#problem-highlights, .find-highlight, #collapse-toggles").forEach((el) => el.remove());
   clone.querySelectorAll("*").forEach((el) => {
     CUSTOM_SVG_ATTRIBUTES.forEach((attr) => el.removeAttribute(attr));
   });
@@ -210,6 +479,57 @@ save_svg_elem.addEventListener("click", function () {
   } catch (error) {
     show_save_export_status(`File export failed: ${error?.message || "Unknown error"}`, false);
   }
+});
+
+// Opens a landscape, one-page print view of the pedigree; the user picks "Save as PDF" in the print dialog.
+document.getElementById("save-pdf-button").addEventListener("click", function () {
+  const svg_elem = document.getElementById("svg");
+  if (!svg_elem || !data) {
+    show_save_export_status("Nothing to print yet.", false);
+    return;
+  }
+  const print_window = window.open("", "_blank");
+  if (!print_window) {
+    show_save_export_status("Allow pop-ups for this site to create a PDF.", false);
+    return;
+  }
+
+  const family_id = family_select.value?.trim() || "family";
+  const doc = print_window.document;
+  doc.title = `Pedigree ${family_id}`;
+
+  const style = doc.createElement("style");
+  style.textContent = `
+    @page { size: landscape; margin: 10mm; }
+    html, body { margin: 0; height: 100%; font-family: Arial, Helvetica, sans-serif; }
+    body { display: flex; flex-direction: column; }
+    header { display: flex; justify-content: space-between; align-items: baseline; padding: 0 0 6px; border-bottom: 1px solid #999; margin-bottom: 6px; font-size: 12px; }
+    header h1 { font-size: 16px; margin: 0; }
+    main { flex: 1; min-height: 0; }
+    main svg { width: 100%; height: 100%; }
+  `;
+  doc.head.appendChild(style);
+
+  const header = doc.createElement("header");
+  const title = doc.createElement("h1");
+  title.textContent = `Family ${family_id}`;
+  const details = doc.createElement("div");
+  const study = config?.study_name || study_name || "";
+  const proband = data.general?.proband ? `Proband ${data.general.proband}` : "";
+  details.textContent = [study, proband, new Date().toLocaleDateString()].filter(Boolean).join("  \u00b7  ");
+  header.append(title, details);
+
+  const main = doc.createElement("main");
+  const clean_svg = strip_custom_svg_attributes(svg_elem);
+  clean_svg.removeAttribute("width");
+  clean_svg.removeAttribute("height");
+  clean_svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+  clean_svg.style.margin = "0";
+  main.appendChild(doc.importNode(clean_svg, true));
+
+  doc.body.append(header, main);
+  print_window.focus();
+  print_window.print();
 });
 
 let save_family_elem = document.getElementById("save-family-button");
@@ -427,7 +747,12 @@ document.addEventListener("DOMContentLoaded", async function () {
         show_summary_block();
         set_study_summary();
         set_family_summary();
+        reset_collapsed();
         display_pedigree();
+        history.reset(take_snapshot());
+        zoom_to_fit();
+        previous_study_value = study_select.value;
+        previous_family_value = family_select.value;
       }
     }
   } catch (error) {
@@ -480,14 +805,186 @@ export function display_pedigree() {
   }
 
   family_tree = build_entire_family_tree(proband_id);
+  for (const id of ["save-svg-button", "save-pdf-button", "reset-layout-button"]) {
+    document.getElementById(id).disabled = false;
+  }
 
   draw_frame();
   draw_family_tree(family_tree);
+  draw_collapsed_couple_lines();
   draw_annotation_lines();
   draw_annotation_arrows();
   draw_annotation_texts();
+  draw_collapse_toggles();
 
+  update_layout_problems();
   add_alert_bar();
+  populate_find_list();
+}
+
+////////////////////// Collapsing branches
+
+let collapsed_couples = new Set();
+
+function couple_children(mother_id, father_id) {
+  return Object.keys(data["people"]).filter((id) => data["people"][id].mother == mother_id && data["people"][id].father == father_id);
+}
+
+// The proband and their direct ancestors are never hidden.
+function protected_people() {
+  const kept = new Set();
+  const walk = (id) => {
+    if (!id || kept.has(id) || !data["people"][id]) return;
+    kept.add(id);
+    walk(data["people"][id].mother);
+    walk(data["people"][id].father);
+  };
+  walk(data.general?.proband);
+  return kept;
+}
+
+// Everyone below each collapsed couple, plus spouses who only married into those branches.
+function compute_hidden_people() {
+  const kept = protected_people();
+  const hidden = new Set();
+  const hide_branch = (id) => {
+    if (kept.has(id) || hidden.has(id)) return;
+    hidden.add(id);
+    for (const child_id of find_all_children(id)) hide_branch(child_id);
+  };
+  for (const couple of collapsed_couples) {
+    const [mother_id, father_id] = couple.split("|");
+    couple_children(mother_id, father_id).forEach(hide_branch);
+  }
+
+  const people = data["people"];
+  const married_in = (id) => !kept.has(id) && !hidden.has(id) && !people[id]?.mother && !people[id]?.father;
+  for (const id of [...hidden]) {
+    for (const child_id of find_all_children(id)) {
+      const child = people[child_id];
+      const other = child.mother == id ? child.father : child.mother;
+      if (married_in(other) && find_all_children(other).every((c) => hidden.has(c))) hidden.add(other);
+    }
+    for (const partner of people[id].partners || []) {
+      const spouse_id = partner?.spouse_id;
+      if (married_in(spouse_id) && find_all_children(spouse_id).every((c) => hidden.has(c))) hidden.add(spouse_id);
+    }
+  }
+  return hidden;
+}
+
+// Couples whose only children are collapsed get no connector from draw_connector, so draw their line here.
+function draw_collapsed_couple_lines() {
+  for (const couple of collapsed_couples) {
+    const [mother_id, father_id] = couple.split("|");
+    const mother = data["people"][mother_id];
+    const father = data["people"][father_id];
+    if (!mother || !father || mother.gen == null || father.gen == null) continue;
+    if (couple_children(mother_id, father_id).some((id) => data["people"][id].gen != null)) continue;
+    draw_line_between_parents(get_center(mother), get_center(father), mother_id, father_id);
+  }
+}
+
+function draw_collapse_toggles() {
+  const svg_elem = document.getElementById("svg");
+  if (!svg_elem) return;
+  svg_elem.querySelector("#collapse-toggles")?.remove();
+  const kept = protected_people();
+  const group = document.createElementNS(svgns, "g");
+  group.setAttribute("id", "collapse-toggles");
+
+  const couples = new Set(collapsed_couples);
+  const ancestor = (id) => kept.has(id) && id != data.general?.proband;
+  for (const id of family_tree) {
+    const person = data["people"][id];
+    if (!person?.mother || !person?.father || kept.has(id)) continue;
+    // Collapsing under a couple who are both the proband's direct ancestors doesn't behave well, so it isn't offered there.
+    if (ancestor(person.mother) && ancestor(person.father)) continue;
+    couples.add(person.mother + "|" + person.father);
+  }
+
+  for (const couple of couples) {
+    const [mother_id, father_id] = couple.split("|");
+    const mother = data["people"][mother_id];
+    const father = data["people"][father_id];
+    if (!mother || !father || mother.gen == null || father.gen == null || mother.x == null || father.x == null) continue;
+    const is_collapsed = collapsed_couples.has(couple);
+
+    const toggle = document.createElementNS(svgns, "g");
+    toggle.setAttribute("class", is_collapsed ? "collapse-toggle collapsed" : "collapse-toggle");
+    toggle.dataset.couple = couple;
+    const x = (mother.x + father.x) / 2;
+    const y = (mother.y + father.y) / 2;
+    const hit = document.createElementNS(svgns, "circle");
+    hit.setAttribute("cx", x);
+    hit.setAttribute("cy", y);
+    hit.setAttribute("r", 14);
+    hit.setAttribute("class", "collapse-hit");
+    const marker = document.createElementNS(svgns, "circle");
+    marker.setAttribute("cx", x);
+    marker.setAttribute("cy", y);
+    marker.setAttribute("r", 7);
+    marker.setAttribute("class", "collapse-marker");
+    const title = document.createElementNS(svgns, "title");
+    title.textContent = is_collapsed ? "Show this couple's descendants" : "Hide this couple's descendants";
+    toggle.append(title, hit, marker);
+
+    toggle.addEventListener("mousedown", (event) => {
+      event.stopPropagation();
+      event.preventDefault();
+    });
+    toggle.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggle_collapse(couple);
+    });
+    group.appendChild(toggle);
+  }
+  svg_elem.appendChild(group);
+}
+
+function toggle_collapse(couple) {
+  const marker_rect = () => document.querySelector(`#collapse-toggles [data-couple="${couple}"] .collapse-marker`)?.getBoundingClientRect();
+  const before = marker_rect();
+
+  if (collapsed_couples.has(couple)) collapsed_couples.delete(couple);
+  else collapsed_couples.add(couple);
+  set_hidden_people(compute_hidden_people());
+  remember_moved_positions();
+  display_pedigree();
+
+  const after = marker_rect();
+  if (before && after) keep_point_on_screen(after.left - before.left, after.top - before.top);
+}
+
+// Hand moves live only on the drawn people until saved; copy them over so a redraw keeps them.
+function remember_moved_positions() {
+  annotations = annotations || {};
+  annotations.positions = annotations.positions || {};
+  for (const [person_id, person] of Object.entries(data["people"])) {
+    if (person.moved && person.x != null && person.y != null) {
+      annotations.positions[person_id] = { x: person.x, y: person.y };
+    }
+  }
+}
+
+// Scrolls (padding the drawing if scrolling alone can't) so content that moved by dx/dy appears not to move.
+function keep_point_on_screen(dx, dy) {
+  const svg_elem = document.getElementById("svg");
+  const want_left = main_elem.scrollLeft + dx;
+  const want_top = main_elem.scrollTop + dy;
+  if (want_left < 0) svg_elem.style.marginLeft = `${-want_left}px`;
+  if (want_top < 0) svg_elem.style.marginTop = `${-want_top}px`;
+  const max_left = main_elem.scrollWidth - main_elem.clientWidth;
+  const max_top = main_elem.scrollHeight - main_elem.clientHeight;
+  if (want_left > max_left) main_elem.style.paddingRight = `${want_left - max_left}px`;
+  if (want_top > max_top) main_elem.style.paddingBottom = `${want_top - max_top}px`;
+  main_elem.scrollLeft = Math.max(0, want_left);
+  main_elem.scrollTop = Math.max(0, want_top);
+}
+
+function reset_collapsed() {
+  collapsed_couples = new Set();
+  set_hidden_people([]);
 }
 
 function add_alert_bar() {
@@ -500,6 +997,7 @@ function add_alert_bar() {
 
   active_alerts |= add_overlap_alerts(alert_elem);
   active_alerts |= add_unplaced_people_alerts(alert_elem);
+  active_alerts |= add_crossing_alerts(alert_elem);
   active_alerts |= add_other_alerts(alert_elem);
   alert_elem.style.display = active_alerts ? "grid" : "none";
 
@@ -509,10 +1007,7 @@ function add_alert_bar() {
     return;
   }
 
-  alert_dismiss_timer = setTimeout(function () {
-    if (!alert_is_pinned) alert_elem.style.display = "none";
-    alert_dismiss_timer = null;
-  }, alert_auto_dismiss_delay);
+  // Auto-dismiss of warnings is paused for now; they stay until fixed or closed with ×.
 }
 
 function show_save_export_status(message, succeeded) {
@@ -526,8 +1021,8 @@ function show_save_export_status(message, succeeded) {
   status_elem.className = "alert-status";
   status_elem.textContent = message;
   alert_elem.append(status_elem);
-  alert_elem.style.backgroundColor = succeeded ? "#DFF0D8" : "#FDD";
-  alert_elem.style.border = succeeded ? "1px solid #39824A" : "1px dashed #F00";
+  alert_elem.style.backgroundColor = succeeded ? ALERT_TONES.success.background : ALERT_TONES.error.background;
+  alert_elem.style.border = succeeded ? ALERT_TONES.success.border : ALERT_TONES.error.border;
   alert_elem.style.display = "grid";
 
   alert_dismiss_timer = setTimeout(function () {
@@ -540,8 +1035,8 @@ function add_overlap_alerts(alert_elem) {
   const overlaps = check_for_overlaps(family_tree);
 
   if (overlaps && Object.keys(overlaps).length > 0) {
-    alert_elem.style.backgroundColor = "#FDD";
-    alert_elem.style.border = "1px dashed #F00";
+    alert_elem.style.backgroundColor = ALERT_TONES.error.background;
+    alert_elem.style.border = ALERT_TONES.error.border;
     const p = document.createElement("p");
     p.classList.add("alert-line");
     alert_elem.append(p);
@@ -560,8 +1055,8 @@ function add_unplaced_people_alerts(alert_elem) {
   const missing_people = check_for_unplaced_people(data);
 
   if (missing_people && Object.keys(missing_people).length > 0) {
-    alert_elem.style.backgroundColor = "#FDD";
-    alert_elem.style.border = "1px dashed #F00";
+    alert_elem.style.backgroundColor = ALERT_TONES.error.background;
+    alert_elem.style.border = ALERT_TONES.error.border;
     const p = document.createElement("p");
     p.classList.add("alert-line");
     alert_elem.append(p);
@@ -571,11 +1066,191 @@ function add_unplaced_people_alerts(alert_elem) {
       const children = find_all_children(person_id);
       const text = person_id + " [" + children.length + "]";
       const button = create_button(text);
+      button.title = "Show this person's details";
+      button.addEventListener("click", () => {
+        set_study_summary();
+        set_details_of_person(person_id);
+      });
       p.append(button);
     }
     return true;
   } else {
     return false;
+  }
+}
+
+let layout_problems = { crossings: [], hits: [], multi_partner: [] };
+const ALERT_TONES = {
+  error: { background: "#FFF5F5", border: "1px solid #F1B0B0" },
+  warning: { background: "#FFFBEA", border: "1px solid #EBCB72" },
+  success: { background: "#F0F9F1", border: "1px solid #9BD3A6" },
+};
+let reported_problem_keys = new Set();
+const MAX_PROBLEM_BUTTONS = 20;
+
+// Recomputes crossings from current positions and redraws their highlights. With
+// only_reported, problems that weren't reported at the last redraw are ignored.
+function update_layout_problems(only_reported = false) {
+  const svg_elem = document.getElementById("svg");
+  if (!svg_elem || !data) return;
+  const drawn_people = Object.fromEntries(family_tree.map((id) => [id, data["people"][id]]).filter(([, person]) => person));
+  layout_problems = find_layout_problems(drawn_people, config.size, sibship_bar_y);
+  if (only_reported) {
+    const keep = (key) => reported_problem_keys.has(key);
+    layout_problems = {
+      multi_partner: layout_problems.multi_partner.filter((item) => keep(`multi|${item.person_id}`)),
+      hits: layout_problems.hits.filter((hit) => keep(`hit|${segment_key(hit.segment)}|${hit.person_id}`)),
+      crossings: layout_problems.crossings.filter(([s, t]) => keep(`cross|${[segment_key(s), segment_key(t)].sort().join("|")}`)),
+    };
+  } else {
+    reported_problem_keys = current_problem_keys();
+  }
+
+  svg_elem.querySelector("#problem-highlights")?.remove();
+  const { crossings, hits, multi_partner } = layout_problems;
+  if (crossings.length === 0 && hits.length === 0 && multi_partner.length === 0) return;
+
+  const group = document.createElementNS(svgns, "g");
+  group.setAttribute("id", "problem-highlights");
+  group.setAttribute("pointer-events", "none");
+  const highlight_segment = (segment, css_class = "problem-highlight") => {
+    const line = document.createElementNS(svgns, "line");
+    line.setAttribute("x1", segment.a[0]);
+    line.setAttribute("y1", segment.a[1]);
+    line.setAttribute("x2", segment.b[0]);
+    line.setAttribute("y2", segment.b[1]);
+    line.setAttribute("class", css_class);
+    group.appendChild(line);
+  };
+  for (const item of multi_partner) {
+    item.segments.forEach((segment) => highlight_segment(segment, "problem-highlight-soft"));
+  }
+  for (const [s, t] of crossings) {
+    highlight_segment(s);
+    highlight_segment(t);
+  }
+  for (const hit of hits) {
+    highlight_segment(hit.segment);
+    const person = data["people"][hit.person_id];
+    const ring = document.createElementNS(svgns, "circle");
+    ring.setAttribute("cx", person.x);
+    ring.setAttribute("cy", person.y);
+    ring.setAttribute("r", config.size * 0.75);
+    ring.setAttribute("class", "problem-highlight");
+    group.appendChild(ring);
+  }
+  svg_elem.appendChild(group);
+}
+
+// Drops the family number prefix (e.g. "05648-") that every ID in the family shares.
+function short_id(person_id) {
+  const prefix = (family_select.value || "").trim() + "-";
+  return prefix.length > 1 && person_id.startsWith(prefix) ? person_id.slice(prefix.length) : person_id;
+}
+
+function describe_segment(segment) {
+  if (segment.kind === "marriage" || segment.kind === "drop") return segment.members.map(short_id).join("+");
+  return short_id(segment.child);
+}
+
+function set_alert_colors(alert_elem) {
+  const lines = alert_elem.querySelectorAll(".alert-line");
+  if (lines.length === 0) return;
+  const only_soft = Array.from(lines).every((line) =>
+    line.classList.contains("layout-problem-line")
+      ? !line.querySelector(".alert-button:not(.alert-button-soft)")
+      : false
+  );
+  const tone = only_soft ? ALERT_TONES.warning : ALERT_TONES.error;
+  alert_elem.style.backgroundColor = tone.background;
+  alert_elem.style.border = tone.border;
+}
+
+function segment_key(segment) {
+  return `${segment.key}|${segment.kind}|${segment.child || ""}`;
+}
+
+function current_problem_keys() {
+  const { crossings, hits, multi_partner } = layout_problems;
+  return new Set([
+    ...multi_partner.map((item) => `multi|${item.person_id}`),
+    ...hits.map((hit) => `hit|${segment_key(hit.segment)}|${hit.person_id}`),
+    ...crossings.map(([s, t]) => `cross|${[segment_key(s), segment_key(t)].sort().join("|")}`),
+  ]);
+}
+
+// Each problem is its own self-describing button, so fixing one removes just that button.
+function add_crossing_alerts(alert_elem) {
+  const { crossings, hits, multi_partner } = layout_problems;
+  const items = [
+    ...multi_partner.map((item) => ({
+      key: `multi|${item.person_id}`,
+      text: `Multiple partners: ${short_id(item.person_id)}`,
+      target: item.person_id,
+      title: "Lines between this person's partners overlap; drag a partner aside to fix",
+      soft: true,
+    })),
+    ...hits.map((hit) => ({
+      key: `hit|${segment_key(hit.segment)}|${hit.person_id}`,
+      text: `Line over ${short_id(hit.person_id)}: ${describe_segment(hit.segment)}`,
+      target: hit.person_id,
+    })),
+    ...crossings.map(([s, t]) => ({
+      key: `cross|${[segment_key(s), segment_key(t)].sort().join("|")}`,
+      text: `Lines cross: ${describe_segment(s)} \u00d7 ${describe_segment(t)}`,
+      target: s.child || s.members[0],
+    })),
+  ];
+  if (items.length === 0) return false;
+
+  const p = document.createElement("p");
+  p.classList.add("alert-line", "layout-problem-line");
+  p.problem_keys = items.map((item) => item.key);
+  alert_elem.append(p);
+  for (const item of items.slice(0, MAX_PROBLEM_BUTTONS)) {
+    const button = create_button(item.text);
+    button.dataset.problemKey = item.key;
+    if (item.title) button.title = item.title;
+    if (item.soft) button.classList.add("alert-button-soft");
+    button.addEventListener("click", () => go_to_person(item.target));
+    p.append(button);
+  }
+  update_more_note(p);
+  set_alert_colors(alert_elem);
+  return true;
+}
+
+function update_more_note(line) {
+  line.querySelector(".alert-more")?.remove();
+  const hidden = line.problem_keys.length - line.querySelectorAll("[data-problem-key]").length;
+  if (hidden <= 0) return;
+  const more = document.createElement("span");
+  more.className = "alert-heading alert-more";
+  more.textContent = `…and ${hidden} more (highlighted in red)`;
+  line.append(more);
+}
+
+// After a hand edit, drop the warnings that are now fixed (new problems are not added until the next redraw).
+function refresh_layout_problem_alerts() {
+  const alert_elem = document.getElementById("alert");
+  if (!alert_elem) return;
+  const still_present = current_problem_keys();
+
+  for (const line of alert_elem.querySelectorAll(".layout-problem-line")) {
+    line.problem_keys = (line.problem_keys || []).filter((key) => still_present.has(key));
+    line.querySelectorAll("[data-problem-key]").forEach((button) => {
+      if (!still_present.has(button.dataset.problemKey)) button.remove();
+    });
+    if (line.problem_keys.length === 0) line.remove();
+    else update_more_note(line);
+  }
+
+  if (!alert_elem.querySelector(".alert-line, .alert-status")) {
+    alert_elem.style.display = "none";
+    alert_elem.style.backgroundColor = "white";
+    alert_elem.style.border = "";
+  } else {
+    set_alert_colors(alert_elem);
   }
 }
 
@@ -585,8 +1260,8 @@ function add_other_alerts(alert_elem) {
   const person_ids = Object.keys(other_alerts);
 
   if (person_ids.length > 0) {
-    alert_elem.style.backgroundColor = "#FDD";
-    alert_elem.style.border = "1px dashed #F00";
+    alert_elem.style.backgroundColor = ALERT_TONES.error.background;
+    alert_elem.style.border = ALERT_TONES.error.border;
     const p = document.createElement("p");
     p.classList.add("alert-line");
     alert_elem.append(p);
@@ -679,8 +1354,8 @@ function expand_canvas_to_fit(x, y) {
   const new_height = new_max_y - new_min_y;
 
   svgElem.setAttributeNS(null, "viewBox", new_min_x + " " + new_min_y + " " + new_width + " " + new_height);
-  svgElem.setAttributeNS(null, "width", new_width);
-  svgElem.setAttributeNS(null, "height", new_height);
+  svgElem.setAttributeNS(null, "width", new_width * zoom);
+  svgElem.setAttributeNS(null, "height", new_height * zoom);
 }
 
 // Called from fhh_move.js while the user drags a person outside the current canvas.
@@ -692,8 +1367,8 @@ export function create_svg(width, height) {
   const default_color = config.default_color || "lightblue";
   let svgElem = document.createElementNS(svgns, "svg");
   svgElem.setAttributeNS(null, "viewBox", "0 0 " + width + " " + height);
-  svgElem.setAttributeNS(null, "width", width);
-  svgElem.setAttributeNS(null, "height", height);
+  svgElem.setAttributeNS(null, "width", width * zoom);
+  svgElem.setAttributeNS(null, "height", height * zoom);
   svgElem.setAttributeNS(null, "fill", default_color);
   svgElem.setAttributeNS(null, "stroke", "black");
   svgElem.setAttributeNS(null, "stroke-width", "5");
@@ -704,6 +1379,8 @@ export function create_svg(width, height) {
 
   var svgContainer = document.getElementById("main");
   svgContainer.innerHTML = "";
+  svgContainer.style.paddingRight = "";
+  svgContainer.style.paddingBottom = "";
   svgContainer.appendChild(svgElem);
 
   addSvgListeners(svgElem);
@@ -895,6 +1572,7 @@ function handle_line_annotation_click(event) {
   pending_line_start = null;
   pending_line_element = null;
   update_line_cursor();
+  record_change();
 }
 
 function handle_text_annotation_double_click(event) {
@@ -1045,6 +1723,7 @@ function finish_pending_text_annotation() {
   if (!pending.item.text.trim()) {
     remove_annotation_at(pending.collection, pending.index);
   }
+  record_change();
 }
 
 function cancel_pending_text_annotation() {
@@ -1191,6 +1870,7 @@ function finish_annotation_move() {
   dragging_annotation = false;
   annotation_move_origin = null;
   update_line_cursor();
+  record_change();
 }
 
 function set_selected_annotation(annotation) {
@@ -1252,6 +1932,7 @@ function delete_selected_annotation() {
   const { collection, index, element } = selected_annotation;
   element.remove();
   remove_annotation_at(collection, index);
+  record_change();
 }
 
 function remove_annotation_at(collection, index) {
@@ -1307,6 +1988,8 @@ function draw_family_tree(family_tree) {
       draw_person_connectors(person_id);
     }
   }
+
+  draw_childless_partner_lines();
 
   for (const person_id in data["people"]) {
     const person = data["people"][person_id];
@@ -1400,6 +2083,33 @@ function draw_person_connectors(person_id) {
   const person = data["people"][person_id];
 
   if (person) draw_connector(person_id, person.mother, person.father);
+}
+
+// Couples with children get their line from draw_connector; this covers couples known only from `partners`.
+function draw_childless_partner_lines() {
+  const people = data["people"];
+  const has_child = new Set();
+  for (const id in people) {
+    if (people[id].mother && people[id].father) {
+      has_child.add(people[id].mother + "|" + people[id].father);
+      has_child.add(people[id].father + "|" + people[id].mother);
+    }
+  }
+  const drawn = new Set();
+  for (const id in people) {
+    const person = people[id];
+    if (person.gen == null || person.loc == null) continue;
+    for (const partner of person.partners || []) {
+      const spouse = people[partner?.spouse_id];
+      if (!spouse || spouse.gen == null || spouse.loc == null) continue;
+      const key = [id, partner.spouse_id].sort().join("|");
+      if (drawn.has(key) || has_child.has(id + "|" + partner.spouse_id)) continue;
+      drawn.add(key);
+      const female_first = person.demographics?.gender == "Female";
+      const [mother_id, father_id] = female_first ? [id, partner.spouse_id] : [partner.spouse_id, id];
+      draw_line_between_parents(get_center(people[mother_id]), get_center(people[father_id]), mother_id, father_id);
+    }
+  }
 }
 
 function get_center(person) {
@@ -3169,13 +3879,19 @@ function draw_connector(person_id, mother_id, father_id) {
     }
 
 
-    draw_line_top_of_child(child_loc, person_id);
+    const child_ys = Object.values(data["people"])
+      .filter((p) => p.mother == mother_id && p.father == father_id && p.gen != null && p.loc != null)
+      .map((p) => get_center(p).y);
+    const bar_y = sibship_bar_y((mother_loc.y + father_loc.y) / 2, child_ys);
+
+    draw_line_top_of_child(child_loc, person_id, bar_y);
     draw_line_between_parents(mother_loc, father_loc, mother_id, father_id);
     draw_line_connecting_parents_down(
       mother_loc,
       father_loc,
       mother_id,
-      father_id
+      father_id,
+      bar_y
     );
     draw_line_child_to_parents(
       child_loc,
@@ -3183,10 +3899,18 @@ function draw_connector(person_id, mother_id, father_id) {
       father_loc,
       person_id,
       mother_id,
-      father_id
+      father_id,
+      bar_y
     );
     //    console.log(person_id + ":" + mother_id + "," +    father_id);
   }
+}
+
+// Half a row below the parents, but raised to stay above any child dragged higher than that.
+export function sibship_bar_y(parents_y, child_ys) {
+  let bar_y = parents_y + config.v_spacing / 2;
+  for (const y of child_ys) bar_y = Math.min(bar_y, y - config.size);
+  return Math.max(bar_y, parents_y + config.size / 4);
 }
 
 function draw_line_child_to_parents(
@@ -3195,14 +3919,15 @@ function draw_line_child_to_parents(
   father_loc,
   person_id,
   mother_id,
-  father_id
+  father_id,
+  bar_y
 ) {
   //  const x1 = mother_loc.x + config.h_spacing;
   const x1 = (mother_loc.x + father_loc.x) / 2;
-  const y1 = (mother_loc.y + father_loc.y) / 2 + config.v_spacing / 2;
+  const y1 = bar_y;
 
   const x2 = child_loc.x;
-  const y2 = child_loc.y - config.v_spacing / 2;
+  const y2 = y1;
 
   let elem = draw_line(x1, y1, x2, y2);
   elem.setAttributeNS(null, "stroke-width", "2");
@@ -3211,15 +3936,11 @@ function draw_line_child_to_parents(
   elem.setAttributeNS(null, "c_father_id", father_id);
 }
 
-function draw_line_top_of_child(child_loc, person_id) {
-  //  let elem = draw_line(child_loc.x, child_loc.y - config.size/2, child_loc.x, child_loc.y - config.size - config.v_spacing/2);
-  let elem = draw_line(
-    child_loc.x,
-    child_loc.y,
-    child_loc.x,
-    child_loc.y - config.v_spacing / 2
-  );
+// Vertical line from the child up (or down) to its parents' horizontal sibship line at bar_y.
+function draw_line_top_of_child(child_loc, person_id, bar_y) {
+  let elem = draw_line(child_loc.x, child_loc.y, child_loc.x, bar_y);
   elem.setAttributeNS(null, "id", person_id);
+  elem.setAttributeNS(null, "stub_id", person_id);
   elem.setAttributeNS(null, "stroke-width", "2");
 }
 
@@ -3239,21 +3960,27 @@ function draw_line_connecting_parents_down(
   mother_loc,
   father_loc,
   mother_id,
-  father_id
+  father_id,
+  bar_y
 ) {
   const x = (mother_loc.x + father_loc.x) / 2;
   //  const x = mother_loc.x + config.h_spacing;
   const y1 = (mother_loc.y + father_loc.y) / 2;
-  const y2 = y1 + config.v_spacing / 2;
+  const y2 = bar_y;
   let elem = draw_line(x, y1, x, y2);
   elem.setAttributeNS(null, "stroke-width", "2");
   elem.setAttributeNS(null, "p_mother_id", mother_id);
   elem.setAttributeNS(null, "p_father_id", father_id);
 }
 
+// Baseline of the first label line under a person's symbol.
+function label_top(center) {
+  return center.y + config.size / 2 + config.v_padding / 2;
+}
+
 function draw_name(center, person_id) {
   const loc_x = center.x;
-  const loc_y = center.y + config.size / 2 + config.v_padding;
+  const loc_y = label_top(center);
 
   //  if (data["people"][person_id] && data["people"][person_id].name) {
   //    text = data["people"][person_id].name;
@@ -3285,7 +4012,7 @@ function draw_born_and_deceased(center, person_id) {
 
   if (born_deceased) {
     const loc_x = center.x;
-    const loc_y = center.y + config.size / 2 + 2 * config.v_padding;
+    const loc_y = label_top(center) + config.v_padding;
     const elem = draw_label(born_deceased, loc_x , loc_y );
     if (born_deceased.length > 15) {
       elem.setAttribute("font-size", 10);
@@ -3307,7 +4034,7 @@ function draw_highlighted_diseases(center, person_id) {
   if (matches.length === 0) return;
 
   const loc_x = center.x;
-  const loc_y = center.y + config.size / 2 + 2 * config.v_padding + 14;
+  const loc_y = label_top(center) + config.v_padding + 14;
   const elem = draw_label(matches.join(", "), loc_x, loc_y);
   elem.setAttribute("id", person_id);
 }
