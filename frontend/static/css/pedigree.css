@@ -77,19 +77,19 @@ body {
 }
 
 .alertbar .alert-line {
-  display:grid;
-  grid-template-columns:repeat(auto-fit, minmax(min(100%, 90px), 1fr));
-  align-items:start;
-  gap:2px;
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:3px;
   min-width:0;
   margin:0;
   font-size:11px;
 }
 
 .alert-heading {
-  grid-column:1 / -1;
   font-size:11px;
   font-weight:bold;
+  margin-right:2px;
 }
 
 .alert-status {
@@ -113,8 +113,8 @@ body {
 .alert-button {
   min-width:0;
   margin:0;
-  padding:1px 3px;
-  overflow-wrap:anywhere;
+  padding:1px 5px;
+  white-space:nowrap;
   font-size:10px;
   line-height:1.15;
     background-color:#FAA;

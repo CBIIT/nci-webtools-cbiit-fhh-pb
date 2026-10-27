@@ -894,9 +894,15 @@ function update_layout_problems() {
   svg_elem.appendChild(group);
 }
 
+// Drops the family number prefix (e.g. "05648-") that every ID in the family shares.
+function short_id(person_id) {
+  const prefix = (family_select.value || "").trim() + "-";
+  return prefix.length > 1 && person_id.startsWith(prefix) ? person_id.slice(prefix.length) : person_id;
+}
+
 function describe_segment(segment) {
-  if (segment.kind === "marriage" || segment.kind === "drop") return segment.members.join("+");
-  return segment.child;
+  if (segment.kind === "marriage" || segment.kind === "drop") return segment.members.map(short_id).join("+");
+  return short_id(segment.child);
 }
 
 function add_crossing_alerts(alert_elem) {
@@ -911,9 +917,10 @@ function add_crossing_alerts(alert_elem) {
     const p = document.createElement("p");
     p.classList.add("alert-line");
     alert_elem.append(p);
-    add_alert_heading(p, "Multiple partners overlap (move a partner by hand):");
+    add_alert_heading(p, "Multiple partners:");
     for (const item of multi_partner) {
-      const button = create_button(item.person_id);
+      const button = create_button(short_id(item.person_id));
+      button.title = "Lines between this person's partners overlap; drag a partner aside to fix";
       button.classList.add("alert-button-soft");
       button.addEventListener("click", () => go_to_person(item.person_id));
       p.append(button);
@@ -931,7 +938,7 @@ function add_crossing_alerts(alert_elem) {
   add_alert_heading(p, `Line problems (${crossings.length + hits.length}):`);
 
   const items = [
-    ...hits.map((hit) => ({ text: `${describe_segment(hit.segment)} over ${hit.person_id}`, target: hit.person_id })),
+    ...hits.map((hit) => ({ text: `${describe_segment(hit.segment)} over ${short_id(hit.person_id)}`, target: hit.person_id })),
     ...crossings.map(([s, t]) => ({ text: `${describe_segment(s)} × ${describe_segment(t)}`, target: s.child || s.members[0] })),
   ];
   for (const item of items.slice(0, MAX_PROBLEM_BUTTONS)) {
