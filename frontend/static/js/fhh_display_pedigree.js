@@ -480,6 +480,57 @@ save_svg_elem.addEventListener("click", function () {
   }
 });
 
+// Opens a landscape, one-page print view of the pedigree; the user picks "Save as PDF" in the print dialog.
+document.getElementById("save-pdf-button").addEventListener("click", function () {
+  const svg_elem = document.getElementById("svg");
+  if (!svg_elem || !data) {
+    show_save_export_status("Nothing to print yet.", false);
+    return;
+  }
+  const print_window = window.open("", "_blank");
+  if (!print_window) {
+    show_save_export_status("Allow pop-ups for this site to create a PDF.", false);
+    return;
+  }
+
+  const family_id = family_select.value?.trim() || "family";
+  const doc = print_window.document;
+  doc.title = `Pedigree ${family_id}`;
+
+  const style = doc.createElement("style");
+  style.textContent = `
+    @page { size: landscape; margin: 10mm; }
+    html, body { margin: 0; height: 100%; font-family: Arial, Helvetica, sans-serif; }
+    body { display: flex; flex-direction: column; }
+    header { display: flex; justify-content: space-between; align-items: baseline; padding: 0 0 6px; border-bottom: 1px solid #999; margin-bottom: 6px; font-size: 12px; }
+    header h1 { font-size: 16px; margin: 0; }
+    main { flex: 1; min-height: 0; }
+    main svg { width: 100%; height: 100%; }
+  `;
+  doc.head.appendChild(style);
+
+  const header = doc.createElement("header");
+  const title = doc.createElement("h1");
+  title.textContent = `Family ${family_id}`;
+  const details = doc.createElement("div");
+  const study = config?.study_name || study_name || "";
+  const proband = data.general?.proband ? `Proband ${data.general.proband}` : "";
+  details.textContent = [study, proband, new Date().toLocaleDateString()].filter(Boolean).join("  \u00b7  ");
+  header.append(title, details);
+
+  const main = doc.createElement("main");
+  const clean_svg = strip_custom_svg_attributes(svg_elem);
+  clean_svg.removeAttribute("width");
+  clean_svg.removeAttribute("height");
+  clean_svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+  clean_svg.style.margin = "0";
+  main.appendChild(doc.importNode(clean_svg, true));
+
+  doc.body.append(header, main);
+  print_window.focus();
+  print_window.print();
+});
+
 let save_family_elem = document.getElementById("save-family-button");
 if (save_family_elem) {
   save_family_elem.addEventListener("click", async function () {
