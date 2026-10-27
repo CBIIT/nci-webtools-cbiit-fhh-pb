@@ -851,6 +851,7 @@ function draw_collapse_toggles() {
 
     const toggle = document.createElementNS(svgns, "g");
     toggle.setAttribute("class", is_collapsed ? "collapse-toggle collapsed" : "collapse-toggle");
+    toggle.dataset.couple = couple;
     const x = (mother.x + father.x) / 2;
     const y = (mother.y + father.y) / 2;
     const hit = document.createElementNS(svgns, "circle");
@@ -881,13 +882,31 @@ function draw_collapse_toggles() {
 }
 
 function toggle_collapse(couple) {
+  const marker_rect = () => document.querySelector(`#collapse-toggles [data-couple="${couple}"] .collapse-marker`)?.getBoundingClientRect();
+  const before = marker_rect();
+
   if (collapsed_couples.has(couple)) collapsed_couples.delete(couple);
   else collapsed_couples.add(couple);
   set_hidden_people(compute_hidden_people());
-  const scroll = { left: main_elem.scrollLeft, top: main_elem.scrollTop };
   display_pedigree();
-  main_elem.scrollLeft = scroll.left;
-  main_elem.scrollTop = scroll.top;
+
+  const after = marker_rect();
+  if (before && after) keep_point_on_screen(after.left - before.left, after.top - before.top);
+}
+
+// Scrolls (padding the drawing if scrolling alone can't) so content that moved by dx/dy appears not to move.
+function keep_point_on_screen(dx, dy) {
+  const svg_elem = document.getElementById("svg");
+  const want_left = main_elem.scrollLeft + dx;
+  const want_top = main_elem.scrollTop + dy;
+  if (want_left < 0) svg_elem.style.marginLeft = `${-want_left}px`;
+  if (want_top < 0) svg_elem.style.marginTop = `${-want_top}px`;
+  const max_left = main_elem.scrollWidth - main_elem.clientWidth;
+  const max_top = main_elem.scrollHeight - main_elem.clientHeight;
+  if (want_left > max_left) main_elem.style.paddingRight = `${want_left - max_left}px`;
+  if (want_top > max_top) main_elem.style.paddingBottom = `${want_top - max_top}px`;
+  main_elem.scrollLeft = Math.max(0, want_left);
+  main_elem.scrollTop = Math.max(0, want_top);
 }
 
 function reset_collapsed() {
@@ -1282,6 +1301,8 @@ export function create_svg(width, height) {
 
   var svgContainer = document.getElementById("main");
   svgContainer.innerHTML = "";
+  svgContainer.style.paddingRight = "";
+  svgContainer.style.paddingBottom = "";
   svgContainer.appendChild(svgElem);
 
   addSvgListeners(svgElem);
