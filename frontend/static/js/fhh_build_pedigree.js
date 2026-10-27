@@ -101,6 +101,14 @@ export function find_all_partners(person_id) {
     const other = child.mother == person_id ? child.father : child.mother;
     if (other && other != person_id && !partners.includes(other)) partners.push(other);
   }
+  for (const partner of data["people"][person_id].partners || []) {
+    const spouse_id = partner?.spouse_id;
+    if (!exists(spouse_id) || spouse_id == person_id || partners.includes(spouse_id)) continue;
+    // Same rule as the layout: only a childless spouse with no other place in the tree is attached.
+    const spouse = data["people"][spouse_id];
+    if (spouse.mother || spouse.father || find_all_children(spouse_id).length > 0) continue;
+    partners.push(spouse_id);
+  }
   return partners;
 }
 
