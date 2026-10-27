@@ -33,6 +33,7 @@ import {
 } from "./fhh_move.js";
 
 import * as history from "./fhh_history.js";
+import { find_layout_problems } from "./fhh_crossings.js";
 
 const svgns = "http://www.w3.org/2000/svg";
 const pencil_cursor = 'url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2224%22 height=%2224%22 viewBox=%220 0 24 24%22%3E%3Cpath d=%22m4 20 4-.8L20 7.2 16.8 4 4.8 16z%22 fill=%22white%22 stroke=%22black%22 stroke-width=%222%22/%3E%3C/svg%3E") 4 20, crosshair';
@@ -197,7 +198,9 @@ function take_snapshot() {
 
 // Called after every completed user change (drag, annotation edit) to record an undo step.
 export function record_change() {
-  if (data) history.commit(take_snapshot());
+  if (!data) return;
+  history.commit(take_snapshot());
+  update_layout_problems();
 }
 
 function restore_snapshot(snapshot) {
@@ -439,6 +442,7 @@ const CUSTOM_SVG_ATTRIBUTES = [
 
 function strip_custom_svg_attributes(svg_elem) {
   const clone = svg_elem.cloneNode(true);
+  clone.querySelectorAll("#problem-highlights, .find-highlight").forEach((el) => el.remove());
   clone.querySelectorAll("*").forEach((el) => {
     CUSTOM_SVG_ATTRIBUTES.forEach((attr) => el.removeAttribute(attr));
   });
@@ -749,6 +753,7 @@ export function display_pedigree() {
   draw_annotation_arrows();
   draw_annotation_texts();
 
+  update_layout_problems();
   add_alert_bar();
   populate_find_list();
 }
@@ -763,6 +768,7 @@ function add_alert_bar() {
 
   active_alerts |= add_overlap_alerts(alert_elem);
   active_alerts |= add_unplaced_people_alerts(alert_elem);
+  active_alerts |= add_crossing_alerts(alert_elem);
   active_alerts |= add_other_alerts(alert_elem);
   alert_elem.style.display = active_alerts ? "grid" : "none";
 
@@ -840,6 +846,82 @@ function add_unplaced_people_alerts(alert_elem) {
   } else {
     return false;
   }
+}
+
+let layout_problems = { crossings: [], hits: [] };
+const MAX_PROBLEM_BUTTONS = 20;
+
+// Recomputes crossings from current positions and redraws their highlights.
+function update_layout_problems() {
+  const svg_elem = document.getElementById("svg");
+  if (!svg_elem || !data) return;
+  const drawn_people = Object.fromEntries(family_tree.map((id) => [id, data["people"][id]]).filter(([, person]) => person));
+  layout_problems = find_layout_problems(drawn_people, config.size, sibship_bar_y);
+
+  svg_elem.querySelector("#problem-highlights")?.remove();
+  if (layout_problems.crossings.length === 0 && layout_problems.hits.length === 0) return;
+
+  const group = document.createElementNS(svgns, "g");
+  group.setAttribute("id", "problem-highlights");
+  group.setAttribute("pointer-events", "none");
+  const highlight_segment = (segment) => {
+    const line = document.createElementNS(svgns, "line");
+    line.setAttribute("x1", segment.a[0]);
+    line.setAttribute("y1", segment.a[1]);
+    line.setAttribute("x2", segment.b[0]);
+    line.setAttribute("y2", segment.b[1]);
+    line.setAttribute("class", "problem-highlight");
+    group.appendChild(line);
+  };
+  for (const [s, t] of layout_problems.crossings) {
+    highlight_segment(s);
+    highlight_segment(t);
+  }
+  for (const hit of layout_problems.hits) {
+    highlight_segment(hit.segment);
+    const person = data["people"][hit.person_id];
+    const ring = document.createElementNS(svgns, "circle");
+    ring.setAttribute("cx", person.x);
+    ring.setAttribute("cy", person.y);
+    ring.setAttribute("r", config.size * 0.75);
+    ring.setAttribute("class", "problem-highlight");
+    group.appendChild(ring);
+  }
+  svg_elem.appendChild(group);
+}
+
+function describe_segment(segment) {
+  if (segment.kind === "marriage" || segment.kind === "drop") return segment.members.join("+");
+  return segment.child;
+}
+
+function add_crossing_alerts(alert_elem) {
+  const { crossings, hits } = layout_problems;
+  if (crossings.length === 0 && hits.length === 0) return false;
+
+  alert_elem.style.backgroundColor = "#FDD";
+  alert_elem.style.border = "1px dashed #F00";
+  const p = document.createElement("p");
+  p.classList.add("alert-line");
+  alert_elem.append(p);
+  add_alert_heading(p, `Line problems (${crossings.length + hits.length}):`);
+
+  const items = [
+    ...hits.map((hit) => ({ text: `${describe_segment(hit.segment)} over ${hit.person_id}`, target: hit.person_id })),
+    ...crossings.map(([s, t]) => ({ text: `${describe_segment(s)} × ${describe_segment(t)}`, target: s.child || s.members[0] })),
+  ];
+  for (const item of items.slice(0, MAX_PROBLEM_BUTTONS)) {
+    const button = create_button(item.text);
+    button.addEventListener("click", () => go_to_person(item.target));
+    p.append(button);
+  }
+  if (items.length > MAX_PROBLEM_BUTTONS) {
+    const more = document.createElement("span");
+    more.className = "alert-heading";
+    more.textContent = `…and ${items.length - MAX_PROBLEM_BUTTONS} more (highlighted in red)`;
+    p.append(more);
+  }
+  return true;
 }
 
 function add_other_alerts(alert_elem) {
