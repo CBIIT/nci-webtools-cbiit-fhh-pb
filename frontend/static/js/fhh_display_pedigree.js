@@ -1066,6 +1066,11 @@ function add_unplaced_people_alerts(alert_elem) {
       const children = find_all_children(person_id);
       const text = person_id + " [" + children.length + "]";
       const button = create_button(text);
+      button.title = "Show this person's details";
+      button.addEventListener("click", () => {
+        set_study_summary();
+        set_details_of_person(person_id);
+      });
       p.append(button);
     }
     return true;
