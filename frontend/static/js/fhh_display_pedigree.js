@@ -200,7 +200,7 @@ function take_snapshot() {
 export function record_change() {
   if (!data) return;
   history.commit(take_snapshot());
-  update_layout_problems();
+  update_layout_problems(true);
   refresh_layout_problem_alerts();
 }
 
@@ -850,14 +850,26 @@ function add_unplaced_people_alerts(alert_elem) {
 }
 
 let layout_problems = { crossings: [], hits: [], multi_partner: [] };
+let reported_problem_keys = new Set();
 const MAX_PROBLEM_BUTTONS = 20;
 
-// Recomputes crossings from current positions and redraws their highlights.
-function update_layout_problems() {
+// Recomputes crossings from current positions and redraws their highlights. With
+// only_reported, problems that weren't reported at the last redraw are ignored.
+function update_layout_problems(only_reported = false) {
   const svg_elem = document.getElementById("svg");
   if (!svg_elem || !data) return;
   const drawn_people = Object.fromEntries(family_tree.map((id) => [id, data["people"][id]]).filter(([, person]) => person));
   layout_problems = find_layout_problems(drawn_people, config.size, sibship_bar_y);
+  if (only_reported) {
+    const keep = (key) => reported_problem_keys.has(key);
+    layout_problems = {
+      multi_partner: layout_problems.multi_partner.filter((item) => keep(`multi|${item.person_id}`)),
+      hits: layout_problems.hits.filter((hit) => keep(`hit|${segment_key(hit.segment)}|${hit.person_id}`)),
+      crossings: layout_problems.crossings.filter(([s, t]) => keep(`cross|${[segment_key(s), segment_key(t)].sort().join("|")}`)),
+    };
+  } else {
+    reported_problem_keys = current_problem_keys();
+  }
 
   svg_elem.querySelector("#problem-highlights")?.remove();
   const { crossings, hits, multi_partner } = layout_problems;
@@ -914,49 +926,64 @@ function set_alert_colors(alert_elem) {
   alert_elem.style.border = only_soft ? "1px dashed #C90" : "1px dashed #F00";
 }
 
-function add_crossing_alerts(alert_elem, insert_before = null) {
+function segment_key(segment) {
+  return `${segment.key}|${segment.kind}|${segment.child || ""}`;
+}
+
+function current_problem_keys() {
+  const { crossings, hits, multi_partner } = layout_problems;
+  return new Set([
+    ...multi_partner.map((item) => `multi|${item.person_id}`),
+    ...hits.map((hit) => `hit|${segment_key(hit.segment)}|${hit.person_id}`),
+    ...crossings.map(([s, t]) => `cross|${[segment_key(s), segment_key(t)].sort().join("|")}`),
+  ]);
+}
+
+function add_crossing_alerts(alert_elem) {
   const { crossings, hits, multi_partner } = layout_problems;
   let shown = false;
-  const add_line = (soft) => {
+  const add_line = (soft, heading, items) => {
     const p = document.createElement("p");
     p.classList.add("alert-line", "layout-problem-line");
     if (soft) p.classList.add("soft-line");
-    alert_elem.insertBefore(p, insert_before);
-    return p;
+    p.dataset.heading = heading;
+    p.problem_keys = items.map((item) => item.key);
+    alert_elem.append(p);
+    add_alert_heading(p, heading.replace("{n}", items.length));
+    for (const item of items.slice(0, MAX_PROBLEM_BUTTONS)) {
+      const button = create_button(item.text);
+      button.dataset.problemKey = item.key;
+      if (item.title) button.title = item.title;
+      if (soft) button.classList.add("alert-button-soft");
+      button.addEventListener("click", () => go_to_person(item.target));
+      p.append(button);
+    }
+    update_more_note(p);
   };
 
   if (multi_partner.length > 0) {
-    const p = add_line(true);
-    add_alert_heading(p, "Multiple partners:");
-    for (const item of multi_partner) {
-      const button = create_button(short_id(item.person_id));
-      button.title = "Lines between this person's partners overlap; drag a partner aside to fix";
-      button.classList.add("alert-button-soft");
-      button.addEventListener("click", () => go_to_person(item.person_id));
-      p.append(button);
-    }
+    add_line(true, "Multiple partners:", multi_partner.map((item) => ({
+      key: `multi|${item.person_id}`,
+      text: short_id(item.person_id),
+      target: item.person_id,
+      title: "Lines between this person's partners overlap; drag a partner aside to fix",
+    })));
     shown = true;
   }
 
   if (crossings.length > 0 || hits.length > 0) {
-    const p = add_line(false);
-    add_alert_heading(p, `Line problems (${crossings.length + hits.length}):`);
-
-    const items = [
-      ...hits.map((hit) => ({ text: `${describe_segment(hit.segment)} over ${short_id(hit.person_id)}`, target: hit.person_id })),
-      ...crossings.map(([s, t]) => ({ text: `${describe_segment(s)} × ${describe_segment(t)}`, target: s.child || s.members[0] })),
-    ];
-    for (const item of items.slice(0, MAX_PROBLEM_BUTTONS)) {
-      const button = create_button(item.text);
-      button.addEventListener("click", () => go_to_person(item.target));
-      p.append(button);
-    }
-    if (items.length > MAX_PROBLEM_BUTTONS) {
-      const more = document.createElement("span");
-      more.className = "alert-heading";
-      more.textContent = `…and ${items.length - MAX_PROBLEM_BUTTONS} more (highlighted in red)`;
-      p.append(more);
-    }
+    add_line(false, "Line problems ({n}):", [
+      ...hits.map((hit) => ({
+        key: `hit|${segment_key(hit.segment)}|${hit.person_id}`,
+        text: `${describe_segment(hit.segment)} over ${short_id(hit.person_id)}`,
+        target: hit.person_id,
+      })),
+      ...crossings.map(([s, t]) => ({
+        key: `cross|${[segment_key(s), segment_key(t)].sort().join("|")}`,
+        text: `${describe_segment(s)} × ${describe_segment(t)}`,
+        target: s.child || s.members[0],
+      })),
+    ]);
     shown = true;
   }
 
@@ -964,24 +991,41 @@ function add_crossing_alerts(alert_elem, insert_before = null) {
   return shown;
 }
 
-// After a hand edit, swap in the current line problems so fixed ones drop out of the bar.
+function update_more_note(line) {
+  line.querySelector(".alert-more")?.remove();
+  const hidden = line.problem_keys.length - line.querySelectorAll("[data-problem-key]").length;
+  if (hidden <= 0) return;
+  const more = document.createElement("span");
+  more.className = "alert-heading alert-more";
+  more.textContent = `…and ${hidden} more (highlighted in red)`;
+  line.append(more);
+}
+
+// After a hand edit, drop the warnings that are now fixed (new problems are not added until the next redraw).
 function refresh_layout_problem_alerts() {
   const alert_elem = document.getElementById("alert");
-  if (!alert_elem || alert_elem.querySelector(".alert-status")) return;
-  const old_lines = alert_elem.querySelectorAll(".layout-problem-line");
-  const insert_before = old_lines.length > 0 ? old_lines[old_lines.length - 1].nextSibling : null;
-  const was_visible = alert_elem.style.display !== "none";
+  if (!alert_elem) return;
+  const still_present = current_problem_keys();
 
-  add_crossing_alerts(alert_elem, insert_before);
-  old_lines.forEach((line) => line.remove());
+  for (const line of alert_elem.querySelectorAll(".layout-problem-line")) {
+    line.problem_keys = (line.problem_keys || []).filter((key) => still_present.has(key));
+    line.querySelectorAll("[data-problem-key]").forEach((button) => {
+      if (!still_present.has(button.dataset.problemKey)) button.remove();
+    });
+    if (line.problem_keys.length === 0) {
+      line.remove();
+      continue;
+    }
+    line.querySelector(".alert-heading").textContent = line.dataset.heading.replace("{n}", line.problem_keys.length);
+    update_more_note(line);
+  }
 
-  if (!alert_elem.querySelector(".alert-line")) {
+  if (!alert_elem.querySelector(".alert-line, .alert-status")) {
     alert_elem.style.display = "none";
     alert_elem.style.backgroundColor = "white";
     alert_elem.style.border = "";
   } else {
     set_alert_colors(alert_elem);
-    if (was_visible) alert_elem.style.display = "grid";
   }
 }
 
