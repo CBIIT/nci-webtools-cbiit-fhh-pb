@@ -841,8 +841,8 @@ function draw_collapse_toggles() {
   for (const id of family_tree) {
     const person = data["people"][id];
     if (!person?.mother || !person?.father || kept.has(id)) continue;
-    // Collapsing under the proband's direct ancestors doesn't behave well, so it isn't offered there.
-    if (ancestor(person.mother) || ancestor(person.father)) continue;
+    // Collapsing under a couple who are both the proband's direct ancestors doesn't behave well, so it isn't offered there.
+    if (ancestor(person.mother) && ancestor(person.father)) continue;
     couples.add(person.mother + "|" + person.father);
   }
 
