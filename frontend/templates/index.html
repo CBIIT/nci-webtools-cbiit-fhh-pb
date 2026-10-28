@@ -25,12 +25,29 @@
   <DIV class="grid-container">
     <DIV class='navbar grid-item'>
       <div class='debug-block'>
-        <div class="special-actions-heading">Special Actions</div>
         <div class="special-actions-buttons">
           <button id="save-button" type="button" disabled>Save</button>
           <button id="save-svg-button" type="button" disabled>Export</button>
-          <button id="save-pdf-button" type="button" title="Open a print view; choose Save as PDF in the print dialog" disabled>PDF</button>
+          <select id="pdf-layout-select" aria-label="PDF page layout" title="Export PDF" disabled>
+            <option value="" selected>PDF</option>
+            <option value="one-page">Fit to one page</option>
+            <option value="multiple-pages">Multiple pages</option>
+          </select>
           <button id="reset-layout-button" type="button" title="Discard hand-placed positions and re-run the automatic layout" disabled>Reset</button>
+        </div>
+        <div class="spacing-controls" role="group" aria-label="Pedigree spacing">
+          <div class="spacing-stepper" role="group" aria-label="Horizontal spacing">
+            <span class="spacing-axis-label">H</span>
+            <button id="horizontal-spacing-decrease" type="button" aria-label="Decrease horizontal spacing" title="Decrease horizontal spacing by 20">&minus;</button>
+            <output id="horizontal-spacing-value">120px</output>
+            <button id="horizontal-spacing-increase" type="button" aria-label="Increase horizontal spacing" title="Increase horizontal spacing by 20">+</button>
+          </div>
+          <div class="spacing-stepper" role="group" aria-label="Vertical spacing">
+            <span class="spacing-axis-label">V</span>
+            <button id="vertical-spacing-decrease" type="button" aria-label="Decrease vertical spacing" title="Decrease vertical spacing by 20">&minus;</button>
+            <output id="vertical-spacing-value">200px</output>
+            <button id="vertical-spacing-increase" type="button" aria-label="Increase vertical spacing" title="Increase vertical spacing by 20">+</button>
+          </div>
         </div>
       </div>
       <div class="file-block">

@@ -142,18 +142,12 @@ body {
   border:2px solid black;
   width:fit-content;
   padding:5px;
-  height:50px;
+  min-height:50px;
   display:flex;
   flex-direction:column;
   align-items:center;
   justify-content:center;
   gap:6px;
-}
-
-.special-actions-heading {
-  font-family:sans-serif, Arial;
-  font-size:14px;
-  font-weight:bold;
 }
 
 .special-actions-buttons {
@@ -166,6 +160,59 @@ body {
 .special-actions-buttons button {
   margin:0;
   padding:4px 8px;
+}
+
+.special-actions-buttons select {
+  width:9ch;
+  margin:0;
+  padding:4px 6px;
+  font-size:12px;
+  font-family:inherit;
+  color:ButtonText;
+  background-color:ButtonFace;
+  cursor:pointer;
+}
+
+.special-actions-buttons select:disabled {
+  color:rgba(16, 16, 16, 0.3);
+  background-color:rgba(239, 239, 239, 0.3);
+  cursor:default;
+}
+
+.spacing-controls {
+  display:flex;
+  align-items:center;
+  gap:10px;
+  font-family:sans-serif, Arial;
+  font-size:11px;
+}
+
+.spacing-stepper {
+  display:flex;
+  align-items:center;
+  gap:2px;
+}
+
+.spacing-axis-label {
+  width:1.2em;
+  font-weight:bold;
+}
+
+.spacing-stepper button {
+  width:22px;
+  height:22px;
+  padding:0;
+}
+
+.spacing-stepper output {
+  min-width:5ch;
+  text-align:center;
+  font-variant-numeric:tabular-nums;
+}
+
+.spacing-stepper button:disabled {
+  cursor:default;
+  opacity:0.45;
 }
 
 .view-block {
