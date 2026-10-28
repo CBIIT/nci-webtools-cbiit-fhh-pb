@@ -291,8 +291,8 @@ function shift_points(points, diff_x, diff_y) {
     const point = point_array[i];
     if (point && point.length > 0) {
       const [x, y] = point.split(',');
-      const new_x = parseInt(x) - diff_x;
-      const new_y = parseInt(y) - diff_y;
+      const new_x = Number(x) - diff_x;
+      const new_y = Number(y) - diff_y;
       new_points += new_x + "," + new_y + " ";
     }
   }

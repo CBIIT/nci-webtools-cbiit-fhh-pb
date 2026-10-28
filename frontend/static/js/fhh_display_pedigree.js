@@ -335,13 +335,20 @@ function find_person(query) {
   }) || null;
 }
 
-function go_to_person(person_id) {
+function center_person_in_view(person_id) {
   const person = data?.["people"]?.[person_id];
   const view = get_view_box();
-  if (!person || person.x == null || !view) return;
+  if (!person || person.x == null || !view) return null;
 
   main_elem.scrollLeft = (person.x - view.x) * zoom - main_elem.clientWidth / 2;
   main_elem.scrollTop = (person.y - view.y) * zoom - main_elem.clientHeight / 2;
+  return { person, view };
+}
+
+function go_to_person(person_id) {
+  const target = center_person_in_view(person_id);
+  if (!target) return;
+  const { person, view } = target;
 
   document.querySelectorAll("#svg .find-highlight").forEach((el) => el.remove());
   const ring = document.createElementNS(svgns, "circle");
@@ -817,6 +824,7 @@ export function display_pedigree() {
   draw_annotation_texts();
   draw_collapse_toggles();
 
+  selected_problem_key = null;
   update_layout_problems();
   add_alert_bar();
   populate_find_list();
@@ -1080,6 +1088,7 @@ function add_unplaced_people_alerts(alert_elem) {
 }
 
 let layout_problems = { crossings: [], hits: [], multi_partner: [] };
+let selected_problem_key = null;
 const ALERT_TONES = {
   error: { background: "#FFF5F5", border: "1px solid #F1B0B0" },
   warning: { background: "#FFFBEA", border: "1px solid #EBCB72" },
@@ -1105,10 +1114,13 @@ function update_layout_problems(only_reported = false) {
   } else {
     reported_problem_keys = current_problem_keys();
   }
+  if (selected_problem_key && !current_problem_keys().has(selected_problem_key)) {
+    selected_problem_key = null;
+  }
 
   svg_elem.querySelector("#problem-highlights")?.remove();
   const { crossings, hits, multi_partner } = layout_problems;
-  if (crossings.length === 0 && hits.length === 0 && multi_partner.length === 0) return;
+  if (!selected_problem_key || (crossings.length === 0 && hits.length === 0 && multi_partner.length === 0)) return;
 
   const group = document.createElementNS(svgns, "g");
   group.setAttribute("id", "problem-highlights");
@@ -1123,13 +1135,20 @@ function update_layout_problems(only_reported = false) {
     group.appendChild(line);
   };
   for (const item of multi_partner) {
-    item.segments.forEach((segment) => highlight_segment(segment, "problem-highlight-soft"));
+    if (selected_problem_key === `multi|${item.person_id}`) {
+      item.segments.forEach((segment) => highlight_segment(segment, "problem-highlight-soft"));
+    }
   }
   for (const [s, t] of crossings) {
-    highlight_segment(s);
-    highlight_segment(t);
+    const key = `cross|${[segment_key(s), segment_key(t)].sort().join("|")}`;
+    if (selected_problem_key === key) {
+      highlight_segment(s);
+      highlight_segment(t);
+    }
   }
   for (const hit of hits) {
+    const key = `hit|${segment_key(hit.segment)}|${hit.person_id}`;
+    if (selected_problem_key !== key) continue;
     highlight_segment(hit.segment);
     const person = data["people"][hit.person_id];
     const ring = document.createElementNS(svgns, "circle");
@@ -1212,7 +1231,11 @@ function add_crossing_alerts(alert_elem) {
     button.dataset.problemKey = item.key;
     if (item.title) button.title = item.title;
     if (item.soft) button.classList.add("alert-button-soft");
-    button.addEventListener("click", () => go_to_person(item.target));
+    button.addEventListener("click", () => {
+      selected_problem_key = item.key;
+      update_layout_problems(true);
+      center_person_in_view(item.target);
+    });
     p.append(button);
   }
   update_more_note(p);
