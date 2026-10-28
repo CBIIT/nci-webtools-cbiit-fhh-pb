@@ -2138,17 +2138,13 @@ function draw_childless_partner_lines() {
 function get_center(person) {
   let center = {};
 
-  if (annotations) {
-    if (annotations["positions"][person.id]) {
-      const saved_position = annotations["positions"][person.id];
-      center.x = saved_position.x;
-      center.y = saved_position.y;
-    } else {
-      center.x =
-        center_offset.x + config.margin + person.loc * config.h_spacing;
-      center.y =
-        center_offset.y + config.margin + person.gen * config.v_spacing;
-    }
+  const saved_position = annotations?.positions?.[person.id];
+  if (
+    Number.isFinite(saved_position?.x) &&
+    Number.isFinite(saved_position?.y)
+  ) {
+    center.x = saved_position.x;
+    center.y = saved_position.y;
   } else {
     center.x = center_offset.x + config.margin + person.loc * config.h_spacing;
     center.y = center_offset.y + config.margin + person.gen * config.v_spacing;
