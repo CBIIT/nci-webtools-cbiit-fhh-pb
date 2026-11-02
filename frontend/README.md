@@ -27,6 +27,18 @@ Multiple-birth siblings are kept together when laid out or dragged. If an
 existing saved layout separates them, the app displays an unsaved adjustment
 and enables Undo and Save; the stored annotation is unchanged until Save is clicked.
 
+## Adoption notation
+
+The pedigree uses each person's recorded `adoption` value. Adopted-in and
+adopted-out people are shown with brackets around their symbol; the adopted-in
+child connector is dotted, while adopted-out connectors remain solid. A
+confirmed adoption with an unspecified direction (`Yes` or `Yes (QC)`) is
+bracketed with a `?`. An unknown adoption status (`Don't Know`) also has
+brackets and a `?`; the question mark indicates that adoption itself is
+uncertain. The `?` appears on the child connector, or beside the symbol when no
+parent connector is available. Adoption by a relative is not inferred because
+the data has no separate adoptive-parent relationship.
+
 ## Building for Deployment
 
 ### Basic Build

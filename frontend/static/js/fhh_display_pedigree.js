@@ -41,6 +41,12 @@ import {
   multiple_births_are_adjacent,
   suggest_multiple_birth_positions,
 } from "./fhh_multiple_births.js";
+import {
+  adoption_bracket_padding,
+  adoption_bracket_segments,
+  adoption_notation,
+  adoption_question_position,
+} from "./fhh_adoption.js";
 
 const svgns = "http://www.w3.org/2000/svg";
 const pencil_cursor = 'url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2224%22 height=%2224%22 viewBox=%220 0 24 24%22%3E%3Cpath d=%22m4 20 4-.8L20 7.2 16.8 4 4.8 16z%22 fill=%22white%22 stroke=%22black%22 stroke-width=%222%22/%3E%3C/svg%3E") 4 20, crosshair';
@@ -626,6 +632,8 @@ const CUSTOM_SVG_ATTRIBUTES = [
   "c_mother_id",
   "c_father_id",
   "stub_id",
+  "data-adoption-decoration",
+  "data-adoption-question-for",
 ];
 
 function strip_custom_svg_attributes(svg_elem) {
@@ -2616,42 +2624,54 @@ function draw_proband_arrow() {
   }
 
   let proband = data["people"][proband_id];
+  const adoption_bracket = adoption_notation(proband.adoption).bracket;
+  const bracket_padding = adoption_bracket_padding(config.size);
 
   if (proband.demographics.gender == "Male") {
+    const arrow_x = adoption_bracket
+      ? proband.x + config.size / 2 + bracket_padding + 4
+      : proband.x + config.size / 2 + 3;
+    const arrow_y = adoption_bracket ? proband.y + config.size / 4 : proband.y + 17;
     let arrow_line = draw_line(
-      proband.x + config.size / 2 + 3,
-      proband.y + 17,
-      proband.x + config.size / 2 + 32,
-      proband.y + 32
+      arrow_x,
+      arrow_y,
+      arrow_x + 29,
+      arrow_y + 15
     );
     arrow_line.setAttributeNS(null, "id", proband_id);
     arrow_line.setAttributeNS(null, "stroke-width", "2");
     let arrow_triange = draw_triangle(
-      proband.x + config.size / 2 + 3,
-      proband.y + 17,
-      proband.x + config.size / 2 + 21,
-      proband.y + 18,
-      proband.x + config.size / 2 + 14,
-      proband.y + 30
+      arrow_x,
+      arrow_y,
+      arrow_x + 18,
+      arrow_y + 1,
+      arrow_x + 11,
+      arrow_y + 13
     );
     arrow_triange.setAttributeNS(null, "id", proband_id);
     arrow_triange.setAttributeNS(null, "is_decoration", "true");
   } else {
+    const arrow_x = adoption_bracket
+      ? proband.x - config.size / 2 - bracket_padding - 4
+      : proband.x - (config.size / 2) * 0.7071 - 7;
+    const arrow_y = adoption_bracket
+      ? proband.y + config.size / 4
+      : proband.y + (config.size / 2) * 0.7071 - 5;
     let arrow_line = draw_line(
-      proband.x - (config.size / 2) * 0.7071 - 7,
-      proband.y + (config.size / 2) * 0.7071 - 5,
-      proband.x - (config.size / 2) * 0.7071 - 37,
-      proband.y + (config.size / 2) * 0.7071 + 15
+      arrow_x,
+      arrow_y,
+      arrow_x - 30,
+      arrow_y + 20
     );
     arrow_line.setAttributeNS(null, "id", proband_id);
     arrow_line.setAttributeNS(null, "stroke-width", "2");
     let arrow_triange = draw_triangle(
-      proband.x - (config.size / 2) * 0.7071 - 7,
-      proband.y + (config.size / 2) * 0.7071 - 5,
-      proband.x - (config.size / 2) * 0.7071 - 24,
-      proband.y + ((config.size / 2) * 0.7071 - 3),
-      proband.x - (config.size / 2) * 0.7071 - 16,
-      proband.y + (config.size / 2) * 0.7071 + 10
+      arrow_x,
+      arrow_y,
+      arrow_x - 17,
+      arrow_y + 2,
+      arrow_x - 9,
+      arrow_y + (adoption_bracket ? 13 : 15)
     );
 
     arrow_triange.setAttributeNS(null, "id", proband_id);
@@ -2682,6 +2702,50 @@ function draw_person(person_id) {
   if (deceased_state.isDeceased) {
     draw_slash(person_id);
   }
+
+  draw_adoption_notation(person_id);
+}
+
+function draw_adoption_notation(person_id) {
+  const person = data.people[person_id];
+  const notation = adoption_notation(person?.adoption);
+  if (!notation.bracket && !notation.question) return;
+
+  const center = get_center(person);
+  if (notation.bracket) {
+    for (const segment of adoption_bracket_segments(center, config.size)) {
+      const bracket = draw_line(...segment);
+      bracket.setAttribute("id", person_id);
+      bracket.setAttribute("stroke-width", "1.5");
+      bracket.setAttribute("pointer-events", "none");
+      bracket.setAttribute("data-adoption-decoration", "bracket");
+    }
+  }
+
+  if (!notation.question) return;
+  const stub = [...document.querySelectorAll("[stub_id]")]
+    .find((element) => element.getAttribute("stub_id") === person_id);
+  const connector = stub && Object.fromEntries(
+    ["x1", "y1", "x2", "y2"].map((key) => [key, Number(stub.getAttribute(key))])
+  );
+  const question_position = adoption_question_position(
+    center, config.size, notation.bracket, connector
+  );
+  draw_adoption_question(person_id, question_position);
+}
+
+function draw_adoption_question(person_id, position) {
+  const question = draw_label("?", position.x, position.y);
+  question.setAttribute("id", person_id);
+  question.setAttribute("font-size", Math.max(10, Math.min(14, config.size * 0.28)));
+  question.setAttribute("font-weight", "bold");
+  question.setAttribute("dominant-baseline", "central");
+  question.setAttribute("paint-order", "stroke");
+  question.setAttribute("stroke", "white");
+  question.setAttribute("stroke-width", "3");
+  question.setAttribute("pointer-events", "none");
+  question.setAttribute("data-adoption-decoration", "question");
+  question.setAttribute("data-adoption-question-for", person_id);
 }
 
 function draw_person_connectors(person_id) {
@@ -4589,6 +4653,9 @@ function draw_line_top_of_child(child_loc, person_id, bar_y, junction) {
   elem.setAttributeNS(null, "id", person_id);
   elem.setAttributeNS(null, "stub_id", person_id);
   elem.setAttributeNS(null, "stroke-width", "2");
+  if (adoption_notation(data.people[person_id]?.adoption).connector === "dotted") {
+    elem.setAttribute("stroke-dasharray", "4 3");
+  }
 }
 
 function draw_multiple_birth_markers(group, geometry) {
@@ -4641,13 +4708,14 @@ function draw_line_connecting_parents_down(
 }
 
 // Baseline of the first label line under a person's symbol.
-function label_top(center) {
-  return center.y + config.size / 2 + config.v_padding / 2;
+function label_top(center, person_id) {
+  const bracket_spacing = adoption_notation(data.people[person_id]?.adoption).bracket ? 4 : 0;
+  return center.y + config.size / 2 + config.v_padding / 2 + bracket_spacing;
 }
 
 function draw_name(center, person_id) {
   const loc_x = center.x;
-  const loc_y = label_top(center);
+  const loc_y = label_top(center, person_id);
 
   //  if (data["people"][person_id] && data["people"][person_id].name) {
   //    text = data["people"][person_id].name;
@@ -4679,7 +4747,7 @@ function draw_born_and_deceased(center, person_id) {
 
   if (born_deceased) {
     const loc_x = center.x;
-    const loc_y = label_top(center) + config.v_padding;
+    const loc_y = label_top(center, person_id) + config.v_padding;
     const elem = draw_label(born_deceased, loc_x , loc_y );
     if (born_deceased.length > 15) {
       elem.setAttribute("font-size", 10);
@@ -4701,7 +4769,7 @@ function draw_highlighted_diseases(center, person_id) {
   if (matches.length === 0) return;
 
   const loc_x = center.x;
-  const loc_y = label_top(center) + config.v_padding + 14;
+  const loc_y = label_top(center, person_id) + config.v_padding + 14;
   const elem = draw_label(matches.join(", "), loc_x, loc_y);
   elem.setAttribute("id", person_id);
 }
