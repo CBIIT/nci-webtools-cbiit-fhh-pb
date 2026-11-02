@@ -14,6 +14,19 @@ python web.py
 
 This serves the application with local API routes for development and testing.
 
+## Multiple-birth notation
+
+The pedigree uses each person's `multiple_birth_type` together with recorded
+parentage and birth date to associate multiple-birth siblings. Identical twins
+have a bar between their branches; fraternal twins have no bar; twins of unknown
+type have a `?`. Triplets share a junction with three branches. A shared
+birthday alone does not mark a multiple birth. Incomplete or ambiguous groups
+are reported in the alerts instead of being paired automatically.
+
+Multiple-birth siblings are kept together when laid out or dragged. If an
+existing saved layout separates them, the app displays an unsaved adjustment
+and enables Undo and Save; the stored annotation is unchanged until Save is clicked.
+
 ## Building for Deployment
 
 ### Basic Build

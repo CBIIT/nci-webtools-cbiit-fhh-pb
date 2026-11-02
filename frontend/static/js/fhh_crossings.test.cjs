@@ -73,3 +73,15 @@ test("overlaps among a person's 3+ partners are reported separately", () => {
   assert.equal(problems.hits.length, 0);
   assert.deepEqual(problems.multi_partner.map((item) => item.person_id), ["a"]);
 });
+
+test("crossing detection uses the drawn diagonal multiple-birth branches", () => {
+  const people = {
+    mother: { x: 0, y: 0 },
+    father: { x: 120, y: 0 },
+    a: { x: 0, y: 200, mother: "mother", father: "father", born: "01/01/2000", multiple_birth_type: "Twin, Fraternal" },
+    b: { x: 120, y: 200, mother: "mother", father: "father", born: "01/01/2000", multiple_birth_type: "Twin, Fraternal" },
+    obstacle: { x: 30, y: 163 },
+  };
+  const problems = crossings.find_layout_problems(people, 50, () => 100);
+  assert.ok(problems.hits.some((hit) => hit.person_id === "obstacle" && hit.segment.kind === "stub"));
+});
