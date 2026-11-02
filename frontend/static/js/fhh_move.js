@@ -2,6 +2,7 @@
 import { find_all_descendants, get_data } from "./fhh_build_pedigree.js";
 import { get_config, ensure_canvas_fits_point, sibship_bar_y, record_change, get_zoom } from "./fhh_display_pedigree.js";
 import { find_multiple_birth_groups, multiple_birth_geometry } from "./fhh_multiple_births.js";
+import { adoption_notation, adoption_question_position } from "./fhh_adoption.js";
 
 var free_move = false;
 var slide_move = false;
@@ -115,6 +116,9 @@ function refresh_family_connectors(person_id) {
       }
       for (const stub of document.querySelectorAll("[stub_id=\"" + child_id + "\"]")) {
         set_line(stub, child.x, child.y, geometry?.junction[0] ?? child.x, geometry?.junction[1] ?? bar_y);
+        if (adoption_notation(child.adoption).question) {
+          refresh_adoption_question_position(child_id, stub);
+        }
       }
       if (geometry && group.members[0] === child_id) {
         for (const marker of document.querySelectorAll("[data-multiple-birth-group]")) {
@@ -130,6 +134,24 @@ function refresh_family_connectors(person_id) {
       }
     }
   }
+}
+
+function refresh_adoption_question_position(person_id, connector) {
+  const question = [...document.querySelectorAll("[data-adoption-question-for]")]
+    .find((element) => element.getAttribute("data-adoption-question-for") === person_id);
+  if (!question) return;
+
+  const person = get_data().people[person_id];
+  const size = get_config().size;
+  const notation = adoption_notation(person?.adoption);
+  const coordinates = connector && Object.fromEntries(
+    ["x1", "y1", "x2", "y2"].map((key) => [key, Number(connector.getAttribute(key))])
+  );
+  const position = adoption_question_position(
+    { x: person.x, y: person.y }, size, notation.bracket, coordinates
+  );
+  question.setAttribute("x", position.x);
+  question.setAttribute("y", position.y);
 }
 
 function set_line(el, x1, y1, x2, y2) {
