@@ -35,6 +35,12 @@ import {
 
 import * as history from "./fhh_history.js";
 import { find_layout_problems } from "./fhh_crossings.js";
+import {
+  find_multiple_birth_groups,
+  multiple_birth_geometry,
+  multiple_births_are_adjacent,
+  suggest_multiple_birth_positions,
+} from "./fhh_multiple_births.js";
 
 const svgns = "http://www.w3.org/2000/svg";
 const pencil_cursor = 'url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2224%22 height=%2224%22 viewBox=%220 0 24 24%22%3E%3Cpath d=%22m4 20 4-.8L20 7.2 16.8 4 4.8 16z%22 fill=%22white%22 stroke=%22black%22 stroke-width=%222%22/%3E%3C/svg%3E") 4 20, crosshair';
@@ -45,6 +51,7 @@ var study_name;
 let other_alerts = {};
 
 let family_tree = [];
+let multiple_birth_by_person = new Map();
 let people_drawn = [];
 let pending_line_start = null;
 let pending_line_element = null;
@@ -222,7 +229,7 @@ family_select.addEventListener("change", function (event) {
       apply_saved_quadrant_colors();
       reset_collapsed();
       display_pedigree();
-      history.reset(take_snapshot());
+      initialize_layout_history();
       show_all_blocks();
       show_summary_block();
       set_study_summary();
@@ -306,12 +313,61 @@ function take_snapshot() {
   };
 }
 
+function initialize_layout_history() {
+  history.reset(take_snapshot());
+  const adjusted = repair_saved_multiple_birth_positions();
+  if (!adjusted) return;
+  display_pedigree();
+  history.commit(take_snapshot());
+
+  const alert_elem = document.getElementById("alert");
+  const had_alerts = Boolean(alert_elem.querySelector(".alert-line, .alert-status"));
+  const note = document.createElement("p");
+  note.className = "alert-line";
+  note.textContent = `${adjusted} multiple-birth ${adjusted === 1 ? "group was" : "groups were"} adjusted. Review and save, or undo.`;
+  alert_elem.append(note);
+  if (!had_alerts) {
+    alert_elem.style.backgroundColor = ALERT_TONES.warning.background;
+    alert_elem.style.border = ALERT_TONES.warning.border;
+  }
+  alert_elem.style.display = "grid";
+}
+
+function repair_saved_multiple_birth_positions() {
+  if (!Object.values(annotations?.positions || {}).some(
+    (position) => Number.isFinite(position?.x) && Number.isFinite(position?.y)
+  )) return 0;
+
+  const people = Object.fromEntries(family_tree.map((id) => [id, data["people"][id]]));
+  const groups = [...new Set(multiple_birth_by_person.values())];
+  let adjusted = 0;
+  for (const group of groups) {
+    const positions = suggest_multiple_birth_positions(
+      group, people, config.size, config.h_spacing, data.general?.proband
+    );
+    if (!positions) {
+      console.warn("Could not safely adjust multiple-birth positions:", group.members);
+      continue;
+    }
+    if (positions.length === 0) continue;
+    annotations.positions = annotations.positions || {};
+    for (const position of positions) {
+      annotations.positions[position.id] = { x: position.x, y: position.y };
+      people[position.id].x = position.x;
+      people[position.id].y = position.y;
+    }
+    adjusted++;
+  }
+  return adjusted;
+}
+
 // Called after every completed user change (drag, annotation edit) to record an undo step.
 export function record_change() {
   if (!data) return;
   history.commit(take_snapshot());
   update_layout_problems(true);
   refresh_layout_problem_alerts();
+  refresh_multiple_birth_adjacency_alerts();
   draw_collapse_toggles();
 }
 
@@ -926,7 +982,7 @@ document.addEventListener("DOMContentLoaded", async function () {
         set_family_summary();
         reset_collapsed();
         display_pedigree();
-        history.reset(take_snapshot());
+        initialize_layout_history();
         zoom_to_fit();
         previous_study_value = study_select.value;
         previous_family_value = family_select.value;
@@ -984,6 +1040,17 @@ export function display_pedigree() {
   }
 
   family_tree = build_entire_family_tree(proband_id);
+  const visible_people = new Set(family_tree);
+  const multiple_births = find_multiple_birth_groups(data["people"]);
+  multiple_birth_by_person = new Map();
+  for (const group of multiple_births.groups) {
+    if (group.members.every((id) => visible_people.has(id))) {
+      for (const id of group.members) multiple_birth_by_person.set(id, group);
+    }
+  }
+  for (const issue of multiple_births.issues) {
+    if (visible_people.has(issue.person_id)) other_alerts[issue.person_id] = issue.message;
+  }
   for (const id of ["save-svg-button", "pdf-layout-select", "reset-layout-button"]) {
     document.getElementById(id).disabled = false;
   }
@@ -1179,6 +1246,7 @@ function add_alert_bar() {
   active_alerts |= add_unplaced_people_alerts(alert_elem);
   active_alerts |= add_crossing_alerts(alert_elem);
   active_alerts |= add_other_alerts(alert_elem);
+  active_alerts |= add_multiple_birth_adjacency_alerts(alert_elem);
   alert_elem.style.display = active_alerts ? "grid" : "none";
 
   if (!active_alerts) {
@@ -1346,6 +1414,14 @@ function apply_post_layout_adjustments() {
     let changed = true;
     while (changed) {
       changed = false;
+      for (const id of branch) {
+        for (const relative_id of multiple_birth_by_person.get(id)?.members || []) {
+          if (people[relative_id] && !branch.has(relative_id)) {
+            branch.add(relative_id);
+            changed = true;
+          }
+        }
+      }
       for (const [id, person] of Object.entries(people)) {
         if (
           !branch.has(id) &&
@@ -1405,6 +1481,7 @@ function apply_post_layout_adjustments() {
       .filter((id) => id && people[id]);
     if (partner_ids.length === 0) continue;
     const branch = descendant_branch([sibling_id, ...partner_ids]);
+    if (multiple_birth_by_person.get(sibling_id)?.members.includes(proband_id)) continue;
     const right_edge = Math.max(...[...branch].map((id) => people[id].x));
     const target_right_edge = proband.x - config.size;
     if (right_edge > target_right_edge) {
@@ -1513,15 +1590,19 @@ function apply_post_layout_adjustments() {
       (segment) => segment.kind === "marriage" && segment.members.includes(proband_id)
     )
   );
+  const nudged_cousins = new Set();
   for (const [first, second] of proband_marriage_crossings) {
     const cousin_stem = [first, second].find(
       (segment) => segment.kind === "stub" && is_cousin(segment.child)
     );
     if (!cousin_stem) continue;
-    automatic_y_offsets.set(
-      cousin_stem.child,
-      (automatic_y_offsets.get(cousin_stem.child) || 0) - config.v_spacing / 2
-    );
+    const group = multiple_birth_by_person.get(cousin_stem.child);
+    const members = group?.members || [cousin_stem.child];
+    if (group && members.some((id) => nudged_cousins.has(id))) continue;
+    for (const id of members) {
+      automatic_y_offsets.set(id, (automatic_y_offsets.get(id) || 0) - config.v_spacing / 2);
+      if (group) nudged_cousins.add(id);
+    }
     people = current_layout_positions();
     problems = find_layout_problems(people, config.size, sibship_bar_y);
   }
@@ -1537,12 +1618,15 @@ function apply_post_layout_adjustments() {
     }
   }
   for (const hit of problems.hits) involved_people.add(hit.person_id);
+  const nudged_half_aunts = new Set();
   for (const person_id of involved_people) {
-    if (!is_half_aunt_or_uncle(person_id) || has_children(person_id)) continue;
-    automatic_y_offsets.set(
-      person_id,
-      (automatic_y_offsets.get(person_id) || 0) - config.v_spacing / 2
-    );
+    const members = multiple_birth_by_person.get(person_id)?.members || [person_id];
+    if (!is_half_aunt_or_uncle(person_id) || members.some(has_children) ||
+        members.some((id) => nudged_half_aunts.has(id))) continue;
+    for (const id of members) {
+      automatic_y_offsets.set(id, (automatic_y_offsets.get(id) || 0) - config.v_spacing / 2);
+      nudged_half_aunts.add(id);
+    }
     people = current_layout_positions();
     problems = find_layout_problems(people, config.size, sibship_bar_y);
   }
@@ -1554,7 +1638,10 @@ function apply_post_layout_adjustments() {
   if (
     problem_count(final_problems) >= original_count ||
     new_multi_partner ||
-    has_symbol_overlap(people)
+    has_symbol_overlap(people) ||
+    [...new Set(multiple_birth_by_person.values())].some(
+      (group) => !multiple_births_are_adjacent(group, people)
+    )
   ) {
     automatic_x_offsets.clear();
     automatic_y_offsets.clear();
@@ -1764,6 +1851,41 @@ function add_other_alerts(alert_elem) {
     return false;
   }    
 } 
+
+function add_multiple_birth_adjacency_alerts(alert_elem) {
+  const people = Object.fromEntries(family_tree.map((id) => [id, data["people"][id]]));
+  const separated = [...new Set(multiple_birth_by_person.values())]
+    .filter((group) => !multiple_births_are_adjacent(group, people));
+  if (separated.length === 0) return false;
+
+  const had_alerts = Boolean(alert_elem.querySelector(".alert-line, .alert-status"));
+  const line = document.createElement("p");
+  line.classList.add("alert-line", "multiple-birth-separation-line");
+  add_alert_heading(line, "Multiple-birth siblings are not adjacent:");
+  for (const group of separated) {
+    const button = create_button(group.members.map(short_id).join(" + "));
+    button.addEventListener("click", () => center_person_in_view(group.members[0]));
+    line.append(button);
+  }
+  alert_elem.append(line);
+  if (!had_alerts) {
+    alert_elem.style.backgroundColor = ALERT_TONES.warning.background;
+    alert_elem.style.border = ALERT_TONES.warning.border;
+  }
+  return true;
+}
+
+function refresh_multiple_birth_adjacency_alerts() {
+  const alert_elem = document.getElementById("alert");
+  alert_elem.querySelector(".multiple-birth-separation-line")?.remove();
+  if (add_multiple_birth_adjacency_alerts(alert_elem)) {
+    alert_elem.style.display = "grid";
+  } else if (!alert_elem.querySelector(".alert-line, .alert-status")) {
+    alert_elem.style.display = "none";
+    alert_elem.style.backgroundColor = "white";
+    alert_elem.style.border = "";
+  }
+}
 
 function create_button(text) {
   let button = document.createElement("button");
@@ -4400,8 +4522,13 @@ function draw_connector(person_id, mother_id, father_id) {
       .filter((p) => p.mother == mother_id && p.father == father_id && p.gen != null && p.loc != null)
       .map((p) => get_center(p).y);
     const bar_y = sibship_bar_y((mother_loc.y + father_loc.y) / 2, child_ys);
+    const group = multiple_birth_by_person.get(person_id);
+    const group_people = group && Object.fromEntries(
+      group.members.map((id) => [id, get_center(data["people"][id])])
+    );
+    const geometry = group && multiple_birth_geometry(group, group_people, config.size, bar_y);
 
-    draw_line_top_of_child(child_loc, person_id, bar_y);
+    draw_line_top_of_child(child_loc, person_id, bar_y, geometry?.junction);
     draw_line_between_parents(mother_loc, father_loc, mother_id, father_id);
     draw_line_connecting_parents_down(
       mother_loc,
@@ -4410,6 +4537,7 @@ function draw_connector(person_id, mother_id, father_id) {
       father_id,
       bar_y
     );
+    if (geometry && group.members[0] === person_id) draw_multiple_birth_markers(group, geometry);
     draw_line_child_to_parents(
       child_loc,
       mother_loc,
@@ -4417,7 +4545,8 @@ function draw_connector(person_id, mother_id, father_id) {
       person_id,
       mother_id,
       father_id,
-      bar_y
+      bar_y,
+      geometry?.anchor[0]
     );
     //    console.log(person_id + ":" + mother_id + "," +    father_id);
   }
@@ -4437,13 +4566,14 @@ function draw_line_child_to_parents(
   person_id,
   mother_id,
   father_id,
-  bar_y
+  bar_y,
+  group_x
 ) {
   //  const x1 = mother_loc.x + config.h_spacing;
   const x1 = (mother_loc.x + father_loc.x) / 2;
   const y1 = bar_y;
 
-  const x2 = child_loc.x;
+  const x2 = group_x ?? child_loc.x;
   const y2 = y1;
 
   let elem = draw_line(x1, y1, x2, y2);
@@ -4454,11 +4584,31 @@ function draw_line_child_to_parents(
 }
 
 // Vertical line from the child up (or down) to its parents' horizontal sibship line at bar_y.
-function draw_line_top_of_child(child_loc, person_id, bar_y) {
-  let elem = draw_line(child_loc.x, child_loc.y, child_loc.x, bar_y);
+function draw_line_top_of_child(child_loc, person_id, bar_y, junction) {
+  let elem = draw_line(child_loc.x, child_loc.y, junction?.[0] ?? child_loc.x, junction?.[1] ?? bar_y);
   elem.setAttributeNS(null, "id", person_id);
   elem.setAttributeNS(null, "stub_id", person_id);
   elem.setAttributeNS(null, "stroke-width", "2");
+}
+
+function draw_multiple_birth_markers(group, geometry) {
+  const mark = (elem, part) => {
+    elem.setAttribute("data-multiple-birth-group", group.key);
+    elem.setAttribute("data-multiple-birth-part", part);
+    elem.setAttribute("data-multiple-birth-type", group.kind);
+  };
+  const stem = draw_line(...geometry.anchor, ...geometry.junction);
+  stem.setAttribute("stroke-width", "2");
+  mark(stem, "stem");
+  if (group.kind === "identical") {
+    const crossbar = draw_line(...geometry.crossbar[0], ...geometry.crossbar[1]);
+    crossbar.setAttribute("stroke-width", "2");
+    mark(crossbar, "crossbar");
+  } else if (group.kind === "unknown") {
+    const question = draw_label("?", ...geometry.question);
+    question.setAttribute("font-size", Math.max(12, config.size * 0.4));
+    mark(question, "question");
+  }
 }
 
 function draw_line_between_parents(

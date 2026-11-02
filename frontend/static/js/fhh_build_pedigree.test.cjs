@@ -146,3 +146,35 @@ test("check_for_unplaced_people reports records missing screen coordinates", () 
   assert.ok(missingPeople.includes("10001-03-001"));
   assert.ok(missingPeople.includes("10001-03-002"));
 });
+
+test("multiple-birth siblings remain adjacent when both have partner and descendant branches", () => {
+  const person = (gender, extra = {}) => ({ demographics: { gender }, ...extra });
+  const parents = { mother: "mother", father: "father", born: "01/02/2000" };
+  const data = {
+    people: {
+      first: person("Female", { ...parents, multiple_birth_type: "Twin, Fraternal", partners: [{ spouse_id: "first_partner" }] }),
+      middle: person("Female", { ...parents, born: "01/02/2001" }),
+      second: person("Female", { ...parents, multiple_birth_type: "Twin, Fraternal", partners: [{ spouse_id: "second_partner" }] }),
+      mother: person("Female"),
+      father: person("Male"),
+      first_partner: person("Male"),
+      second_partner: person("Male"),
+      first_child: person("Female", { mother: "first", father: "first_partner" }),
+      second_child: person("Female", { mother: "second", father: "second_partner", partners: [{ spouse_id: "inlaw_child" }] }),
+      inlaw_child: person("Male", { mother: "inlaw_mother", father: "inlaw_father" }),
+      inlaw_mother: person("Female"),
+      inlaw_father: person("Male"),
+      grandchild: person("Male", { mother: "second_child", father: "inlaw_child" }),
+    },
+  };
+  pedigree.set_data(data);
+  const tree = pedigree.build_entire_family_tree("first");
+  const left = Math.min(data.people.first.loc, data.people.second.loc);
+  const right = Math.max(data.people.first.loc, data.people.second.loc);
+  const between = tree.filter((id) =>
+    id !== "first" && id !== "second" && data.people[id].gen === data.people.first.gen &&
+    data.people[id].loc > left && data.people[id].loc < right
+  );
+  assert.deepEqual(between, []);
+  assert.equal(Object.keys(pedigree.check_for_overlaps(tree)).length, 0);
+});

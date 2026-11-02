@@ -1,5 +1,7 @@
 // Finds connector lines that cross each other or pass through a person's symbol.
 
+import { find_multiple_birth_groups, multiple_birth_geometry } from "./fhh_multiple_births.js";
+
 const EPS = 0.5;
 
 function orient(a, b, c) {
@@ -81,6 +83,12 @@ export function segment_hits_box(segment, center, half) {
 // reported separately in `multi_partner` (person id -> segments involved).
 export function find_layout_problems(people, size, bar_y) {
   const placed = (id) => people[id] && people[id].x != null && people[id].y != null;
+  const multiple_birth_by_person = new Map();
+  for (const group of find_multiple_birth_groups(people).groups) {
+    if (group.members.every(placed)) {
+      for (const id of group.members) multiple_birth_by_person.set(id, group);
+    }
+  }
   const families = new Map();
   for (const id of Object.keys(people)) {
     const person = people[id];
@@ -118,8 +126,28 @@ export function find_layout_problems(people, size, bar_y) {
     if (family.children.length > 0) segments.push({ key, members, owners: [], kind: "drop", a: [drop_x, parents_y], b: [drop_x, line_y] });
     for (const child_id of family.children) {
       const child = people[child_id];
-      segments.push({ key, members, owners: [], kind: "bar", child: child_id, a: [drop_x, line_y], b: [child.x, line_y] });
-      segments.push({ key, members, owners: [child_id], kind: "stub", child: child_id, a: [child.x, child.y], b: [child.x, line_y] });
+      const group = multiple_birth_by_person.get(child_id);
+      const geometry = group ? multiple_birth_geometry(group, people, size, line_y) : null;
+      segments.push({
+        key, members, owners: [], kind: "bar", child: child_id,
+        a: [drop_x, line_y], b: geometry ? geometry.anchor : [child.x, line_y],
+      });
+      segments.push({
+        key, members, owners: [child_id], kind: "stub", child: child_id,
+        a: [child.x, child.y], b: geometry ? geometry.junction : [child.x, line_y],
+      });
+      if (geometry && group.members[0] === child_id) {
+        segments.push({
+          key, members, owners: [], kind: "multiple-stem", child: child_id,
+          a: geometry.anchor, b: geometry.junction,
+        });
+        if (group.kind === "identical") {
+          segments.push({
+            key, members, owners: [], kind: "multiple-crossbar", child: child_id,
+            a: geometry.crossbar[0], b: geometry.crossbar[1],
+          });
+        }
+      }
     }
   }
 
