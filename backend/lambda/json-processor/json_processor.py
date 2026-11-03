@@ -282,6 +282,8 @@ class JSONProcessor:
 
         proc_num = record.get("Subject procedure[PRTRT.NUMBER]", "")
         med_code, shorthand = self._parse_medical_code(code)
+        type_abbr = record.get("Subject procedure[PRTRT.type_abbr]", "")
+        type_abbr_list = [value.strip() for value in type_abbr.split(";")] if type_abbr else []
 
         return {
             "code": med_code,
@@ -291,7 +293,9 @@ class JSONProcessor:
             ),
             "date_of_procedure": record.get("Subject procedure[PRTRT.PRSTDAT]", ""),
             "proc_num": f"P{proc_num}" if proc_num else "",
-            "abbr": record.get("Subject procedure[PRTRT.type_abbr]", ""),
+
+            "quad_abbrs": type_abbr_list,
+            "abbr": ";".join(value for value in type_abbr_list if value),
         }
 
     def _add_unique_item(
@@ -311,24 +315,24 @@ class JSONProcessor:
             items_list.append(new_item)
 
     @staticmethod
-    def _compute_quad_flags(diseases: List[Dict[str, Any]]) -> List[bool]:
+    def _compute_quad_flags(items: List[Dict[str, Any]]) -> List[bool]:
         """
-        Compute a 4-position boolean array across all of a person's diseases.
+        Compute a 4-position boolean array across a person's diseases and procedures.
 
-        Each disease's "quad_abbrs" is a 4-value array (split from a
+        Each item's "quad_abbrs" is a 4-value array (split from a
         semicolon-delimited field) ordered top-right, top-left, bottom-left,
-        bottom-right. Position i of the returned array is True if any disease
+        bottom-right. Position i of the returned array is True if any item
         has a non-empty value at position i.
 
         Args:
-            diseases: List of disease dictionaries (cancer and non-cancer)
+            items: Disease and procedure dictionaries
 
         Returns:
             List of 4 booleans
         """
         flags = [False, False, False, False]
-        for disease in diseases:
-            for i, value in enumerate(disease.get("quad_abbrs", [])):
+        for item in items:
+            for i, value in enumerate(item.get("quad_abbrs", [])):
                 if i < len(flags) and value:
                     flags[i] = True
         return flags
@@ -494,11 +498,10 @@ class JSONProcessor:
                 print(f"[WARNING] Error processing record {i}: {e}")
                 continue
 
-        # Compute per-person quad_flags: true at position i if any disease's
-        # quad_abbrs has a non-empty value at position i
+        # Compute per-person quad_flags across diseases and procedures.
         for person_id, person_data in self.people.items():
             person_data["quad_flags"] = self._compute_quad_flags(
-                person_data.get("diseases", [])
+                person_data.get("diseases", []) + person_data.get("procedures", [])
             )
 
         # clean up so empty records are not present (thus reducing file-size)

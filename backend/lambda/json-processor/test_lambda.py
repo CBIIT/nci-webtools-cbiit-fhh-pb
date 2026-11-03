@@ -281,6 +281,24 @@ def test_person_quad_flags_reflect_any_disease_type_abbr():
     assert processor.people["00102"]["quad_flags"] == [False, False, False, False]
 
 
+def test_person_quad_flags_include_procedure_type_abbr():
+    """Ensure procedure type_abbr values also contribute to quad_flags."""
+    record = {
+        "Merge1[Subject]": "00101",
+        "Merge1[project]": "Test Study",
+        "Subject procedure[PRTRT.ICD_9_STD]": "85.41",
+        "Subject procedure[PRTRT.NUMBER]": "1",
+        "Subject procedure[PRTRT.type_abbr]": ";;;Mastectomy",
+    }
+
+    processor = JSONProcessor()
+    processor.process_records([record])
+
+    person = processor.people["00101"]
+    assert person["procedures"][0]["quad_abbrs"] == ["", "", "", "Mastectomy"]
+    assert person["quad_flags"] == [False, False, False, True]
+
+
 def test_process_input_sets_data_pulled_dtm_and_processes_records():
     """Ensure process_input surfaces "ranAt" as a normalized ISO general.data_pulled_dtm and processes "data"."""
     records = create_test_data()
