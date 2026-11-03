@@ -20,15 +20,15 @@
   "quadrants": {
     "top_left": {
       "name": "Endocrine",
-      "color": "yellow"
+      "color": "red"
     },
     "top_right": {
       "name": "Cancer",
-      "color": "red"
+      "color": "blue"
     },
     "bottom_left": {
       "name": "Cardiac",
-      "color": "blue"
+      "color": "yellow"
     },
     "bottom_right": {
       "name": "Neuro",

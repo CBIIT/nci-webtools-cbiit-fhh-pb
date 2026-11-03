@@ -14,6 +14,21 @@ python web.py
 
 This serves the application with local API routes for development and testing.
 
+## Quadrant assignments
+
+The four positions of `quad_abbrs` represent top right, top left, bottom left,
+and bottom right. Both diagnoses and procedures can contribute to the same
+person's quadrant colors and show matching color swatches in the details panel.
+For older procedures, a semicolon-delimited `abbr` supplies the positions;
+plain-text procedure abbreviations remain labels only.
+
+Across study configurations, the default colors are blue for top right, red
+for top left, yellow for bottom left, and purple for bottom right. Saved
+family-specific color choices continue to override these defaults.
+
+Fanconi Anemia (FA) uses Transplant in the top right, Solid Tumors in the top
+left, Hematological Malignancy in the bottom left, and FANS in the bottom right.
+
 ## Multiple-birth notation
 
 The pedigree uses each person's `multiple_birth_type` together with recorded

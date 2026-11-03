@@ -274,6 +274,8 @@ def test_procedure_includes_abbr():
     ("type_abbr", "expected_quads", "expected_abbr"),
     [
         ("blah", None, "blah"),
+        ("HCT;;;", ["HCT", "", "", ""], "HCT;;;"),
+        (" ; SOLID ; MDS ; FANS ", ["", "SOLID", "MDS", "FANS"], ";SOLID;MDS;FANS"),
         (";;blah;", ["", "", "blah", ""], ";;blah;"),
         ("first;second;;", ["first", "second", "", ""], "first;second;;"),
         (" blah ", None, "blah"),
@@ -369,6 +371,47 @@ def test_person_quad_flags_include_procedure_type_abbr(
     person = processor.people["00101"]
     assert person["procedures"][0]["quad_abbrs"] == expected_quads
     assert person["quad_flags"] == expected_flags
+
+
+def test_person_quad_flags_combine_disease_and_procedure_abbreviations():
+    record = {
+        "Merge1[Subject]": "00101",
+        "Merge1[project]": "FA",
+        "Subject_cancer[CANCER.ICD03]": "C50.9",
+        "Subject_cancer[CANCER.NUM]": "1",
+        "Subject_cancer[CANCER.type_abbr]": ";;MDS;",
+        "Subject procedure[PRTRT.ICD_9_STD]": "4100-Bone marrow transplant",
+        "Subject procedure[PRTRT.NUMBER]": "1",
+        "Subject procedure[PRTRT.type_abbr]": "HCT;;;",
+    }
+    second_procedure = {
+        **record,
+        "Subject procedure[PRTRT.NUMBER]": "2",
+        "Subject procedure[PRTRT.type_abbr]": ";;;FANS",
+    }
+    processor = JSONProcessor()
+
+    processor.process_records([record, second_procedure])
+
+    person = processor.people["00101"]
+    assert len(person["procedures"]) == 2
+    assert person["quad_flags"] == [True, False, True, True]
+
+
+def test_procedure_without_code_does_not_set_a_quadrant():
+    record = {
+        "Merge1[Subject]": "00101",
+        "Merge1[project]": "FA",
+        "Subject procedure[PRTRT.NUMBER]": "1",
+        "Subject procedure[PRTRT.type_abbr]": "HCT;;;",
+    }
+    processor = JSONProcessor()
+
+    processor.process_records([record])
+
+    person = processor.people["00101"]
+    assert "procedures" not in person
+    assert person["quad_flags"] == [False, False, False, False]
 
 
 def test_process_input_sets_data_pulled_dtm_and_processes_records():
