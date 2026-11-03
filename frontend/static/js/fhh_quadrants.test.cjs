@@ -131,3 +131,103 @@ test("procedure headings remove positional separators without changing plain lab
   assert.equal(quadrants.get_procedure_display_name({ abbr: "MRI, BRAIN" }), "MRI, BRAIN");
   assert.equal(quadrants.get_procedure_display_name({ abbr: ";;;", description: "Procedure" }), "Procedure");
 });
+
+test("procedure headings use the description when an abbreviation is absent or blank", () => {
+  for (const abbr of [undefined, null, "", "   ", " ; ; "]) {
+    assert.equal(
+      quadrants.get_procedure_display_name({ abbr, code: "8891", description: "MRI Brain" }),
+      "MRI Brain"
+    );
+  }
+  assert.equal(
+    quadrants.get_procedure_display_name({ abbr: "HCT;;;", code: "4100", description: "Bone marrow transplant" }),
+    "HCT"
+  );
+});
+
+test("procedure headings use legacy shorthand as the description instead of the code", () => {
+  assert.equal(
+    quadrants.get_procedure_display_name({ code: "8741", shorthand: "CT Scan Chest" }),
+    "CT Scan Chest"
+  );
+  assert.equal(
+    quadrants.get_procedure_display_name({ code: "8741", description: "  ", shorthand: "CT Scan Chest" }),
+    "CT Scan Chest"
+  );
+  assert.equal(
+    quadrants.get_procedure_display_name({ code: "8741", description: "Description", shorthand: "Legacy" }),
+    "Description"
+  );
+  assert.equal(
+    quadrants.get_procedure_display_name({ code: "8741", description: "NOTITLE", shorthand: "CT Scan Chest" }),
+    "CT Scan Chest"
+  );
+});
+
+test("procedure headings do not fall back to a code when no description is available", () => {
+  assert.equal(quadrants.get_procedure_display_name({ code: "8741" }), "Procedure");
+  assert.equal(quadrants.get_procedure_display_name({ abbr: ";;;", code: "8741" }), "Procedure");
+  assert.equal(quadrants.get_procedure_display_name({ code: "8741", description: "NOTITLE" }), "Procedure");
+});
+
+test("diagnosis titles prefer abbreviations and never fall back to codes", () => {
+  assert.equal(quadrants.get_diagnosis_display_name({ abbr: " BC ", code: "C50" }, true), "BC");
+  assert.equal(quadrants.get_diagnosis_display_name({ abbr: "AML;;MDS" }, true), "AML;MDS");
+  assert.equal(
+    quadrants.get_diagnosis_display_name({ abbr: "  ", code: "D61.0", description: "Fanconi anemia" }, false),
+    "Fanconi anemia"
+  );
+  assert.equal(
+    quadrants.get_diagnosis_display_name({ code: "D61.0", description: " ", shorthand: "Legacy FA" }, false),
+    "Legacy FA"
+  );
+  assert.equal(
+    quadrants.get_diagnosis_display_name({ code: "D61.0", description: "NOTITLE" }, false),
+    "Diagnosis"
+  );
+  assert.equal(quadrants.get_diagnosis_display_name({ code: "D61.0" }, false), "Diagnosis");
+});
+
+test("cancer diagnosis titles fall back to topography and morphology", () => {
+  assert.equal(
+    quadrants.get_diagnosis_display_name({ code: "C50", topography: "Breast", morphology: "Ductal carcinoma" }, true),
+    "Breast:Ductal carcinoma"
+  );
+  assert.equal(
+    quadrants.get_diagnosis_display_name({ code: "C50", morphology: "Ductal carcinoma" }, true),
+    "Ductal carcinoma"
+  );
+  assert.equal(
+    quadrants.get_diagnosis_display_name({ code: "C50", shorthand: "Breast cancer" }, true),
+    "Breast cancer"
+  );
+  assert.equal(
+    quadrants.get_diagnosis_display_name({ code: "C50", topography: "NOTITLE", description: "Breast cancer" }, true),
+    "Breast cancer"
+  );
+  assert.equal(quadrants.get_diagnosis_display_name({ code: "C50" }, true), "Diagnosis");
+});
+
+test("diagnosis details retain legacy codes and current cancer coding", () => {
+  assert.deepEqual(
+    quadrants.get_diagnosis_code_rows({ code: "C34.9", description: "Lung cancer" }, true),
+    [["Code", "C34.9"]]
+  );
+  assert.deepEqual(
+    quadrants.get_diagnosis_code_rows({ coding: "C34.9:8500/3" }, true),
+    [["Coding", "C34.9:8500/3"]]
+  );
+  assert.deepEqual(
+    quadrants.get_diagnosis_code_rows({ code: "C34.9", coding: "C50.9:8500/3" }, true),
+    [["Coding", "C50.9:8500/3"], ["Code", "C34.9"]]
+  );
+  assert.deepEqual(
+    quadrants.get_diagnosis_code_rows({ code: "C34.9", coding: "C34.9" }, true),
+    [["Coding", "C34.9"]]
+  );
+  assert.deepEqual(
+    quadrants.get_diagnosis_code_rows({ code: "D6109" }, false),
+    [["Code", "D6109"]]
+  );
+  assert.deepEqual(quadrants.get_diagnosis_code_rows({}, true), []);
+});

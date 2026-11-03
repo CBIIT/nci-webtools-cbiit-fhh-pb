@@ -48,6 +48,8 @@ import {
   adoption_question_position,
 } from "./fhh_adoption.js";
 import {
+  get_diagnosis_code_rows,
+  get_diagnosis_display_name,
   get_matching_quadrants,
   get_person_quadrant_flags,
   get_procedure_display_name,
@@ -4101,14 +4103,6 @@ function format_last_updated(raw_value) {
   return parsed_date.toLocaleDateString();
 }
 
-function get_standardized_diagnosis_label(diagnosis) {
-  return diagnosis.abbr || null;
-}
-
-function get_diagnosis_display_name(diagnosis) {
-  return get_standardized_diagnosis_label(diagnosis) || "NOTITLE";
-}
-
 function create_color_swatch_container(colors) {
   if (!Array.isArray(colors) || colors.length === 0) return null;
 
@@ -4189,11 +4183,9 @@ function set_diagnoses_of_person(person_id) {
       const topography = disease.topography;
       const morphology = disease.morphology;
       const cancer_identifier = [topography, morphology].filter(Boolean).join(":");
-      const coding_identifier = disease.coding;
       const is_cancer_diagnosis = Boolean(cancer_identifier)
         || (disease.d_num && String(disease.d_num).startsWith("C"))
         || (code && code[0] === "C");
-      const diagnosis_identifier = is_cancer_diagnosis ? (cancer_identifier || code) : code;
       const matching_quadrants = get_matching_quadrants(
         get_quadrant_abbreviations(disease), config?.quadrants
       );
@@ -4211,7 +4203,7 @@ function set_diagnoses_of_person(person_id) {
       header_content.classList.add("section-header-content");
 
       header_content.appendChild(create_clinical_heading(
-        disease.abbr || diagnosis_identifier, matching_quadrants
+        get_diagnosis_display_name(disease, is_cancer_diagnosis), matching_quadrants
       ));
 
       if (is_pedigree_build_mode()) {
@@ -4246,12 +4238,12 @@ function set_diagnoses_of_person(person_id) {
       thead.appendChild(headerRow);
       table.appendChild(thead);
       const tbody = document.createElement("tbody");
+      for (const [label, value] of get_diagnosis_code_rows(disease, is_cancer_diagnosis)) {
+        add_row_to_table(tbody, label, value);
+      }
       if (is_cancer_diagnosis) {
-        add_row_to_table(tbody, "Coding", coding_identifier);
         add_row_to_table(tbody, "Topography", topography);
         add_row_to_table(tbody, "Morphology", morphology);
-      } else {
-        add_row_to_table(tbody, "Code", code);
       }
       add_row_to_table(tbody, "Age of Diagnosis", disease.age_of_diagnosis);
       add_row_to_table(tbody, "Date of Diagnosis", disease.date_of_diagnosis);

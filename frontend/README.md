@@ -22,6 +22,18 @@ person's quadrant colors and show matching color swatches in the details panel.
 For older procedures, a semicolon-delimited `abbr` supplies the positions;
 plain-text procedure abbreviations remain labels only.
 
+Procedure headings use the abbreviation when present, otherwise the
+description. Older records and manually added procedures may store that
+description as `shorthand`. If neither is available, the heading says
+`Procedure`; the code remains in the details.
+
+Diagnosis headings follow the same rule: the abbreviation when present,
+otherwise the cancer topography and morphology names, otherwise the
+description (or legacy `shorthand`). If none is available, the heading says
+`Diagnosis`; codes remain in the details. Cancer records show a separate code
+alongside the coding value when both are present and differ. The processor's
+`NOTITLE` placeholder is treated as blank for both diagnoses and procedures.
+
 Across study configurations, the default colors are blue for top right, red
 for top left, yellow for bottom left, and purple for bottom right. Saved
 family-specific color choices continue to override these defaults.
