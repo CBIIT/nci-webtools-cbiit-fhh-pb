@@ -1,4 +1,6 @@
 
+import { find_multiple_birth_groups } from "./fhh_multiple_births.js";
+
 let family_tree = [];
 
 let data = {};
@@ -135,6 +137,7 @@ let generations = new Map();
 let visited = new Set();
 let ancestors = new Set();
 let hidden_people = new Set();
+let multiple_birth_groups = [];
 
 function exists(id) {
   return !!(id && data["people"][id]);
@@ -427,7 +430,29 @@ function arrange_sibship(ids, x, edge, prefer_right = false) {
     const far = middle.filter((s) => !linked(s));
     middle = edge == "right" ? [...far, ...near] : [...near, ...far];
   }
-  return [left_end, ...middle, right_end].filter(Boolean);
+  let order = [left_end, ...middle, right_end].filter(Boolean);
+  for (const group of multiple_birth_groups) {
+    const members = order.filter((item) => group.members.includes(item.id));
+    if (members.length !== group.members.length) continue;
+
+    const pinned_left = members.includes(left_end);
+    const pinned_right = members.includes(right_end);
+    const keep_right = (members.some((item) => item.id === x) && edge === "right") ||
+      (!pinned_left && pinned_right);
+    const anchor = keep_right ? right_end : pinned_left ? left_end : members[0];
+    const group_order = keep_right
+      ? [...members.filter((item) => item !== anchor), anchor]
+      : [anchor, ...members.filter((item) => item !== anchor)];
+    order = order.filter((item) => !members.includes(item) || item === anchor);
+    const index = order.indexOf(anchor);
+    order.splice(index, 1, ...group_order);
+
+    group_order[0].side = "right";
+    group_order[0].strict = false;
+    group_order[group_order.length - 1].side = "left";
+    group_order[group_order.length - 1].strict = false;
+  }
+  return order;
 }
 
 function add_sibship_bar(block, children, drop_x) {
@@ -505,6 +530,7 @@ function hang_children(B, p, kids) {
 // there (deferred, see `pend`) and any other partners go inside.
 function build_own(p, exclude, side, strict = false) {
   let B = single_block(p);
+  const grouped_multiple = multiple_birth_groups.some((group) => group.members.includes(p));
   let own_families = (families_of.get(p) || []).filter((family) => partner_in(family, p) != exclude);
   let first_left = null;
   const outward_left = side == "right";
@@ -512,7 +538,7 @@ function build_own(p, exclude, side, strict = false) {
     const q = partner_in(family, p);
     return !visited.has(q) && !is_reserved(q) && !!birth_family(q);
   };
-  const deferred = side && !strict ? own_families.find(brings_ancestry) : null;
+  const deferred = side && !strict && !grouped_multiple ? own_families.find(brings_ancestry) : null;
   if (deferred) own_families = [...own_families.filter((family) => family != deferred), deferred];
 
   own_families.forEach((family, i) => {
@@ -534,7 +560,7 @@ function build_own(p, exclude, side, strict = false) {
     // A childless couple only brings in a spouse who has no other place in the tree.
     if (family.children.length == 0 && (birth_family(q) || generations.get(q) != generations.get(p) || (families_of.get(q) || []).some((f) => f.children.length > 0))) return;
     const Q = anc_side(q, q_left ? "right" : "left", p);
-    if (family == deferred || (side && own_families.length == 1 && birth_family(q))) {
+    if (family == deferred || (side && !grouped_multiple && own_families.length == 1 && birth_family(q))) {
       B.pend[q_left ? "left" : "right"] = { p, q, Q, kids };
       return;
     }
@@ -626,6 +652,36 @@ function side_weight(id, partner, min_gen) {
   return weight;
 }
 
+function keep_multiple_births_adjacent(block) {
+  const groups_by_generation = new Map();
+  for (const group of multiple_birth_groups) {
+    if (!group.members.every((id) => block.pos.has(id))) continue;
+    const generation = generations.get(group.members[0]);
+    if (!group.members.every((id) => generations.get(id) === generation)) continue;
+    if (!groups_by_generation.has(generation)) groups_by_generation.set(generation, []);
+    groups_by_generation.get(generation).push(group);
+  }
+
+  for (const [generation, groups] of groups_by_generation) {
+    const row = [...block.pos.keys()]
+      .filter((id) => generations.get(id) === generation)
+      .sort((left, right) => block.pos.get(left) - block.pos.get(right));
+    const slots = row.map((id) => block.pos.get(id));
+    const group_by_person = new Map(groups.flatMap((group) => group.members.map((id) => [id, group])));
+    const seen = new Set();
+    const ordered = [];
+    for (const id of row) {
+      const group = group_by_person.get(id);
+      if (!group) ordered.push(id);
+      else if (!seen.has(group.key)) {
+        seen.add(group.key);
+        ordered.push(...row.filter((candidate) => group.members.includes(candidate)));
+      }
+    }
+    for (let index = 0; index < ordered.length; index++) block.pos.set(ordered[index], slots[index]);
+  }
+}
+
 ///////////////////////////////////////
 
 export function build_entire_family_tree(proband_id) {
@@ -634,6 +690,7 @@ export function build_entire_family_tree(proband_id) {
 
   add_missing_parents();
   index_families();
+  multiple_birth_groups = find_multiple_birth_groups(data["people"]).groups;
   assign_generations(proband_id);
   visited = new Set();
   ancestors = new Set();
@@ -650,6 +707,7 @@ export function build_entire_family_tree(proband_id) {
     while (block.pend.left || block.pend.right) block = resolve(resolve(block, "left"), "right");
   }
 
+  keep_multiple_births_adjacent(block);
   let min = Infinity;
   let max = -Infinity;
   for (const [id, loc] of block.pos) {
