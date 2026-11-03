@@ -91,8 +91,8 @@ empty input produces `quad_abbrs: null` and `abbr: ""`.
 
 The person's `quad_flags` aggregate non-empty positions across diseases and
 procedures, ignoring missing or null `quad_abbrs`. Single-value procedure
-abbreviations do not set quadrant flags. Procedure headers display `abbr`
-verbatim, including any semicolons.
+abbreviations do not set quadrant flags. Stored procedure abbreviations retain
+their separators; the frontend omits empty positions from procedure headings.
 
 ## Output Format
 

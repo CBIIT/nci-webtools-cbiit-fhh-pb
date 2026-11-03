@@ -19,12 +19,20 @@
   "v_spacing": 200,
   "quadrants": {
     "top_right": {
-      "name": "Fanconi COIs",
+      "name": "Transplant",
       "color": "blue"
     },
-    "bottom_right": {
-      "name": "Cancers",
+    "top_left": {
+      "name": "Solid Tumors",
       "color": "red"
+    },
+    "bottom_left": {
+      "name": "Hematological Malignancy",
+      "color": "yellow"
+    },
+    "bottom_right": {
+      "name": "FANS",
+      "color": "purple"
     }
   }
 }

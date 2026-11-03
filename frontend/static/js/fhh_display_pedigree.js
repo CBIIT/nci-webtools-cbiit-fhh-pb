@@ -47,6 +47,14 @@ import {
   adoption_notation,
   adoption_question_position,
 } from "./fhh_adoption.js";
+import {
+  get_matching_quadrants,
+  get_person_quadrant_flags,
+  get_procedure_display_name,
+  get_procedure_quadrant_abbreviations,
+  get_quadrant_abbreviations,
+  remove_procedure_quadrant_flags,
+} from "./fhh_quadrants.js";
 
 const svgns = "http://www.w3.org/2000/svg";
 const pencil_cursor = 'url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2224%22 height=%2224%22 viewBox=%220 0 24 24%22%3E%3Cpath d=%22m4 20 4-.8L20 7.2 16.8 4 4.8 16z%22 fill=%22white%22 stroke=%22black%22 stroke-width=%222%22/%3E%3C/svg%3E") 4 20, crosshair';
@@ -3186,7 +3194,7 @@ async function edit_diagnosis_of_person(person_id, diagnosis_index) {
   const updated_diagnosis = await show_edit_diagnosis_dialog(existing_diagnosis);
   if (!updated_diagnosis) return;
 
-  person.diseases[diagnosis_index] = updated_diagnosis;
+  person.diseases[diagnosis_index] = { ...existing_diagnosis, ...updated_diagnosis };
 
   set_diagnoses_of_person(person_id);
   set_raw_data_of_person(person_id);
@@ -3366,7 +3374,7 @@ async function edit_procedure_of_person(person_id, procedure_index) {
   const updated_procedure = await show_edit_procedure_dialog(existing_procedure);
   if (!updated_procedure) return;
 
-  person.procedures[procedure_index] = updated_procedure;
+  person.procedures[procedure_index] = { ...existing_procedure, ...updated_procedure };
 
   set_procedures_of_person(person_id);
   set_raw_data_of_person(person_id);
@@ -3383,6 +3391,7 @@ function remove_procedure_from_person(person_id, procedure_index) {
   if (!confirmation) return;
 
   person.procedures.splice(procedure_index, 1);
+  remove_procedure_quadrant_flags(person, procedure);
 
   set_procedures_of_person(person_id);
   set_raw_data_of_person(person_id);
@@ -4125,6 +4134,25 @@ function create_color_swatch_container(colors) {
   return swatch_container;
 }
 
+function create_clinical_heading(label, matching_quadrants) {
+  const title = document.createElement("span");
+  title.style.display = "inline-flex";
+  title.style.alignItems = "center";
+  title.style.gap = "6px";
+
+  const swatches = create_color_swatch_container(
+    matching_quadrants.map((quadrant) => quadrant.color)
+  );
+  if (swatches) title.appendChild(swatches);
+
+  const names = matching_quadrants.map((quadrant) => quadrant.name);
+  const suffix = names.length > 0 ? " (" + names.join(", ") + ")" : "";
+  const text = document.createElement("span");
+  text.textContent = label + suffix;
+  title.appendChild(text);
+  return title;
+}
+
 function set_diagnoses_of_person(person_id) {
   const elem = document.getElementById("person_diagnoses");
   elem.innerHTML = "";
@@ -4166,13 +4194,9 @@ function set_diagnoses_of_person(person_id) {
         || (disease.d_num && String(disease.d_num).startsWith("C"))
         || (code && code[0] === "C");
       const diagnosis_identifier = is_cancer_diagnosis ? (cancer_identifier || code) : code;
-      const matching_quadrants = get_matching_quadrants_for_disease(disease, person_id);
-      const matching_quadrant_names = matching_quadrants.map((quadrant) => quadrant.name);
-      const matching_quadrant_colors = matching_quadrants.map((quadrant) => quadrant.color).filter(Boolean);
-      const quadrant_suffix = matching_quadrant_names.length > 0
-        ? " (" + matching_quadrant_names.join(", ") + ")"
-        : "";
-      const header_text = (disease.abbr || diagnosis_identifier) + quadrant_suffix;
+      const matching_quadrants = get_matching_quadrants(
+        get_quadrant_abbreviations(disease), config?.quadrants
+      );
 
      
       const table = document.createElement("table");
@@ -4186,20 +4210,9 @@ function set_diagnoses_of_person(person_id) {
       const header_content = document.createElement("div");
       header_content.classList.add("section-header-content");
 
-      const header_title = document.createElement("span");
-      header_title.style.display = "inline-flex";
-      header_title.style.alignItems = "center";
-      header_title.style.gap = "6px";
-
-      const swatches = create_color_swatch_container(matching_quadrant_colors);
-      if (swatches) {
-        header_title.appendChild(swatches);
-      }
-
-      const header_label = document.createElement("span");
-      header_label.textContent = header_text;
-      header_title.appendChild(header_label);
-      header_content.appendChild(header_title);
+      header_content.appendChild(create_clinical_heading(
+        disease.abbr || diagnosis_identifier, matching_quadrants
+      ));
 
       if (is_pedigree_build_mode()) {
         const header_actions = document.createElement("div");
@@ -4295,9 +4308,12 @@ function set_procedures_of_person(person_id) {
       const header_content = document.createElement("div");
       header_content.classList.add("section-header-content");
 
-      const header_label = document.createElement("span");
-      header_label.textContent = procedure.abbr || procedure.description || code;
-      header_content.appendChild(header_label);
+      const matching_quadrants = get_matching_quadrants(
+        get_procedure_quadrant_abbreviations(procedure), config?.quadrants
+      );
+      header_content.appendChild(create_clinical_heading(
+        get_procedure_display_name(procedure), matching_quadrants
+      ));
 
       if (is_pedigree_build_mode()) {
         const header_actions = document.createElement("div");
@@ -4950,75 +4966,35 @@ export function set_other_alert(person_id, message) {
 ///
 // Quadrants
 
-// person.quad_flags and disease.quad_abbrs (formerly quad_abbr) are indexed [top_right, top_left, bottom_left, bottom_right].
-function check_quadrant_tr(person_id) {
-  return !!data["people"][person_id]?.quad_flags?.[0];
-}
-
-function check_quadrant_tl(person_id) {
-  return !!data["people"][person_id]?.quad_flags?.[1];
-}
-
-function check_quadrant_bl(person_id) {
-  return !!data["people"][person_id]?.quad_flags?.[2];
-}
-
-function check_quadrant_br(person_id) {
-  return !!data["people"][person_id]?.quad_flags?.[3];
-}
-
-function get_matching_quadrants_for_disease(disease) {
-  const quadrants = config?.quadrants;
-  const quad_abbrs = disease?.quad_abbrs || disease?.quad_abbr;
-  if (!quadrants || !Array.isArray(quad_abbrs)) return [];
-
-  const ordered_quadrants = [
-    quadrants.top_right,
-    quadrants.top_left,
-    quadrants.bottom_left,
-    quadrants.bottom_right,
-  ];
-
-  const matches = [];
-  ordered_quadrants.forEach((quadrant, index) => {
-    if (!quadrant?.name) return;
-    if (quad_abbrs[index]) {
-      matches.push({ name: quadrant.name, color: quadrant.color || "" });
-    }
-  });
-
-  return matches;
-}
-
 function draw_quadrants_male(person_id) {
 
   const size = config.size / 2;
   const center_x = data["people"][person_id].x;
   const center_y = data["people"][person_id].y;
-  let code = false;
+  const flags = get_person_quadrant_flags(data["people"][person_id]);
 
-  if (code = check_quadrant_tr(person_id)) {
+  if (flags[0]) {
     const el = draw_square(size, center_x, center_y - size, config.quadrants?.top_right?.color || "grey");
     el.setAttributeNS(null, "id", person_id);
     el.setAttributeNS(null, "pointer-events", "none");
     el.setAttributeNS(null, "stroke-width", "2");
     el.setAttributeNS(null, "is_decoration", "true");
   }
-  if (code = check_quadrant_tl(person_id)) {
+  if (flags[1]) {
     const el = draw_square(size, center_x - size, center_y -size, config.quadrants?.top_left?.color || "grey");
     el.setAttributeNS(null, "id", person_id);
     el.setAttributeNS(null, "pointer-events", "none");
     el.setAttributeNS(null, "stroke-width", "2");
     el.setAttributeNS(null, "is_decoration", "true");
   }
-  if (code = check_quadrant_br(person_id)) {
+  if (flags[3]) {
     const el = draw_square(size, center_x, center_y, config.quadrants?.bottom_right?.color || "grey");
     el.setAttributeNS(null, "id", person_id);
     el.setAttributeNS(null, "pointer-events", "none");
     el.setAttributeNS(null, "stroke-width", "2");
     el.setAttributeNS(null, "is_decoration", "true");
   }
-  if (code = check_quadrant_bl(person_id)) {
+  if (flags[2]) {
     const el = draw_square(size, center_x - size, center_y, config.quadrants?.bottom_left?.color || "grey");
     el.setAttributeNS(null, "id", person_id);
     el.setAttributeNS(null, "pointer-events", "none");
@@ -5032,13 +5008,12 @@ function draw_quadrants_female(person_id) {
   const size = config.size / 2;
   const center_x = data["people"][person_id].x;
   const center_y = data["people"][person_id].y;
-  let color = "grey";
-  let code = false;
+  const flags = get_person_quadrant_flags(data["people"][person_id]);
 
-  if (code = check_quadrant_tr(person_id)) { el = draw_arc_90(person_id, center_x, center_y, size, "tr", config.quadrants?.top_right?.color || "grey"); }
-  if (code = check_quadrant_tl(person_id)) { el = draw_arc_90(person_id, center_x, center_y, size, "tl", config.quadrants?.top_left?.color || "grey"); }
-  if (code = check_quadrant_bl(person_id)) { el = draw_arc_90(person_id, center_x, center_y, size, "bl", config.quadrants?.bottom_left?.color || "grey"); }
-  if (code = check_quadrant_br(person_id)) { el = draw_arc_90(person_id, center_x, center_y, size, "br", config.quadrants?.bottom_right?.color || "grey"); }
+  if (flags[0]) { el = draw_arc_90(person_id, center_x, center_y, size, "tr", config.quadrants?.top_right?.color || "grey"); }
+  if (flags[1]) { el = draw_arc_90(person_id, center_x, center_y, size, "tl", config.quadrants?.top_left?.color || "grey"); }
+  if (flags[2]) { el = draw_arc_90(person_id, center_x, center_y, size, "bl", config.quadrants?.bottom_left?.color || "grey"); }
+  if (flags[3]) { el = draw_arc_90(person_id, center_x, center_y, size, "br", config.quadrants?.bottom_right?.color || "grey"); }
   if (el) {
 
   }

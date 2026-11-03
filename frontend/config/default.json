@@ -20,15 +20,15 @@
   "quadrants": {
     "top_left": {
       "name": "Quadrant 2",
-      "color": "yellow"
+      "color": "red"
     },
     "top_right": {
       "name": "Quadrant 1",
-      "color": "red"
+      "color": "blue"
     },
     "bottom_left": {
       "name": "Quadrant 3",
-      "color": "blue"
+      "color": "yellow"
     },
     "bottom_right": {
       "name": "Quadrant 4",

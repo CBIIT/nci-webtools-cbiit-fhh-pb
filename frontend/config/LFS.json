@@ -20,7 +20,7 @@
   "quadrants": {
     "top_right": {
       "name": "Non Cancer COIs",
-      "color": "yellow"
+      "color": "blue"
     },
     "top_left": {
       "name": "Cancer COIs",
