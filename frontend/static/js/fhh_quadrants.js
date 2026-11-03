@@ -47,11 +47,40 @@ export function remove_procedure_quadrant_flags(person, procedure) {
   );
 }
 
+// The processor stores "NOTITLE" when a source field has no description.
+function clean_title(value) {
+  const text = typeof value === "string" ? value.trim() : "";
+  return text === "NOTITLE" ? "" : text;
+}
+
+function clean_abbreviation(value) {
+  return (typeof value === "string" ? value : "")
+    .split(";").map(clean_title).filter(Boolean).join(";");
+}
+
 export function get_procedure_display_name(procedure) {
-  const abbr = procedure?.abbr;
-  if (typeof abbr === "string" && abbr.includes(";")) {
-    const label = abbr.split(";").map((value) => value.trim()).filter(Boolean).join(";");
-    return label || procedure.description || procedure.code;
-  }
-  return abbr || procedure?.description || procedure?.code;
+  return clean_abbreviation(procedure?.abbr)
+    || clean_title(procedure?.description)
+    || clean_title(procedure?.shorthand)
+    || "Procedure";
+}
+
+export function get_diagnosis_display_name(diagnosis, is_cancer) {
+  const cancer_title = is_cancer
+    ? [clean_title(diagnosis?.topography), clean_title(diagnosis?.morphology)].filter(Boolean).join(":")
+    : "";
+  return clean_abbreviation(diagnosis?.abbr)
+    || cancer_title
+    || clean_title(diagnosis?.description)
+    || clean_title(diagnosis?.shorthand)
+    || "Diagnosis";
+}
+
+export function get_diagnosis_code_rows(diagnosis, is_cancer) {
+  const coding = diagnosis?.coding;
+  const code = diagnosis?.code;
+  const rows = [];
+  if (is_cancer && coding) rows.push(["Coding", coding]);
+  if (code && (!is_cancer || code !== coding)) rows.push(["Code", code]);
+  return rows;
 }
