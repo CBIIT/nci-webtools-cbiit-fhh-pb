@@ -127,6 +127,9 @@ def test_lambda_function(s3_bucket):
     )
     assert output["general"]["proband"] == "00101"
     assert output["people"]["00101"]["individual_genetic_status"] == "Positive"
+    assert output["people"]["00101"]["procedures"][0]["quad_abbrs"] is None
+    assert output["people"]["00101"]["procedures"][0]["abbr"] == "Mastectomy"
+    assert output["people"]["00101"]["quad_flags"] == [True, False, False, True]
 
 
 def test_lambda_function_handles_missing_input_object(s3_bucket):
@@ -264,6 +267,65 @@ def test_procedure_includes_abbr():
     procedure = next(p for p in person["procedures"] if p["proc_num"] == "P1")
 
     assert procedure["abbr"] == "Mastectomy"
+    assert procedure["quad_abbrs"] is None
+
+
+@pytest.mark.parametrize(
+    ("type_abbr", "expected_quads", "expected_abbr"),
+    [
+        ("blah", None, "blah"),
+        (";;blah;", ["", "", "blah", ""], ";;blah;"),
+        ("first;second;;", ["first", "second", "", ""], "first;second;;"),
+        (" blah ", None, "blah"),
+        (" ; blah ; ; ", ["", "blah", "", ""], ";blah;;"),
+        (";;;", ["", "", "", ""], ";;;"),
+        ("", None, ""),
+        (None, None, ""),
+    ],
+)
+def test_procedure_abbreviations_distinguish_scalar_and_delimited_values(
+    type_abbr, expected_quads, expected_abbr
+):
+    procedure = JSONProcessor()._extract_procedure(
+        {
+            "Subject procedure[PRTRT.ICD_9_STD]": "85.41",
+            "Subject procedure[PRTRT.type_abbr]": type_abbr,
+        }
+    )
+
+    assert procedure is not None
+    assert procedure["quad_abbrs"] == expected_quads
+    assert procedure["abbr"] == expected_abbr
+
+
+def test_procedure_without_type_abbr():
+    procedure = JSONProcessor()._extract_procedure(
+        {"Subject procedure[PRTRT.ICD_9_STD]": "85.41"}
+    )
+
+    assert procedure is not None
+    assert procedure["quad_abbrs"] is None
+    assert procedure["abbr"] == ""
+
+
+@pytest.mark.parametrize(
+    ("items", "expected_flags"),
+    [
+        ([{}], [False, False, False, False]),
+        ([{"quad_abbrs": None}], [False, False, False, False]),
+        (
+            [
+                {"quad_abbrs": ["cancer", "", "", ""]},
+                {"quad_abbrs": None},
+                {},
+                {"quad_abbrs": ["", "", "procedure", ""]},
+            ],
+            [True, False, True, False],
+        ),
+    ],
+)
+def test_quad_flags_ignore_null_and_missing_quad_abbrs(items, expected_flags):
+    assert JSONProcessor._compute_quad_flags(items) == expected_flags
 
 
 def test_person_quad_flags_reflect_any_disease_type_abbr():
@@ -281,22 +343,32 @@ def test_person_quad_flags_reflect_any_disease_type_abbr():
     assert processor.people["00102"]["quad_flags"] == [False, False, False, False]
 
 
-def test_person_quad_flags_include_procedure_type_abbr():
-    """Ensure procedure type_abbr values also contribute to quad_flags."""
+@pytest.mark.parametrize(
+    ("type_abbr", "expected_quads", "expected_flags"),
+    [
+        (";;;Mastectomy", ["", "", "", "Mastectomy"], [False, False, False, True]),
+        (";;blah;", ["", "", "blah", ""], [False, False, True, False]),
+        ("Mastectomy", None, [False, False, False, False]),
+    ],
+)
+def test_person_quad_flags_include_procedure_type_abbr(
+    type_abbr, expected_quads, expected_flags
+):
+    """Only delimited procedure type_abbr values contribute to quad_flags."""
     record = {
         "Merge1[Subject]": "00101",
         "Merge1[project]": "Test Study",
         "Subject procedure[PRTRT.ICD_9_STD]": "85.41",
         "Subject procedure[PRTRT.NUMBER]": "1",
-        "Subject procedure[PRTRT.type_abbr]": ";;;Mastectomy",
+        "Subject procedure[PRTRT.type_abbr]": type_abbr,
     }
 
     processor = JSONProcessor()
     processor.process_records([record])
 
     person = processor.people["00101"]
-    assert person["procedures"][0]["quad_abbrs"] == ["", "", "", "Mastectomy"]
-    assert person["quad_flags"] == [False, False, False, True]
+    assert person["procedures"][0]["quad_abbrs"] == expected_quads
+    assert person["quad_flags"] == expected_flags
 
 
 def test_process_input_sets_data_pulled_dtm_and_processes_records():

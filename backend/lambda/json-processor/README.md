@@ -81,6 +81,19 @@ with `/`, with the cancer value first. For example, `"Melanoma;;;"` and
 populate the semicolon-delimited `abbr` and contribute to the person's
 `quad_flags`. Records without a cancer code do not produce a cancer disease.
 
+Procedure abbreviations from `Subject procedure[PRTRT.type_abbr]` populate
+`quad_abbrs` only when the input contains a semicolon. These values are split
+and trimmed, preserving empty positions. The procedure's `abbr` joins all
+positions with semicolons, including empty ones: `";;blah;"` produces
+`quad_abbrs: ["", "", "blah", ""]` and `abbr: ";;blah;"`. A single value such
+as `"blah"` produces `quad_abbrs: null` and `abbr: "blah"`. Missing, null, or
+empty input produces `quad_abbrs: null` and `abbr: ""`.
+
+The person's `quad_flags` aggregate non-empty positions across diseases and
+procedures, ignoring missing or null `quad_abbrs`. Single-value procedure
+abbreviations do not set quadrant flags. Procedure headers display `abbr`
+verbatim, including any semicolons.
+
 ## Output Format
 
 The function produces structured JSON with person-centric organization:

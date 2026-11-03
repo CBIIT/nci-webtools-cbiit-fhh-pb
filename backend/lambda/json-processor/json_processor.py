@@ -282,8 +282,12 @@ class JSONProcessor:
 
         proc_num = record.get("Subject procedure[PRTRT.NUMBER]", "")
         med_code, shorthand = self._parse_medical_code(code)
-        type_abbr = record.get("Subject procedure[PRTRT.type_abbr]", "")
-        type_abbr_list = [value.strip() for value in type_abbr.split(";")] if type_abbr else []
+        type_abbr = record.get("Subject procedure[PRTRT.type_abbr]", "") or ""
+        type_abbr_list = (
+            [value.strip() for value in type_abbr.split(";")]
+            if ";" in type_abbr
+            else None
+        )
 
         return {
             "code": med_code,
@@ -295,7 +299,11 @@ class JSONProcessor:
             "proc_num": f"P{proc_num}" if proc_num else "",
 
             "quad_abbrs": type_abbr_list,
-            "abbr": ";".join(value for value in type_abbr_list if value),
+            "abbr": (
+                ";".join(type_abbr_list)
+                if type_abbr_list is not None
+                else type_abbr.strip()
+            ),
         }
 
     def _add_unique_item(
@@ -322,7 +330,8 @@ class JSONProcessor:
         Each item's "quad_abbrs" is a 4-value array (split from a
         semicolon-delimited field) ordered top-right, top-left, bottom-left,
         bottom-right. Position i of the returned array is True if any item
-        has a non-empty value at position i.
+        has a non-empty value at position i. Items with missing or null
+        "quad_abbrs" are ignored.
 
         Args:
             items: Disease and procedure dictionaries
@@ -332,7 +341,10 @@ class JSONProcessor:
         """
         flags = [False, False, False, False]
         for item in items:
-            for i, value in enumerate(item.get("quad_abbrs", [])):
+            quad_abbrs = item.get("quad_abbrs")
+            if quad_abbrs is None:
+                continue
+            for i, value in enumerate(quad_abbrs):
                 if i < len(flags) and value:
                     flags[i] = True
         return flags
