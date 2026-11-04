@@ -13,6 +13,7 @@ import sys
 import unicodedata
 from collections import defaultdict
 from datetime import datetime, timezone
+from itertools import zip_longest
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -154,17 +155,30 @@ class JSONProcessor:
         last_name = record.get("Merge1[participant.last_name]", "")
         full_name = f"{first_name} {last_name}".strip()
 
-        # Build person structure
+        # Build person structure. Key order sets the output order and is grouped
+        # by topic; consumers look fields up by name, so order is for readability.
         person_data = {
+            # Identity and vital status (gender drives the pedigree symbol shape)
             "name": full_name,
+            "demographics": self._extract_demographics(record),
             "born": record.get("DEMO[BRTHDAT_RAW]", ""),
+            "life_status": record.get("CORE_ADD[life_status]", ""),
             "deceased": record.get("DEMO[DTHDAT_RAW]", ""),
+            # Parentage: how the person relates to parents and siblings
             "father": record.get("CORE[FPT_ID3]", ""),
             "mother": record.get("CORE[MPT_ID3]", ""),
-            "pedigree_symbol": record.get("Merge2[Pedigree_Symbol]", ""),
-            "life_status": record.get("CORE_ADD[life_status]", ""),
-            "demographics": self._extract_demographics(record),
+            "adoption": record.get("CORE_ADD[PT_ADPT_IND]", ""),
+            "multiple_birth_type": record.get("CORE_ADD[PT_IDENTICAL_SIBS]", ""),
+            # Relationships: marital status sits directly before partners
+            "marital_status": record.get("CORE[PRSN_MARST_CAT]", ""),
             "partners": [],
+            # Genetic status and pedigree markings
+            "individual_genetic_status": record.get(
+                "Merge2[individual_genetic_status]", ""
+            ),
+            "pedigree_symbol": record.get("Merge2[Pedigree_Symbol]", ""),
+            # Clinical history (quad_flags is appended last in process_records,
+            # since it is derived from diseases)
             "diseases": [],
             "procedures": [],
         }
@@ -198,6 +212,15 @@ class JSONProcessor:
         )
         type_abbr = record.get("Subject_cancer[CANCER.type_abbr]", "")
         type_abbr_list = [value.strip() for value in type_abbr.split(";")] if type_abbr else []
+        mole_abbr = record.get("Mole_Clinical[type_abbr]", "")
+        if mole_abbr:
+            mole_abbr_list = [value.strip() for value in mole_abbr.split(";")]
+            type_abbr_list = [
+                "/".join(value for value in (cancer, mole) if value)
+                for cancer, mole in zip_longest(
+                    type_abbr_list, mole_abbr_list, fillvalue=""
+                )
+            ]
 
         return {
             "topography": topography_title,
@@ -259,6 +282,12 @@ class JSONProcessor:
 
         proc_num = record.get("Subject procedure[PRTRT.NUMBER]", "")
         med_code, shorthand = self._parse_medical_code(code)
+        type_abbr = record.get("Subject procedure[PRTRT.type_abbr]", "") or ""
+        type_abbr_list = (
+            [value.strip() for value in type_abbr.split(";")]
+            if ";" in type_abbr
+            else None
+        )
 
         return {
             "code": med_code,
@@ -268,7 +297,13 @@ class JSONProcessor:
             ),
             "date_of_procedure": record.get("Subject procedure[PRTRT.PRSTDAT]", ""),
             "proc_num": f"P{proc_num}" if proc_num else "",
-            "abbr": record.get("Subject procedure[PRTRT.type_abbr]", ""),
+
+            "quad_abbrs": type_abbr_list,
+            "abbr": (
+                ";".join(type_abbr_list)
+                if type_abbr_list is not None
+                else type_abbr.strip()
+            ),
         }
 
     def _add_unique_item(
@@ -288,23 +323,28 @@ class JSONProcessor:
             items_list.append(new_item)
 
     @staticmethod
-    def _compute_quad_flags(diseases: List[Dict[str, Any]]) -> List[bool]:
+    def _compute_quad_flags(items: List[Dict[str, Any]]) -> List[bool]:
         """
-        Compute a 4-position boolean array across all of a person's diseases.
+        Compute a 4-position boolean array across a person's diseases and procedures.
 
-        Each disease's "quad_abbrs" is a 4-value array (split from a
-        semicolon-delimited field). Position i of the returned array is True
-        if any disease has a non-empty value at position i.
+        Each item's "quad_abbrs" is a 4-value array (split from a
+        semicolon-delimited field) ordered top-right, top-left, bottom-left,
+        bottom-right. Position i of the returned array is True if any item
+        has a non-empty value at position i. Items with missing or null
+        "quad_abbrs" are ignored.
 
         Args:
-            diseases: List of disease dictionaries (cancer and non-cancer)
+            items: Disease and procedure dictionaries
 
         Returns:
             List of 4 booleans
         """
         flags = [False, False, False, False]
-        for disease in diseases:
-            for i, value in enumerate(disease.get("quad_abbrs", [])):
+        for item in items:
+            quad_abbrs = item.get("quad_abbrs")
+            if quad_abbrs is None:
+                continue
+            for i, value in enumerate(quad_abbrs):
                 if i < len(flags) and value:
                     flags[i] = True
         return flags
@@ -470,11 +510,10 @@ class JSONProcessor:
                 print(f"[WARNING] Error processing record {i}: {e}")
                 continue
 
-        # Compute per-person quad_flags: true at position i if any disease's
-        # quad_abbrs has a non-empty value at position i
+        # Compute per-person quad_flags across diseases and procedures.
         for person_id, person_data in self.people.items():
             person_data["quad_flags"] = self._compute_quad_flags(
-                person_data.get("diseases", [])
+                person_data.get("diseases", []) + person_data.get("procedures", [])
             )
 
         # clean up so empty records are not present (thus reducing file-size)

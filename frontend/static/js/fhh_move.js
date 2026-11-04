@@ -1,6 +1,8 @@
 
-import { find_all_partners, find_all_children, find_all_descendants, get_data } from "./fhh_build_pedigree.js";
-import { get_config, ensure_canvas_fits_point } from "./fhh_display_pedigree.js";
+import { find_all_descendants, get_data } from "./fhh_build_pedigree.js";
+import { get_config, ensure_canvas_fits_point, sibship_bar_y, record_change, get_zoom } from "./fhh_display_pedigree.js";
+import { find_multiple_birth_groups, multiple_birth_geometry } from "./fhh_multiple_births.js";
+import { adoption_notation, adoption_question_position } from "./fhh_adoption.js";
 
 var free_move = false;
 var slide_move = false;
@@ -10,12 +12,21 @@ var page_y;
 var original_x;
 var original_y;
 var target = null;
+let moving_birth_members = [];
 
+function move_group_for(person_id) {
+  const people = get_data()["people"];
+  const group = find_multiple_birth_groups(people).groups.find((item) => item.members.includes(person_id));
+  if (!group || !group.members.every((id) => people[id].gen != null && people[id].loc != null)) {
+    return [person_id];
+  }
+  return group.members;
+}
 
 /// Free Move Functions
 
-export function start_free_move(e) {
-  target = e.target;
+export function start_free_move(e, move_target = e.target) {
+  target = move_target;
 
   let id = e.target.attributes.name.value;
 
@@ -23,21 +34,22 @@ export function start_free_move(e) {
   page_y = e.pageY;
   original_x = e.pageX;
   original_y = e.pageY;
+  moving_birth_members = move_group_for(move_target.attributes.id.value);
 
   free_move = true;
 }
 
 function free_move_element(e) {
-  let diff_x = page_x - e.pageX;
-  let diff_y = page_y - e.pageY;
+  let diff_x = (page_x - e.pageX) / get_zoom();
+  let diff_y = (page_y - e.pageY) / get_zoom();
   page_x = e.pageX;
   page_y = e.pageY;
 
   if (target) {
 
-    const person_id = target.attributes.id.value;
-
-    move_all_elements_of_a_person(person_id, diff_x, diff_y);
+    for (const person_id of moving_birth_members) {
+      move_all_elements_of_a_person(person_id, diff_x, diff_y);
+    }
   }
 }
 
@@ -47,13 +59,7 @@ function move_all_elements_of_a_person(person_id, diff_x, diff_y) {
   // And the label
   const elements = document.querySelectorAll("[id=\"" + person_id + "\"]");
   for (const el of elements) {
-    move_element(el, diff_x, diff_y);
-  }
-
-  // Then if this is a child, move the connector above the child
-  const parent_connector_line = document.querySelectorAll("[child_id=\"" + person_id + "\"]");
-  for (const el of parent_connector_line) {
-    move_last_point_of_line(el, diff_x, diff_y);
+    if (!el.hasAttribute("stub_id")) move_element(el, diff_x, diff_y);
   }
 
   // Then move the line to the other partner
@@ -68,28 +74,91 @@ function move_all_elements_of_a_person(person_id, diff_x, diff_y) {
     move_last_point_of_line(el, diff_x, diff_y);
   }
 
-  // These connector lines are anchored to the midpoint of both parents (X and Y both
-  // move by half when either parent moves, since the anchor is the average of the two).
-  const mother_line_down = document.querySelectorAll("[p_mother_id=\"" + person_id + "\"]");
-  for (const el of mother_line_down) {
-    move_first_point_of_line(el, diff_x/2, diff_y/2);
-    move_last_point_of_line(el, diff_x/2, diff_y/2);
+  refresh_family_connectors(person_id);
+}
+
+// Redraws the drop, horizontal sibship line and child stubs of every family the person belongs to.
+function refresh_family_connectors(person_id) {
+  const people = get_data()["people"];
+  const person = people[person_id];
+  if (!person) return;
+  const couples = new Set();
+  const multiple_birth_by_person = new Map();
+  for (const group of find_multiple_birth_groups(people).groups) {
+    if (group.members.every((id) => people[id].gen != null && people[id].loc != null)) {
+      for (const id of group.members) multiple_birth_by_person.set(id, group);
+    }
   }
-  const father_line_down = document.querySelectorAll("[p_father_id=\"" + person_id + "\"]");
-  for (const el of father_line_down) {
-    move_first_point_of_line(el, diff_x/2, diff_y/2);
-    move_last_point_of_line(el, diff_x/2, diff_y/2);
+  if (person.mother && person.father) couples.add(person.mother + "|" + person.father);
+  for (const id in people) {
+    if (people[id].mother == person_id || people[id].father == person_id) couples.add(people[id].mother + "|" + people[id].father);
   }
 
-  const child_mother_line_down = document.querySelectorAll("[c_mother_id=\"" + person_id + "\"]");
-  for (const el of child_mother_line_down) {
-    move_first_point_of_line(el, diff_x/2, diff_y/2);
-  }
-  const child_father_line_down = document.querySelectorAll("[c_father_id=\"" + person_id + "\"]");
-  for (const el of child_father_line_down) {
-    move_first_point_of_line(el, diff_x/2, diff_y/2);
-  }
+  for (const couple of couples) {
+    const [mother_id, father_id] = couple.split("|");
+    const mother = people[mother_id];
+    const father = people[father_id];
+    if (!mother || !father || mother.x == null || father.x == null) continue;
+    const children = Object.keys(people).filter((id) => people[id].mother == mother_id && people[id].father == father_id && people[id].x != null);
+    const drop_x = (mother.x + father.x) / 2;
+    const parents_y = (mother.y + father.y) / 2;
+    const bar_y = sibship_bar_y(parents_y, children.map((id) => people[id].y));
 
+    for (const drop of document.querySelectorAll("[p_mother_id=\"" + mother_id + "\"][p_father_id=\"" + father_id + "\"]")) {
+      set_line(drop, drop_x, parents_y, drop_x, bar_y);
+    }
+    for (const child_id of children) {
+      const child = people[child_id];
+      const group = multiple_birth_by_person.get(child_id);
+      const geometry = group && multiple_birth_geometry(group, people, get_config().size, bar_y);
+      for (const bar of document.querySelectorAll("[child_id=\"" + child_id + "\"][c_mother_id=\"" + mother_id + "\"]")) {
+        set_line(bar, drop_x, bar_y, geometry?.anchor[0] ?? child.x, bar_y);
+      }
+      for (const stub of document.querySelectorAll("[stub_id=\"" + child_id + "\"]")) {
+        set_line(stub, child.x, child.y, geometry?.junction[0] ?? child.x, geometry?.junction[1] ?? bar_y);
+        if (adoption_notation(child.adoption).question) {
+          refresh_adoption_question_position(child_id, stub);
+        }
+      }
+      if (geometry && group.members[0] === child_id) {
+        for (const marker of document.querySelectorAll("[data-multiple-birth-group]")) {
+          if (marker.getAttribute("data-multiple-birth-group") !== group.key) continue;
+          const part = marker.getAttribute("data-multiple-birth-part");
+          if (part === "stem") set_line(marker, ...geometry.anchor, ...geometry.junction);
+          else if (part === "crossbar") set_line(marker, ...geometry.crossbar[0], ...geometry.crossbar[1]);
+          else if (part === "question") {
+            marker.setAttribute("x", geometry.question[0]);
+            marker.setAttribute("y", geometry.question[1]);
+          }
+        }
+      }
+    }
+  }
+}
+
+function refresh_adoption_question_position(person_id, connector) {
+  const question = [...document.querySelectorAll("[data-adoption-question-for]")]
+    .find((element) => element.getAttribute("data-adoption-question-for") === person_id);
+  if (!question) return;
+
+  const person = get_data().people[person_id];
+  const size = get_config().size;
+  const notation = adoption_notation(person?.adoption);
+  const coordinates = connector && Object.fromEntries(
+    ["x1", "y1", "x2", "y2"].map((key) => [key, Number(connector.getAttribute(key))])
+  );
+  const position = adoption_question_position(
+    { x: person.x, y: person.y }, size, notation.bracket, coordinates
+  );
+  question.setAttribute("x", position.x);
+  question.setAttribute("y", position.y);
+}
+
+function set_line(el, x1, y1, x2, y2) {
+  el.setAttribute("x1", x1);
+  el.setAttribute("y1", y1);
+  el.setAttribute("x2", x2);
+  el.setAttribute("y2", y2);
 }
 
 function stop_free_move(e) {
@@ -98,12 +167,13 @@ function stop_free_move(e) {
 
 
   free_move = false;
+  if (diff_x || diff_y) record_change();
 }
 
 // Tree Slide functions
 
-export function start_slide_move(e) {
-  target = e.target;
+export function start_slide_move(e, move_target = e.target) {
+  target = move_target;
 
   let id = e.target.attributes.name.value;
 
@@ -111,13 +181,14 @@ export function start_slide_move(e) {
   page_y = e.pageY;
   original_x = e.pageX;
   original_y = e.pageY;
+  moving_birth_members = move_group_for(move_target.attributes.id.value);
 
   slide_move = true;
 }
 
 // Sliding does not allow vertical movement, so zero that youngest_gen
 function slide_move_element(e) {
-  let diff_x = page_x - e.pageX;
+  let diff_x = (page_x - e.pageX) / get_zoom();
   let diff_y = 0;
   page_x = e.pageX;
   page_y = e.pageY;
@@ -125,16 +196,14 @@ function slide_move_element(e) {
 
   if (target) {
 
-    const person_id = target.attributes.id.value;
-    move_all_elements_of_a_person(person_id, diff_x, diff_y);
-
-    const partners = find_all_partners(person_id);
-
-    let descendants = [];
-    descendants = find_all_descendants(person_id, descendants);
-    for (const i in descendants) {
-      const descendant_id = descendants[i];
-      move_all_elements_of_a_person(descendant_id, diff_x, diff_y);
+    const moving_people = new Set(moving_birth_members);
+    for (const person_id of moving_birth_members) {
+      for (const descendant_id of find_all_descendants(person_id, [])) {
+        moving_people.add(descendant_id);
+      }
+    }
+    for (const person_id of moving_people) {
+      move_all_elements_of_a_person(person_id, diff_x, diff_y);
     }
   }
 }
@@ -145,6 +214,7 @@ function stop_slide_move(e) {
   let diff_y = e.pageY - original_y;
 
   slide_move = false;
+  if (diff_x) record_change();
 }
 
 ////  General Move Functions
@@ -273,8 +343,8 @@ function shift_points(points, diff_x, diff_y) {
     const point = point_array[i];
     if (point && point.length > 0) {
       const [x, y] = point.split(',');
-      const new_x = parseInt(x) - diff_x;
-      const new_y = parseInt(y) - diff_y;
+      const new_x = Number(x) - diff_x;
+      const new_y = Number(y) - diff_y;
       new_points += new_x + "," + new_y + " ";
     }
   }

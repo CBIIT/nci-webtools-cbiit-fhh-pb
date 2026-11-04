@@ -20,65 +20,15 @@
   "quadrants": {
     "top_right": {
       "name": "Melanoma COIs",
-      "color": "blue",
-      "type": "disease",
-      "codes": [
-        "C3610",
-        "D229",
-        "D22X",
-        "Q8500",
-        "Q8501",
-        "Q8502",
-        "Q8503"
-      ],
-      "children_of": []
+      "color": "blue"
+    },
+    "top_left": {
+      "name": "Cancers",
+      "color": "red"
     },
     "bottom_right": {
-      "name": "Cancers",
-      "color": "red",
-      "type": "cancer",
-      "topography_rules": [
-        {
-          "topography": [
-            "C510",
-            "C511",
-            "C512",
-            "C518",
-            "C519",
-            "C600",
-            "C608",
-            "C609",
-            "C632",
-            "C690",
-            "C691",
-            "C692",
-            "C693",
-            "C694",
-            "C695",
-            "C696",
-            "C698",
-            "C699",
-            "C809"
-          ],
-          "topography_children_of": [
-            "C",
-            "C69"
-          ],
-          "morphology": [],
-          "morphology_exclude": []
-        }
-      ]
+      "name": "DN COI",
+      "color": "purple"
     }
-  },
-  "code_matching": {
-    "normalize": {
-      "trim": true,
-      "uppercase": true,
-      "remove_decimals": true
-    },
-    "match_order": [
-      "exact_normalized_code",
-      "children_of_prefix"
-    ]
   }
 }
