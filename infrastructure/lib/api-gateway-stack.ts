@@ -410,7 +410,11 @@ export class ApiGatewayStack extends cdk.Stack {
     );
 
     // Configure CORS to only allow CloudFront domain
-    const corsOrigins = [`https://pedigree-${tier}.cancer.gov`];
+    const corsOrigins = [
+      tier === "prod"
+        ? "https://pedigree.cancer.gov"
+        : `https://pedigree-${tier}.cancer.gov`,
+    ];
 
     const app = cdk.App.of(this) as cdk.App;
     const executionLoggingLevel =
