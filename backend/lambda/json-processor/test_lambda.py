@@ -6,15 +6,21 @@ This script tests the Lambda function with sample data to ensure it works correc
 """
 
 import json
-import os
 import sys
 from pathlib import Path
+
+import boto3
+import pytest
+from moto import mock_aws
 
 # Add the current directory to the Python path
 sys.path.insert(0, str(Path(__file__).parent))
 
+import lambda_function
 from lambda_function import lambda_handler
 from json_processor import JSONProcessor
+
+TEST_BUCKET = "test-data-bucket"
 
 
 def create_test_event(bucket_name: str, object_key: str) -> dict:
@@ -37,6 +43,11 @@ def create_test_data() -> list:
             "DEMO[DTHDAT_RAW]": "",
             "CORE[FPT_ID3]": "00102",
             "CORE[MPT_ID3]": "00103",
+            "Merge2[Pedigree_Symbol]": "%",
+            "Merge2[individual_genetic_status]": "Positive",
+            "CORE_ADD[PT_IDENTICAL_SIBS]": "Twin, Identical",
+            "CORE_ADD[PT_ADPT_IND]": "Yes-Adopted in",
+            "CORE[PRSN_MARST_CAT]": "Divorced",
             "DEMO[SEX_OLD]": "M",
             "Subject_cancer[CANCER.ICD03]": "C50.9",
             "Subject_cancer[CANCER.NUM]": "1",
@@ -72,45 +83,64 @@ def create_test_data() -> list:
     ]
 
 
-def test_lambda_function():
-    """Test the Lambda function with sample data."""
-    print("Testing Lambda function...")
+class FakeLambdaContext:
+    """Minimal Lambda context accepted by Logger.inject_lambda_context."""
 
-    # Set environment variables for testing
-    os.environ["DATA_BUCKET"] = "test-data-bucket"
-    os.environ["TIER"] = "test"
+    function_name = "test-json-processor"
+    memory_limit_in_mb = 512
+    invoked_function_arn = (
+        "arn:aws:lambda:us-east-1:123456789012:function:test-json-processor"
+    )
+    aws_request_id = "test-request-id"
 
-    # Create test event
-    test_event = create_test_event("test-data-bucket", "raw/test-data.json")
 
-    # Create test context (empty for testing)
-    test_context = {}
+@pytest.fixture
+def s3_bucket(monkeypatch):
+    """Create a mocked S3 bucket and point lambda_function at it."""
+    with mock_aws():
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=TEST_BUCKET)
+        # lambda_function creates its client at import time, before the mock starts
+        monkeypatch.setattr(lambda_function, "s3_client", s3)
+        yield s3
 
-    try:
-        # Call the Lambda function
-        result = lambda_handler(test_event, test_context)
 
-        print("Lambda function executed successfully!")
-        print(f"Status Code: {result['statusCode']}")
-        print(f"Response Body: {result['body']}")
+def test_lambda_function(s3_bucket):
+    """Process a raw S3 upload end to end and write the processed output."""
+    input_payload = {"ranAt": "2020-01-15T12:00:00Z", "data": create_test_data()}
+    s3_bucket.put_object(
+        Bucket=TEST_BUCKET, Key="raw/test-data.json", Body=json.dumps(input_payload)
+    )
 
-        # Parse the response body
-        response_data = json.loads(result["body"])
-        print(f"Message: {response_data.get('message', 'N/A')}")
+    result = lambda_handler(
+        create_test_event(TEST_BUCKET, "raw/test-data.json"), FakeLambdaContext()
+    )
 
-        if result["statusCode"] == 200:
-            print(f"Input Records: {response_data.get('input_records', 'N/A')}")
-            print(f"Output People: {response_data.get('output_people', 'N/A')}")
-            print(f"Proband: {response_data.get('proband', 'N/A')}")
-            print(f"Output File: {response_data.get('output_file', 'N/A')}")
-        else:
-            print(f"Error: {response_data.get('error', 'N/A')}")
+    assert result["statusCode"] == 200
+    listing = s3_bucket.list_objects_v2(Bucket=TEST_BUCKET, Prefix="processed/")
+    keys = [obj["Key"] for obj in listing.get("Contents", [])]
+    assert len(keys) == 1
+    assert keys[0].endswith("/test-data.processed.json")
 
-        return True
+    output = json.loads(
+        s3_bucket.get_object(Bucket=TEST_BUCKET, Key=keys[0])["Body"].read()
+    )
+    assert output["general"]["proband"] == "00101"
+    assert output["people"]["00101"]["individual_genetic_status"] == "Positive"
+    assert output["people"]["00101"]["procedures"][0]["quad_abbrs"] is None
+    assert output["people"]["00101"]["procedures"][0]["abbr"] == "Mastectomy"
+    assert output["people"]["00101"]["quad_flags"] == [True, False, False, True]
 
-    except Exception as e:
-        print(f"Error testing Lambda function: {e}")
-        return False
+
+def test_lambda_function_handles_missing_input_object(s3_bucket):
+    """A failed S3 read is logged rather than crashing the handler."""
+    result = lambda_handler(
+        create_test_event(TEST_BUCKET, "raw/missing.json"), FakeLambdaContext()
+    )
+
+    assert result["statusCode"] == 200
+    listing = s3_bucket.list_objects_v2(Bucket=TEST_BUCKET, Prefix="processed/")
+    assert "Contents" not in listing
 
 
 def test_disease_includes_quad_abbrs():
@@ -128,6 +158,29 @@ def test_disease_includes_quad_abbrs():
     assert non_cancer_disease["quad_abbrs"] == ["", "", "", "NCMH"]
     assert cancer_disease["abbr"] == "PPB Type III"
     assert non_cancer_disease["abbr"] == "NCMH"
+
+
+def test_person_includes_individual_genetic_status():
+    """Ensure Merge2[individual_genetic_status] is mapped onto the person."""
+    processor = JSONProcessor()
+    processor.process_records(create_test_data())
+
+    assert processor.people["00101"]["individual_genetic_status"] == "Positive"
+
+
+def test_person_includes_multiple_birth_adoption_and_marital_status():
+    """Ensure multiple birth type, adoption, and marital status are mapped onto the person."""
+    processor = JSONProcessor()
+    processor.process_records(create_test_data())
+
+    person = processor.people["00101"]
+    assert person["multiple_birth_type"] == "Twin, Identical"
+    assert person["adoption"] == "Yes-Adopted in"
+    assert person["marital_status"] == "Divorced"
+
+    # Blank values are dropped from the output like other empty fields
+    for field in ("multiple_birth_type", "adoption", "marital_status"):
+        assert field not in processor.people["00102"]
 
 
 def test_disease_abbr_joins_multiple_values_with_semicolon():
@@ -153,6 +206,56 @@ def test_disease_abbr_joins_multiple_values_with_semicolon():
     assert non_cancer_disease["abbr"] == "something;else"
 
 
+@pytest.mark.parametrize(
+    ("cancer_abbr", "mole_abbr", "expected_quads", "expected_abbr"),
+    [
+        ("Melanoma;;;", ";;;YES", ["Melanoma", "", "", "YES"], "Melanoma;YES"),
+        ("Melanoma;;;A", ";;;YES", ["Melanoma", "", "", "A/YES"], "Melanoma;A/YES"),
+        (" Melanoma ;;; A ", " ; ; ; YES ", ["Melanoma", "", "", "A/YES"], "Melanoma;A/YES"),
+        ("Melanoma;;;", "", ["Melanoma", "", "", ""], "Melanoma"),
+        ("Melanoma;;;", None, ["Melanoma", "", "", ""], "Melanoma"),
+        ("", ";;;YES", ["", "", "", "YES"], "YES"),
+        (None, ";;;YES", ["", "", "", "YES"], "YES"),
+        ("Melanoma", ";;;YES", ["Melanoma", "", "", "YES"], "Melanoma;YES"),
+        ("Melanoma;;;", "YES", ["Melanoma/YES", "", "", ""], "Melanoma/YES"),
+        ("", "", [], ""),
+    ],
+)
+def test_cancer_disease_merges_mole_clinical_abbreviations(
+    cancer_abbr, mole_abbr, expected_quads, expected_abbr
+):
+    record = {
+        "Subject_cancer[CANCER.ICD03]": "C44.9",
+        "Subject_cancer[CANCER.type_abbr]": cancer_abbr,
+        "Mole_Clinical[type_abbr]": mole_abbr,
+    }
+
+    disease = JSONProcessor()._extract_cancer_disease(record)
+
+    assert disease is not None
+    assert disease["quad_abbrs"] == expected_quads
+    assert disease["abbr"] == expected_abbr
+
+
+def test_mole_clinical_abbreviations_update_person_quad_flags():
+    record = {
+        "Merge1[Subject]": "00101",
+        "Merge1[project]": "Test Study",
+        "Subject_cancer[CANCER.ICD03]": "C44.9",
+        "Subject_cancer[CANCER.NUM]": "1",
+        "Subject_cancer[CANCER.type_abbr]": "Melanoma;;;",
+        "Mole_Clinical[type_abbr]": ";;;YES",
+    }
+    processor = JSONProcessor()
+
+    processor.process_records([record])
+
+    person = processor.people["00101"]
+    assert person["diseases"][0]["quad_abbrs"] == ["Melanoma", "", "", "YES"]
+    assert person["diseases"][0]["abbr"] == "Melanoma;YES"
+    assert person["quad_flags"] == [True, False, False, True]
+
+
 def test_procedure_includes_abbr():
     """Ensure _extract_procedure surfaces PRTRT.type_abbr as a plain text abbr field."""
     records = create_test_data()
@@ -164,6 +267,67 @@ def test_procedure_includes_abbr():
     procedure = next(p for p in person["procedures"] if p["proc_num"] == "P1")
 
     assert procedure["abbr"] == "Mastectomy"
+    assert procedure["quad_abbrs"] is None
+
+
+@pytest.mark.parametrize(
+    ("type_abbr", "expected_quads", "expected_abbr"),
+    [
+        ("blah", None, "blah"),
+        ("HCT;;;", ["HCT", "", "", ""], "HCT;;;"),
+        (" ; SOLID ; MDS ; FANS ", ["", "SOLID", "MDS", "FANS"], ";SOLID;MDS;FANS"),
+        (";;blah;", ["", "", "blah", ""], ";;blah;"),
+        ("first;second;;", ["first", "second", "", ""], "first;second;;"),
+        (" blah ", None, "blah"),
+        (" ; blah ; ; ", ["", "blah", "", ""], ";blah;;"),
+        (";;;", ["", "", "", ""], ";;;"),
+        ("", None, ""),
+        (None, None, ""),
+    ],
+)
+def test_procedure_abbreviations_distinguish_scalar_and_delimited_values(
+    type_abbr, expected_quads, expected_abbr
+):
+    procedure = JSONProcessor()._extract_procedure(
+        {
+            "Subject procedure[PRTRT.ICD_9_STD]": "85.41",
+            "Subject procedure[PRTRT.type_abbr]": type_abbr,
+        }
+    )
+
+    assert procedure is not None
+    assert procedure["quad_abbrs"] == expected_quads
+    assert procedure["abbr"] == expected_abbr
+
+
+def test_procedure_without_type_abbr():
+    procedure = JSONProcessor()._extract_procedure(
+        {"Subject procedure[PRTRT.ICD_9_STD]": "85.41"}
+    )
+
+    assert procedure is not None
+    assert procedure["quad_abbrs"] is None
+    assert procedure["abbr"] == ""
+
+
+@pytest.mark.parametrize(
+    ("items", "expected_flags"),
+    [
+        ([{}], [False, False, False, False]),
+        ([{"quad_abbrs": None}], [False, False, False, False]),
+        (
+            [
+                {"quad_abbrs": ["cancer", "", "", ""]},
+                {"quad_abbrs": None},
+                {},
+                {"quad_abbrs": ["", "", "procedure", ""]},
+            ],
+            [True, False, True, False],
+        ),
+    ],
+)
+def test_quad_flags_ignore_null_and_missing_quad_abbrs(items, expected_flags):
+    assert JSONProcessor._compute_quad_flags(items) == expected_flags
 
 
 def test_person_quad_flags_reflect_any_disease_type_abbr():
@@ -179,6 +343,75 @@ def test_person_quad_flags_reflect_any_disease_type_abbr():
 
     # person 00102 has a cancer disease with no type_abbr value at all
     assert processor.people["00102"]["quad_flags"] == [False, False, False, False]
+
+
+@pytest.mark.parametrize(
+    ("type_abbr", "expected_quads", "expected_flags"),
+    [
+        (";;;Mastectomy", ["", "", "", "Mastectomy"], [False, False, False, True]),
+        (";;blah;", ["", "", "blah", ""], [False, False, True, False]),
+        ("Mastectomy", None, [False, False, False, False]),
+    ],
+)
+def test_person_quad_flags_include_procedure_type_abbr(
+    type_abbr, expected_quads, expected_flags
+):
+    """Only delimited procedure type_abbr values contribute to quad_flags."""
+    record = {
+        "Merge1[Subject]": "00101",
+        "Merge1[project]": "Test Study",
+        "Subject procedure[PRTRT.ICD_9_STD]": "85.41",
+        "Subject procedure[PRTRT.NUMBER]": "1",
+        "Subject procedure[PRTRT.type_abbr]": type_abbr,
+    }
+
+    processor = JSONProcessor()
+    processor.process_records([record])
+
+    person = processor.people["00101"]
+    assert person["procedures"][0]["quad_abbrs"] == expected_quads
+    assert person["quad_flags"] == expected_flags
+
+
+def test_person_quad_flags_combine_disease_and_procedure_abbreviations():
+    record = {
+        "Merge1[Subject]": "00101",
+        "Merge1[project]": "FA",
+        "Subject_cancer[CANCER.ICD03]": "C50.9",
+        "Subject_cancer[CANCER.NUM]": "1",
+        "Subject_cancer[CANCER.type_abbr]": ";;MDS;",
+        "Subject procedure[PRTRT.ICD_9_STD]": "4100-Bone marrow transplant",
+        "Subject procedure[PRTRT.NUMBER]": "1",
+        "Subject procedure[PRTRT.type_abbr]": "HCT;;;",
+    }
+    second_procedure = {
+        **record,
+        "Subject procedure[PRTRT.NUMBER]": "2",
+        "Subject procedure[PRTRT.type_abbr]": ";;;FANS",
+    }
+    processor = JSONProcessor()
+
+    processor.process_records([record, second_procedure])
+
+    person = processor.people["00101"]
+    assert len(person["procedures"]) == 2
+    assert person["quad_flags"] == [True, False, True, True]
+
+
+def test_procedure_without_code_does_not_set_a_quadrant():
+    record = {
+        "Merge1[Subject]": "00101",
+        "Merge1[project]": "FA",
+        "Subject procedure[PRTRT.NUMBER]": "1",
+        "Subject procedure[PRTRT.type_abbr]": "HCT;;;",
+    }
+    processor = JSONProcessor()
+
+    processor.process_records([record])
+
+    person = processor.people["00101"]
+    assert "procedures" not in person
+    assert person["quad_flags"] == [False, False, False, False]
 
 
 def test_process_input_sets_data_pulled_dtm_and_processes_records():
@@ -274,5 +507,4 @@ def test_process_input_raises_for_invalid_shapes():
 
 
 if __name__ == "__main__":
-    success = test_lambda_function()
-    sys.exit(0 if success else 1)
+    sys.exit(pytest.main([__file__, "-v"]))

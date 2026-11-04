@@ -1,0 +1,38 @@
+{
+  "api": {
+    "baseUrl": "/api"
+  },
+  "session": {
+    "warningSeconds": 300
+  },
+  "dataDir": "../data",
+  "build_mode": false,
+  "debug_mode": true,
+  "study_name": "RASopathies",
+  "default_color": "lightyellow",
+  "style": "compact",
+  "margin": 100,
+  "size": 50,
+  "h_padding": 200,
+  "v_padding": 30,
+  "h_spacing": 120,
+  "v_spacing": 200,
+  "quadrants": {
+    "top_left": {
+      "name": "Endocrine",
+      "color": "red"
+    },
+    "top_right": {
+      "name": "Cancer",
+      "color": "blue"
+    },
+    "bottom_left": {
+      "name": "Cardiac",
+      "color": "yellow"
+    },
+    "bottom_right": {
+      "name": "Neuro",
+      "color": "purple"
+    }
+  }
+}

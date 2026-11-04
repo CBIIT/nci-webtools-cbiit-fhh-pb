@@ -73,6 +73,30 @@ to a UTC-aware ISO 8601 string matching the format used for
 assumed to already be in UTC; values with an explicit offset are converted
 to UTC. If `ranAt` cannot be parsed as a datetime, it is kept as-is.
 
+Cancer abbreviations from `Subject_cancer[CANCER.type_abbr]` and
+`Mole_Clinical[type_abbr]` are split on semicolons, trimmed, and merged by
+position into `quad_abbrs`. Non-empty values in the same position are joined
+with `/`, with the cancer value first. For example, `"Melanoma;;;"` and
+`";;;YES"` produce `["Melanoma", "", "", "YES"]`. The merged values also
+populate the semicolon-delimited `abbr` and contribute to the person's
+`quad_flags`. Records without a cancer code do not produce a cancer disease.
+
+Procedure abbreviations from `Subject procedure[PRTRT.type_abbr]` populate
+`quad_abbrs` only when the input contains a semicolon. These values are split
+and trimmed, preserving empty positions. The procedure's `abbr` joins all
+positions with semicolons, including empty ones: `";;blah;"` produces
+`quad_abbrs: ["", "", "blah", ""]` and `abbr: ";;blah;"`. A single value such
+as `"blah"` produces `quad_abbrs: null` and `abbr: "blah"`. Missing, null, or
+empty input produces `quad_abbrs: null` and `abbr: ""`.
+
+The person's `quad_flags` aggregate non-empty positions across diseases and
+procedures, ignoring missing or null `quad_abbrs`. Single-value procedure
+abbreviations do not set quadrant flags. Stored procedure abbreviations retain
+their separators; the frontend omits empty positions from procedure headings
+and uses the description when there is no abbreviation. Diagnosis headings
+likewise use the abbreviation, then cancer topography/morphology names, then
+the description; `NOTITLE` is never shown as a heading.
+
 ## Output Format
 
 The function produces structured JSON with person-centric organization:
