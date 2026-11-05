@@ -199,7 +199,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             )
 
             tier = get_tier()
-            base_domain = f"https://pedigree-{tier}.cancer.gov"
+            base_domain = (
+                "https://pedigree.cancer.gov"
+                if tier == "prod"
+                else f"https://pedigree-{tier}.cancer.gov"
+            )
 
             return {
                 "statusCode": 302,
@@ -243,7 +247,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             original_url = "/"
 
         tier = get_tier()
-        base_domain = f"https://pedigree-{tier}.cancer.gov"
+        base_domain = (
+            "https://pedigree.cancer.gov"
+            if tier == "prod"
+            else f"https://pedigree-{tier}.cancer.gov"
+        )
         redirect_url = (
             f"{base_domain}{original_url}"
             if original_url.startswith("/")

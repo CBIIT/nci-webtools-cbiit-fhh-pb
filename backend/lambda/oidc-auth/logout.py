@@ -90,7 +90,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Clear cookies
         tier = get_tier()
         cookie_domain = ".cancer.gov"
-        redirect_url = f"https://pedigree-{tier}.cancer.gov/"
+        redirect_url = (
+            "https://pedigree.cancer.gov/"
+            if tier == "prod"
+            else f"https://pedigree-{tier}.cancer.gov/"
+        )
 
         # Clear session cookie
         clear_session_cookie = (
