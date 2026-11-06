@@ -36,7 +36,8 @@ export class CloudFrontS3Stack extends cdk.Stack {
     const sslCertificateArn = process.env.SSL_CERTIFICATE_ARN;
 
     // Define custom domain and certificate if SSL certificate ARN is provided
-    const domainName = `pedigree-${tier}.cancer.gov`;
+    const domainName =
+      tier === "prod" ? "pedigree.cancer.gov" : `pedigree-${tier}.cancer.gov`;
     let certificate: certificatemanager.ICertificate | undefined;
 
     if (sslCertificateArn) {
@@ -226,7 +227,7 @@ export class CloudFrontS3Stack extends cdk.Stack {
 
     // Create CloudFront distribution configuration
     const distributionConfig: cloudfront.DistributionProps = {
-      comment: `CF distribution for pedigree-${tier}.cancer.gov`,
+      comment: `CF distribution for ${domainName}`,
       defaultBehavior: {
         origin: origins.S3BucketOrigin.withOriginAccessControl(this.bucket),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
