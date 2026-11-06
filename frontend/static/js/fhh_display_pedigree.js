@@ -10,6 +10,7 @@ import {
   check_for_overlaps,
   check_for_unplaced_people,
   reset_furthest_locations,
+  set_hidden_people,
   find_all_children
 } from "./fhh_build_pedigree.js";
 
@@ -32,7 +33,33 @@ import {
   start_slide_move,
 } from "./fhh_move.js";
 
+import * as history from "./fhh_history.js";
+import { find_layout_problems } from "./fhh_crossings.js";
+import {
+  find_multiple_birth_groups,
+  multiple_birth_geometry,
+  multiple_births_are_adjacent,
+  suggest_multiple_birth_positions,
+} from "./fhh_multiple_births.js";
+import {
+  adoption_bracket_padding,
+  adoption_bracket_segments,
+  adoption_notation,
+  adoption_question_position,
+} from "./fhh_adoption.js";
+import {
+  get_diagnosis_code_rows,
+  get_diagnosis_display_name,
+  get_matching_quadrants,
+  get_person_quadrant_flags,
+  get_procedure_display_name,
+  get_procedure_quadrant_abbreviations,
+  get_quadrant_abbreviations,
+  remove_procedure_quadrant_flags,
+} from "./fhh_quadrants.js";
+
 const svgns = "http://www.w3.org/2000/svg";
+const pencil_cursor = 'url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2224%22 height=%2224%22 viewBox=%220 0 24 24%22%3E%3Cpath d=%22m4 20 4-.8L20 7.2 16.8 4 4.8 16z%22 fill=%22white%22 stroke=%22black%22 stroke-width=%222%22/%3E%3C/svg%3E") 4 20, crosshair';
 var config;
 var data;
 var annotations;
@@ -40,8 +67,24 @@ var study_name;
 let other_alerts = {};
 
 let family_tree = [];
+let multiple_birth_by_person = new Map();
 let people_drawn = [];
-
+let pending_line_start = null;
+let pending_line_element = null;
+let pending_text_annotation = null;
+let selected_annotation = null;
+let alert_dismiss_timer = null;
+let alert_is_pinned = false;
+const alert_auto_dismiss_delay = 10000;
+const annotation_selection_tolerance = 14;
+const annotation_endpoint_tolerance = 18;
+const annotation_colors = {
+  lines: "#000000",
+  arrows: "#000000",
+  texts: "#000000",
+};
+let dragging_annotation = false;
+let annotation_move_origin = null;
 let increment = 0;
 
 function set_selection_loading(is_loading) {
@@ -49,6 +92,101 @@ function set_selection_loading(is_loading) {
   if (!loading_overlay) return;
   loading_overlay.style.display = is_loading ? "flex" : "none";
   loading_overlay.setAttribute("aria-hidden", String(!is_loading));
+}
+
+const SPACING_STEP = 20;
+const MAX_LAYOUT_SPACING = 800;
+
+function min_layout_spacing() {
+  return Math.max(60, Math.ceil(((config?.size || 50) + 10) / SPACING_STEP) * SPACING_STEP);
+}
+
+function update_spacing_controls() {
+  const controls = [
+    ["horizontal-spacing-value", "horizontal-spacing-decrease", "horizontal-spacing-increase", config?.h_spacing],
+    ["vertical-spacing-value", "vertical-spacing-decrease", "vertical-spacing-increase", config?.v_spacing],
+  ];
+  const enabled = Boolean(data && family_select?.value);
+  for (const [value_id, decrease_id, increase_id, value] of controls) {
+    const output = document.getElementById(value_id);
+    const decrease = document.getElementById(decrease_id);
+    const increase = document.getElementById(increase_id);
+    if (output) output.value = Number.isFinite(value) ? `${value}px` : "—";
+    if (decrease) decrease.disabled = !enabled || value <= min_layout_spacing();
+    if (increase) increase.disabled = !enabled || value >= MAX_LAYOUT_SPACING;
+  }
+}
+
+function apply_saved_spacing() {
+  if (!config) return;
+  const spacing = annotations?.spacing;
+  const min_spacing = min_layout_spacing();
+  if (Number.isFinite(spacing?.h_spacing)) {
+    config.h_spacing = Math.min(MAX_LAYOUT_SPACING, Math.max(min_spacing, spacing.h_spacing));
+  }
+  if (Number.isFinite(spacing?.v_spacing)) {
+    config.v_spacing = Math.min(MAX_LAYOUT_SPACING, Math.max(min_spacing, spacing.v_spacing));
+  }
+  update_spacing_controls();
+}
+
+function apply_saved_quadrant_colors() {
+  if (!config?.quadrants) return;
+  for (const [key, color] of Object.entries(annotations?.quadrant_colors || {})) {
+    if (config.quadrants[key] && /^#[0-9a-f]{6}$/i.test(color)) {
+      config.quadrants[key].color = color;
+    }
+  }
+}
+
+function adjust_layout_spacing(axis, delta) {
+  if (!data || !config || !family_select.value) return;
+  const current = config[axis];
+  const next = Math.min(
+    MAX_LAYOUT_SPACING,
+    Math.max(min_layout_spacing(), current + delta)
+  );
+  if (next === current) return;
+
+  const coordinate = axis === "h_spacing" ? "x" : "y";
+  const endpoint_coordinates = axis === "h_spacing" ? ["x1", "x2"] : ["y1", "y2"];
+  const saved_positions = Object.values(annotations?.positions || {});
+  const has_saved_positions = saved_positions.some(
+    (position) => Number.isFinite(position?.x) && Number.isFinite(position?.y)
+  );
+  if (has_saved_positions) {
+    const proband_id = data.general?.proband;
+    const proband_position = annotations.positions[proband_id];
+    const anchor = Number.isFinite(proband_position?.[coordinate])
+      ? proband_position[coordinate]
+      : get_center(data.people[proband_id])[coordinate];
+    if (Number.isFinite(anchor)) {
+      const ratio = next / current;
+      const scale_coordinate = (item, key) => {
+        if (Number.isFinite(item?.[key])) {
+          item[key] = anchor + (item[key] - anchor) * ratio;
+        }
+      };
+
+      for (const position of saved_positions) scale_coordinate(position, coordinate);
+      for (const collection of [annotations?.lines, annotations?.arrows]) {
+        for (const item of collection || []) {
+          for (const key of endpoint_coordinates) scale_coordinate(item, key);
+        }
+      }
+      for (const text of annotations?.texts || []) scale_coordinate(text, coordinate);
+    }
+  }
+
+  config[axis] = next;
+  annotations = annotations || {};
+  annotations.spacing = {
+    h_spacing: config.h_spacing,
+    v_spacing: config.v_spacing,
+  };
+  display_pedigree();
+  record_change();
+  update_spacing_controls();
 }
 
 const debug_offset = { x: 5000, y: 400 };
@@ -60,7 +198,13 @@ export function get_config() {
 
 
 let study_select = document.getElementById("study_select");
+let previous_study_value = study_select.value;
 study_select.addEventListener("change", function (event) {
+  if (!confirm_discard_unsaved_changes()) {
+    study_select.value = previous_study_value;
+    return;
+  }
+  previous_study_value = study_select.value;
   study_name = event.target.value;
   set_selection_loading(true);
   Promise.all([
@@ -80,10 +224,16 @@ study_select.addEventListener("change", function (event) {
 });
 
 let family_select = document.getElementById("families_select");
+let previous_family_value = family_select.value;
 family_select.addEventListener("change", function (event) {
   if (!study_name) {
     return;
   }
+  if (!confirm_discard_unsaved_changes()) {
+    family_select.value = previous_family_value;
+    return;
+  }
+  previous_family_value = family_select.value;
 
   set_selection_loading(true);
   load_config_and_data(study_name, event.target.value, study_name)
@@ -91,38 +241,393 @@ family_select.addEventListener("change", function (event) {
       data = d;
       annotations = a;
       config = c;
+      apply_saved_spacing();
+      apply_saved_quadrant_colors();
+      reset_collapsed();
       display_pedigree();
+      initialize_layout_history();
       show_all_blocks();
       show_summary_block();
       set_study_summary();
       set_family_summary();
+      zoom_to_fit();
     })
     .catch((error) => {
       console.error("Failed to load family data:", error);
     })
     .finally(() => {
       set_selection_loading(false);
+      update_spacing_controls();
     });
 });
 
 let clear_alert_elem = document.getElementById("clear-alert-button");
 clear_alert_elem.addEventListener("click", function () {
   const alert_elem = document.getElementById("alert");
-  alert_elem.innerHTML = "";
+  clearTimeout(alert_dismiss_timer);
+  alert_dismiss_timer = null;
+  alert_is_pinned = false;
+  alert_elem.replaceChildren(clear_alert_elem);
   alert_elem.style.backgroundColor = "#FFF";
   alert_elem.style.border = "none";
+  alert_elem.style.display = "none";
 });
 
-let log_elem = document.getElementById("log-button");
-log_elem.addEventListener("click", function () {
-  log_data_vs_dom_positions();
+let warning_area_elem = document.getElementById("alert");
+warning_area_elem.addEventListener("click", function () {
+  if (warning_area_elem.style.display === "none") return;
+  alert_is_pinned = true;
+  clearTimeout(alert_dismiss_timer);
+  alert_dismiss_timer = null;
 });
 
 let save_elem = document.getElementById("save-button");
-save_elem.addEventListener("click", function () {
-
-  save_positions_and_annotations(data);
+save_elem.addEventListener("click", async function () {
+  finish_pending_text_annotation();
+  try {
+    await save_positions_and_annotations(data, annotations);
+    history.mark_saved();
+    show_save_export_status("File saved.", true);
+  } catch (error) {
+    show_save_export_status(`File save failed: ${error?.message || "Unknown error"}`, false);
+  }
 });
+
+document.getElementById("horizontal-spacing-decrease").addEventListener("click", () => adjust_layout_spacing("h_spacing", -SPACING_STEP));
+document.getElementById("horizontal-spacing-increase").addEventListener("click", () => adjust_layout_spacing("h_spacing", SPACING_STEP));
+document.getElementById("vertical-spacing-decrease").addEventListener("click", () => adjust_layout_spacing("v_spacing", -SPACING_STEP));
+document.getElementById("vertical-spacing-increase").addEventListener("click", () => adjust_layout_spacing("v_spacing", SPACING_STEP));
+update_spacing_controls();
+
+////////////////////// Undo / redo and saved state
+
+const undo_elem = document.getElementById("undo-button");
+const redo_elem = document.getElementById("redo-button");
+undo_elem.addEventListener("click", undo_change);
+redo_elem.addEventListener("click", redo_change);
+
+history.on_change(function () {
+  undo_elem.disabled = !history.can_undo();
+  redo_elem.disabled = !history.can_redo();
+  save_elem.disabled = !history.is_dirty();
+});
+
+function take_snapshot() {
+  const positions = {};
+  for (const [person_id, person] of Object.entries(data?.people || {})) {
+    if (person.x != null && person.y != null) positions[person_id] = { x: person.x, y: person.y };
+  }
+  return {
+    positions,
+    spacing: { h_spacing: config?.h_spacing, v_spacing: config?.v_spacing },
+    quadrant_colors: Object.fromEntries(
+      Object.entries(config?.quadrants || {}).map(([key, quadrant]) => [key, quadrant.color])
+    ),
+    lines: annotations?.lines ?? [],
+    arrows: annotations?.arrows ?? [],
+    texts: annotations?.texts ?? [],
+  };
+}
+
+function initialize_layout_history() {
+  history.reset(take_snapshot());
+  const adjusted = repair_saved_multiple_birth_positions();
+  if (!adjusted) return;
+  display_pedigree();
+  history.commit(take_snapshot());
+
+  const alert_elem = document.getElementById("alert");
+  const had_alerts = Boolean(alert_elem.querySelector(".alert-line, .alert-status"));
+  const note = document.createElement("p");
+  note.className = "alert-line";
+  note.textContent = `${adjusted} multiple-birth ${adjusted === 1 ? "group was" : "groups were"} adjusted. Review and save, or undo.`;
+  alert_elem.append(note);
+  if (!had_alerts) {
+    alert_elem.style.backgroundColor = ALERT_TONES.warning.background;
+    alert_elem.style.border = ALERT_TONES.warning.border;
+  }
+  alert_elem.style.display = "grid";
+}
+
+function repair_saved_multiple_birth_positions() {
+  if (!Object.values(annotations?.positions || {}).some(
+    (position) => Number.isFinite(position?.x) && Number.isFinite(position?.y)
+  )) return 0;
+
+  const people = Object.fromEntries(family_tree.map((id) => [id, data["people"][id]]));
+  const groups = [...new Set(multiple_birth_by_person.values())];
+  let adjusted = 0;
+  for (const group of groups) {
+    const positions = suggest_multiple_birth_positions(
+      group, people, config.size, config.h_spacing, data.general?.proband
+    );
+    if (!positions) {
+      console.warn("Could not safely adjust multiple-birth positions:", group.members);
+      continue;
+    }
+    if (positions.length === 0) continue;
+    annotations.positions = annotations.positions || {};
+    for (const position of positions) {
+      annotations.positions[position.id] = { x: position.x, y: position.y };
+      people[position.id].x = position.x;
+      people[position.id].y = position.y;
+    }
+    adjusted++;
+  }
+  return adjusted;
+}
+
+// Called after every completed user change (drag, annotation edit) to record an undo step.
+export function record_change() {
+  if (!data) return;
+  history.commit(take_snapshot());
+  update_layout_problems(true);
+  refresh_layout_problem_alerts();
+  refresh_multiple_birth_adjacency_alerts();
+  draw_collapse_toggles();
+}
+
+function restore_snapshot(snapshot) {
+  if (!snapshot) return;
+  annotations = annotations || {};
+  annotations.positions = Object.fromEntries(
+    Object.entries(snapshot.positions).filter(([person_id]) => data.people[person_id])
+  );
+  annotations.lines = snapshot.lines;
+  annotations.arrows = snapshot.arrows;
+  annotations.texts = snapshot.texts;
+  if (config && snapshot.spacing) {
+    config.h_spacing = snapshot.spacing.h_spacing;
+    config.v_spacing = snapshot.spacing.v_spacing;
+    annotations.spacing = { ...snapshot.spacing };
+  }
+  if (config?.quadrants && snapshot.quadrant_colors) {
+    annotations.quadrant_colors = { ...snapshot.quadrant_colors };
+    for (const [key, color] of Object.entries(snapshot.quadrant_colors)) {
+      if (config.quadrants[key]) config.quadrants[key].color = color;
+    }
+  }
+  update_spacing_controls();
+  display_pedigree();
+}
+
+function undo_change() {
+  finish_pending_text_annotation();
+  restore_snapshot(history.undo());
+}
+
+function redo_change() {
+  finish_pending_text_annotation();
+  restore_snapshot(history.redo());
+}
+
+function confirm_discard_unsaved_changes() {
+  return !history.is_dirty() || window.confirm("You have unsaved changes. Discard them?");
+}
+
+window.addEventListener("beforeunload", function (event) {
+  if (!history.is_dirty()) return;
+  event.preventDefault();
+  event.returnValue = "";
+});
+
+document.addEventListener("keydown", function (event) {
+  if (!(event.metaKey || event.ctrlKey)) return;
+  const key = event.key.toLowerCase();
+  if (key !== "z" && key !== "y") return;
+  if (event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable='true']")) return;
+  event.preventDefault();
+  if (key === "y" || event.shiftKey) redo_change();
+  else undo_change();
+});
+
+////////////////////// View: zoom, find, reset layout
+
+let zoom = 1;
+const MIN_ZOOM = 0.1;
+const MAX_ZOOM = 4;
+const main_elem = document.getElementById("main");
+const zoom_level_elem = document.getElementById("zoom-level-button");
+const find_input_elem = document.getElementById("find-input");
+
+export function get_zoom() {
+  return zoom;
+}
+
+function get_view_box() {
+  const svg_elem = document.getElementById("svg");
+  const view_box = svg_elem?.getAttribute("viewBox");
+  if (!view_box) return null;
+  const [x, y, width, height] = view_box.split(" ").map(Number);
+  return { svg_elem, x, y, width, height };
+}
+
+// Zooms keeping the content under `anchor` (a point in #main's visible area) still.
+function set_zoom(new_zoom, anchor = { x: main_elem.clientWidth / 2, y: main_elem.clientHeight / 2 }) {
+  const view = get_view_box();
+  new_zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, new_zoom));
+  zoom_level_elem.textContent = Math.round(new_zoom * 100) + "%";
+  if (!view) {
+    zoom = new_zoom;
+    return;
+  }
+  const content_x = (main_elem.scrollLeft + anchor.x) / zoom;
+  const content_y = (main_elem.scrollTop + anchor.y) / zoom;
+  zoom = new_zoom;
+  view.svg_elem.setAttribute("width", view.width * zoom);
+  view.svg_elem.setAttribute("height", view.height * zoom);
+  main_elem.scrollLeft = content_x * zoom - anchor.x;
+  main_elem.scrollTop = content_y * zoom - anchor.y;
+}
+
+function zoom_to_fit() {
+  const view = get_view_box();
+  if (!view) return;
+  set_zoom(Math.min((main_elem.clientWidth - 20) / view.width, (main_elem.clientHeight - 20) / view.height));
+  main_elem.scrollLeft = 0;
+  main_elem.scrollTop = 0;
+}
+
+document.getElementById("zoom-in-button").addEventListener("click", () => set_zoom(zoom * 1.25));
+document.getElementById("zoom-out-button").addEventListener("click", () => set_zoom(zoom / 1.25));
+zoom_level_elem.addEventListener("click", () => set_zoom(1));
+document.getElementById("zoom-fit-button").addEventListener("click", zoom_to_fit);
+
+// Cmd/Ctrl + wheel (and trackpad pinch, which reports ctrlKey) zooms around the pointer.
+main_elem.addEventListener("wheel", function (event) {
+  if (!(event.ctrlKey || event.metaKey)) return;
+  event.preventDefault();
+  const bounds = main_elem.getBoundingClientRect();
+  const factor = Math.exp(-event.deltaY * 0.002);
+  set_zoom(zoom * factor, { x: event.clientX - bounds.left, y: event.clientY - bounds.top });
+}, { passive: false });
+
+function populate_find_list() {
+  const list_elem = document.getElementById("find-list");
+  list_elem.replaceChildren();
+  for (const person_id of family_tree) {
+    const person = data["people"][person_id];
+    if (!person || person.placeholder) continue;
+    const option = document.createElement("option");
+    option.value = person.name && person.name != "Unknown" ? `${person_id} ${person.name}` : person_id;
+    list_elem.appendChild(option);
+  }
+}
+
+function find_person(query) {
+  const text = query.trim();
+  if (!text || !data) return null;
+  const first_word = text.split(/\s+/)[0];
+  if (family_tree.includes(first_word)) return first_word;
+  const lower = text.toLowerCase();
+  return family_tree.find((id) => {
+    const person = data["people"][id];
+    return !person?.placeholder && (id.toLowerCase().includes(lower) || (person?.name || "").toLowerCase().includes(lower));
+  }) || null;
+}
+
+function center_person_in_view(person_id) {
+  const person = data?.["people"]?.[person_id];
+  const view = get_view_box();
+  if (!person || person.x == null || !view) return null;
+
+  main_elem.scrollLeft = (person.x - view.x) * zoom - main_elem.clientWidth / 2;
+  main_elem.scrollTop = (person.y - view.y) * zoom - main_elem.clientHeight / 2;
+  return { person, view };
+}
+
+function go_to_person(person_id) {
+  const target = center_person_in_view(person_id);
+  if (!target) return;
+  const { person, view } = target;
+
+  document.querySelectorAll("#svg .find-highlight").forEach((el) => el.remove());
+  const ring = document.createElementNS(svgns, "circle");
+  ring.setAttribute("cx", person.x);
+  ring.setAttribute("cy", person.y);
+  ring.setAttribute("r", config.size * 0.85);
+  ring.setAttribute("class", "find-highlight");
+  view.svg_elem.appendChild(ring);
+  setTimeout(() => ring.remove(), 2500);
+
+  set_study_summary();
+  set_details_of_person(person_id);
+}
+
+const find_dialog_elem = document.getElementById("find-dialog");
+
+function open_find_dialog() {
+  if (!find_dialog_elem.open) find_dialog_elem.showModal();
+  find_input_elem.focus();
+  find_input_elem.select();
+}
+
+function run_find() {
+  const person_id = find_person(find_input_elem.value);
+  if (!person_id) return;
+  find_dialog_elem.close();
+  go_to_person(person_id);
+}
+
+document.getElementById("find-button").addEventListener("click", open_find_dialog);
+document.getElementById("find-go-button").addEventListener("click", run_find);
+find_input_elem.addEventListener("change", run_find);
+find_input_elem.addEventListener("keydown", function (event) {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    run_find();
+  }
+});
+
+document.getElementById("find-proband-button").addEventListener("click", function () {
+  if (!data?.general?.proband) return;
+  find_dialog_elem.close();
+  go_to_person(data.general.proband);
+});
+
+document.getElementById("reset-layout-button").addEventListener("click", function () {
+  if (!data) return;
+  if (!window.confirm("Discard all hand-placed positions and re-run the automatic layout? (You can undo this.)")) return;
+  finish_pending_text_annotation();
+  annotations = annotations || {};
+  annotations.positions = {};
+  Object.values(data["people"]).forEach((person) => { person.moved = false; });
+  display_pedigree();
+  record_change();
+});
+
+document.addEventListener("keydown", function (event) {
+  if (!(event.metaKey || event.ctrlKey)) return;
+  const key = event.key.toLowerCase();
+  if (key === "f") {
+    event.preventDefault();
+    open_find_dialog();
+    return;
+  }
+  if (event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable='true']")) return;
+  if (key === "0") {
+    event.preventDefault();
+    zoom_to_fit();
+  } else if (key === "=" || key === "+") {
+    event.preventDefault();
+    set_zoom(zoom * 1.25);
+  } else if (key === "-") {
+    event.preventDefault();
+    set_zoom(zoom / 1.25);
+  }
+});
+
+let delete_annotation_elem = document.getElementById("delete-annotation-button");
+delete_annotation_elem.addEventListener("click", delete_selected_annotation);
+const annotation_color_input = document.getElementById("annotation-color");
+annotation_color_input.addEventListener("input", function () {
+  const color = annotation_color_input.value;
+  Object.keys(annotation_colors).forEach((collection) => {
+    annotation_colors[collection] = color;
+  });
+  if (selected_annotation) update_annotation_color(selected_annotation, color);
+});
+annotation_color_input.addEventListener("change", record_change);
 
 // Non-standard attributes used internally to wire up interactivity (see fhh_move.js
 // attribute selectors); PowerPoint's SVG parser rejects them, so strip them on export.
@@ -136,10 +641,14 @@ const CUSTOM_SVG_ATTRIBUTES = [
   "child_id",
   "c_mother_id",
   "c_father_id",
+  "stub_id",
+  "data-adoption-decoration",
+  "data-adoption-question-for",
 ];
 
 function strip_custom_svg_attributes(svg_elem) {
   const clone = svg_elem.cloneNode(true);
+  clone.querySelectorAll("#problem-highlights, .find-highlight, #collapse-toggles").forEach((el) => el.remove());
   clone.querySelectorAll("*").forEach((el) => {
     CUSTOM_SVG_ATTRIBUTES.forEach((attr) => el.removeAttribute(attr));
   });
@@ -148,37 +657,139 @@ function strip_custom_svg_attributes(svg_elem) {
 
 let save_svg_elem = document.getElementById("save-svg-button");
 save_svg_elem.addEventListener("click", function () {
+  try {
+    const svg_elem = document.getElementById("svg");
+    if (!svg_elem) throw new Error("No pedigree SVG is available to export.");
+
+    const clean_svg_elem = strip_custom_svg_attributes(svg_elem);
+    const svg_markup = new XMLSerializer().serializeToString(clean_svg_elem);
+    const family_id = family_select.value?.trim() || "family";
+    const filename = `${family_id}.svg`;
+
+    const blob = new Blob([svg_markup], { type: "image/svg+xml" });
+    const download_url = URL.createObjectURL(blob);
+    const download_link = document.createElement("a");
+    download_link.href = download_url;
+    download_link.download = filename;
+    document.body.appendChild(download_link);
+    download_link.click();
+    download_link.remove();
+    URL.revokeObjectURL(download_url);
+    show_save_export_status("File exported.", true);
+  } catch (error) {
+    show_save_export_status(`File export failed: ${error?.message || "Unknown error"}`, false);
+  }
+});
+
+const pdf_layout_select = document.getElementById("pdf-layout-select");
+pdf_layout_select.addEventListener("change", function () {
+  const layout = pdf_layout_select.value;
+  pdf_layout_select.value = "";
+  if (layout) open_pdf_print_view(layout);
+});
+
+function open_pdf_print_view(layout) {
   const svg_elem = document.getElementById("svg");
-  if (!svg_elem) {
-    window.alert("No pedigree SVG to save. Please load a family first.");
+  if (!svg_elem || !data) {
+    show_save_export_status("Nothing to print yet.", false);
+    return;
+  }
+  const print_window = window.open("", "_blank");
+  if (!print_window) {
+    show_save_export_status("Allow pop-ups for this site to create a PDF.", false);
     return;
   }
 
-  const clean_svg_elem = strip_custom_svg_attributes(svg_elem);
-  const svg_markup = new XMLSerializer().serializeToString(clean_svg_elem);
   const family_id = family_select.value?.trim() || "family";
-  const filename = `${family_id}.svg`;
+  const doc = print_window.document;
+  doc.title = `Pedigree ${family_id}`;
 
-  const blob = new Blob([svg_markup], { type: "image/svg+xml" });
-  const download_url = URL.createObjectURL(blob);
-  const download_link = document.createElement("a");
-  download_link.href = download_url;
-  download_link.download = filename;
-  document.body.appendChild(download_link);
-  download_link.click();
-  download_link.remove();
-  URL.revokeObjectURL(download_url);
-});
+  const view_box = svg_elem.getAttribute("viewBox");
+  const [view_x, view_y, view_width, view_height] = (view_box || "").split(/\s+/).map(Number);
+  if (
+    ![view_x, view_y, view_width, view_height].every(Number.isFinite) ||
+    view_width <= 0 ||
+    view_height <= 0
+  ) {
+    print_window.close();
+    show_save_export_status("The pedigree has invalid dimensions and cannot be printed.", false);
+    return;
+  }
+
+  const page_width_mm = 259;
+  const page_height_mm = 195;
+  const header_height_mm = 11;
+  const main_height_mm = page_height_mm - header_height_mm;
+  const image_width_mm = (view_width / view_height) * main_height_mm;
+  const page_count =
+    layout === "multiple-pages"
+      ? Math.max(1, Math.ceil(image_width_mm / page_width_mm))
+      : 1;
+
+  const style = doc.createElement("style");
+  style.textContent = `
+    @page { size: letter landscape; margin: 10mm; }
+    html, body { margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; }
+    .print-page { box-sizing: border-box; width: ${page_width_mm}mm; height: ${page_height_mm}mm; overflow: hidden; break-after: page; page-break-after: always; }
+    .print-page:last-child { break-after: auto; page-break-after: auto; }
+    .print-header { box-sizing: border-box; display: flex; justify-content: space-between; align-items: baseline; width: 100%; height: ${header_height_mm}mm; padding-bottom: 2mm; border-bottom: 1px solid #999; font-size: 8pt; }
+    .print-header h1 { margin: 0; font-size: 10pt; }
+    .print-main { position: relative; box-sizing: border-box; width: ${page_width_mm}mm; height: ${main_height_mm}mm; overflow: hidden; }
+    .print-main svg { display: block; }
+    .print-one-page svg { width: 100%; height: 100%; }
+    .print-multiple-pages svg { position: absolute; top: 0; max-width: none; width: ${image_width_mm}mm; height: ${main_height_mm}mm; }
+    @media screen { body { background: #555; } .print-page { margin: 12px auto; background: #fff; box-shadow: 0 1px 5px #222; } }
+  `;
+  doc.head.appendChild(style);
+
+  const study = config?.study_name || study_name || "";
+  const proband = data.general?.proband ? `Proband ${data.general.proband}` : "";
+  for (let page_index = 0; page_index < page_count; page_index++) {
+    const page = doc.createElement("section");
+    page.className = "print-page";
+    const header = doc.createElement("header");
+    header.className = "print-header";
+    const title = doc.createElement("h1");
+    title.textContent = `Family ${family_id}`;
+    const details = doc.createElement("div");
+    const page_details =
+      layout === "multiple-pages" && page_count > 1
+        ? `Page ${page_index + 1} of ${page_count}`
+        : "";
+    details.textContent = [study, proband, new Date().toLocaleDateString(), page_details]
+      .filter(Boolean)
+      .join("  \u00b7  ");
+    header.append(title, details);
+
+    const main = doc.createElement("main");
+    main.className = `print-main print-${layout}`;
+    const clean_svg = strip_custom_svg_attributes(svg_elem);
+    clean_svg.removeAttribute("width");
+    clean_svg.removeAttribute("height");
+    clean_svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+    clean_svg.style.margin = "0";
+    if (layout === "multiple-pages") {
+      clean_svg.style.left = `-${page_index * page_width_mm}mm`;
+    }
+    main.appendChild(doc.importNode(clean_svg, true));
+    page.append(header, main);
+    doc.body.appendChild(page);
+  }
+
+  doc.close();
+  print_window.focus();
+  print_window.print();
+}
 
 let save_family_elem = document.getElementById("save-family-button");
 if (save_family_elem) {
   save_family_elem.addEventListener("click", async function () {
     try {
       await save_family_json(data);
-      window.alert("Family saved.");
+      show_save_export_status("File saved.", true);
     } catch (error) {
       console.error("Error saving family:", error);
-      window.alert("Unable to save family. " + (error?.message || ""));
+      show_save_export_status(`File save failed: ${error?.message || "Unknown error"}`, false);
     }
   });
 }
@@ -272,6 +883,8 @@ if (new_family_button_elem) {
 
 let action_mode_radio_elems = document.querySelectorAll('input[name="action_choice"]');
 let current_action_mode = "details";
+let shift_key_down = false;
+let control_key_down = false;
 
 function get_checked_action_radio_value() {
   const checked_radio = document.querySelector('input[name="action_choice"]:checked');
@@ -281,6 +894,27 @@ function get_checked_action_radio_value() {
 
 function set_current_action_mode(mode) {
   current_action_mode = mode;
+  update_modifier_action_preview();
+}
+
+function update_modifier_action_preview() {
+  document.querySelectorAll(".radio-block label.modifier-preview, .radio-block label.modifier-suppressed").forEach((label) => {
+    label.classList.remove("modifier-preview");
+    label.classList.remove("modifier-suppressed");
+  });
+
+  if (current_action_mode !== "details" && !current_action_mode.startsWith("annotation-")) return;
+
+  const preview_mode = control_key_down ? "free" : shift_key_down ? "slide" : null;
+  if (preview_mode) {
+    document.querySelector(`.radio-block label[for="${preview_mode}"]`)?.classList.add("modifier-preview");
+    if (preview_mode !== current_action_mode) {
+      const selected_radio = document.querySelector('input[name="action_choice"]:checked');
+      if (selected_radio) {
+        document.querySelector(`.radio-block label[for="${selected_radio.id}"]`)?.classList.add("modifier-suppressed");
+      }
+    }
+  }
 }
 
 function is_pedigree_build_mode() {
@@ -289,9 +923,33 @@ function is_pedigree_build_mode() {
 
 set_current_action_mode(get_checked_action_radio_value() || "details");
 
+document.addEventListener("keydown", function (event) {
+  if (event.target instanceof Element && event.target.closest("input[type='color'], textarea, [contenteditable='true']")) return;
+  if (event.key === "Shift") shift_key_down = true;
+  if (event.key === "Control") control_key_down = true;
+  update_modifier_action_preview();
+});
+
+document.addEventListener("keyup", function (event) {
+  if (event.key === "Shift") shift_key_down = false;
+  if (event.key === "Control") control_key_down = false;
+  update_modifier_action_preview();
+});
+
+window.addEventListener("blur", function () {
+  shift_key_down = false;
+  control_key_down = false;
+  update_modifier_action_preview();
+});
+
 action_mode_radio_elems.forEach((radio_elem) => {
   radio_elem.addEventListener("change", function () {
+    finish_pending_text_annotation();
     set_current_action_mode(radio_elem.value);
+    clear_pending_line();
+    if (radio_elem.value !== "annotation-select") {
+      clear_selected_annotation();
+    }
   });
 });
 
@@ -333,12 +991,19 @@ document.addEventListener("DOMContentLoaded", async function () {
         data = d;
         annotations = a;
         config = c;
+        apply_saved_spacing();
+        apply_saved_quadrant_colors();
         update_build_mode_actions_visibility();
         show_all_blocks();
         show_summary_block();
         set_study_summary();
         set_family_summary();
+        reset_collapsed();
         display_pedigree();
+        initialize_layout_history();
+        zoom_to_fit();
+        previous_study_value = study_select.value;
+        previous_family_value = family_select.value;
       }
     }
   } catch (error) {
@@ -356,7 +1021,7 @@ function show_all_blocks() {
 
   const alert_blocks = document.getElementsByClassName("alertbar");
   Array.from(alert_blocks).forEach(block => {
-    block.style.display = "block";
+    block.style.display = block.querySelector(".alert-line, .alert-status") ? "grid" : "none";
   });
 
   const pedigree_blocks = document.getElementsByClassName("fhh_pedigree");
@@ -377,8 +1042,12 @@ function add_placeholder_children() {
 }
 
 export function display_pedigree() {
+  clear_pending_line();
+  clear_selected_annotation();
   set_data(data);
   other_alerts = {};
+  automatic_x_offsets.clear();
+  automatic_y_offsets.clear();
 
   reset_furthest_locations();
   const proband_id = data.general?.proband;
@@ -389,38 +1058,255 @@ export function display_pedigree() {
   }
 
   family_tree = build_entire_family_tree(proband_id);
+  const visible_people = new Set(family_tree);
+  const multiple_births = find_multiple_birth_groups(data["people"]);
+  multiple_birth_by_person = new Map();
+  for (const group of multiple_births.groups) {
+    if (group.members.every((id) => visible_people.has(id))) {
+      for (const id of group.members) multiple_birth_by_person.set(id, group);
+    }
+  }
+  for (const issue of multiple_births.issues) {
+    if (visible_people.has(issue.person_id)) other_alerts[issue.person_id] = issue.message;
+  }
+  for (const id of ["save-svg-button", "pdf-layout-select", "reset-layout-button"]) {
+    document.getElementById(id).disabled = false;
+  }
 
   draw_frame();
   draw_family_tree(family_tree);
+  draw_collapsed_couple_lines();
+  draw_annotation_lines();
+  draw_annotation_arrows();
+  draw_annotation_texts();
+  draw_collapse_toggles();
 
+  selected_problem_key = null;
+  update_layout_problems();
   add_alert_bar();
+  populate_find_list();
+}
+
+////////////////////// Collapsing branches
+
+let collapsed_couples = new Set();
+
+function couple_children(mother_id, father_id) {
+  return Object.keys(data["people"]).filter((id) => data["people"][id].mother == mother_id && data["people"][id].father == father_id);
+}
+
+// The proband and their direct ancestors are never hidden.
+function protected_people() {
+  const kept = new Set();
+  const walk = (id) => {
+    if (!id || kept.has(id) || !data["people"][id]) return;
+    kept.add(id);
+    walk(data["people"][id].mother);
+    walk(data["people"][id].father);
+  };
+  walk(data.general?.proband);
+  return kept;
+}
+
+// Everyone below each collapsed couple, plus spouses who only married into those branches.
+function compute_hidden_people() {
+  const kept = protected_people();
+  const hidden = new Set();
+  const hide_branch = (id) => {
+    if (kept.has(id) || hidden.has(id)) return;
+    hidden.add(id);
+    for (const child_id of find_all_children(id)) hide_branch(child_id);
+  };
+  for (const couple of collapsed_couples) {
+    const [mother_id, father_id] = couple.split("|");
+    couple_children(mother_id, father_id).forEach(hide_branch);
+  }
+
+  const people = data["people"];
+  const married_in = (id) => !kept.has(id) && !hidden.has(id) && !people[id]?.mother && !people[id]?.father;
+  for (const id of [...hidden]) {
+    for (const child_id of find_all_children(id)) {
+      const child = people[child_id];
+      const other = child.mother == id ? child.father : child.mother;
+      if (married_in(other) && find_all_children(other).every((c) => hidden.has(c))) hidden.add(other);
+    }
+    for (const partner of people[id].partners || []) {
+      const spouse_id = partner?.spouse_id;
+      if (married_in(spouse_id) && find_all_children(spouse_id).every((c) => hidden.has(c))) hidden.add(spouse_id);
+    }
+  }
+  return hidden;
+}
+
+// Couples whose only children are collapsed get no connector from draw_connector, so draw their line here.
+function draw_collapsed_couple_lines() {
+  for (const couple of collapsed_couples) {
+    const [mother_id, father_id] = couple.split("|");
+    const mother = data["people"][mother_id];
+    const father = data["people"][father_id];
+    if (!mother || !father || mother.gen == null || father.gen == null) continue;
+    if (couple_children(mother_id, father_id).some((id) => data["people"][id].gen != null)) continue;
+    draw_line_between_parents(get_center(mother), get_center(father), mother_id, father_id);
+  }
+}
+
+function draw_collapse_toggles() {
+  const svg_elem = document.getElementById("svg");
+  if (!svg_elem) return;
+  svg_elem.querySelector("#collapse-toggles")?.remove();
+  const kept = protected_people();
+  const group = document.createElementNS(svgns, "g");
+  group.setAttribute("id", "collapse-toggles");
+
+  const couples = new Set(collapsed_couples);
+  const ancestor = (id) => kept.has(id) && id != data.general?.proband;
+  for (const id of family_tree) {
+    const person = data["people"][id];
+    if (!person?.mother || !person?.father || kept.has(id)) continue;
+    // Collapsing under a couple who are both the proband's direct ancestors doesn't behave well, so it isn't offered there.
+    if (ancestor(person.mother) && ancestor(person.father)) continue;
+    couples.add(person.mother + "|" + person.father);
+  }
+
+  for (const couple of couples) {
+    const [mother_id, father_id] = couple.split("|");
+    const mother = data["people"][mother_id];
+    const father = data["people"][father_id];
+    if (!mother || !father || mother.gen == null || father.gen == null || mother.x == null || father.x == null) continue;
+    const is_collapsed = collapsed_couples.has(couple);
+
+    const toggle = document.createElementNS(svgns, "g");
+    toggle.setAttribute("class", is_collapsed ? "collapse-toggle collapsed" : "collapse-toggle");
+    toggle.dataset.couple = couple;
+    const x = (mother.x + father.x) / 2;
+    const y = (mother.y + father.y) / 2;
+    const hit = document.createElementNS(svgns, "circle");
+    hit.setAttribute("cx", x);
+    hit.setAttribute("cy", y);
+    hit.setAttribute("r", 14);
+    hit.setAttribute("class", "collapse-hit");
+    const marker = document.createElementNS(svgns, "circle");
+    marker.setAttribute("cx", x);
+    marker.setAttribute("cy", y);
+    marker.setAttribute("r", 7);
+    marker.setAttribute("class", "collapse-marker");
+    const title = document.createElementNS(svgns, "title");
+    title.textContent = is_collapsed ? "Show this couple's descendants" : "Hide this couple's descendants";
+    toggle.append(title, hit, marker);
+
+    toggle.addEventListener("mousedown", (event) => {
+      event.stopPropagation();
+      event.preventDefault();
+    });
+    toggle.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggle_collapse(couple);
+    });
+    group.appendChild(toggle);
+  }
+  svg_elem.appendChild(group);
+}
+
+function toggle_collapse(couple) {
+  const marker_rect = () => document.querySelector(`#collapse-toggles [data-couple="${couple}"] .collapse-marker`)?.getBoundingClientRect();
+  const before = marker_rect();
+
+  if (collapsed_couples.has(couple)) collapsed_couples.delete(couple);
+  else collapsed_couples.add(couple);
+  set_hidden_people(compute_hidden_people());
+  remember_moved_positions();
+  display_pedigree();
+
+  const after = marker_rect();
+  if (before && after) keep_point_on_screen(after.left - before.left, after.top - before.top);
+}
+
+// Hand moves live only on the drawn people until saved; copy them over so a redraw keeps them.
+function remember_moved_positions() {
+  annotations = annotations || {};
+  annotations.positions = annotations.positions || {};
+  for (const [person_id, person] of Object.entries(data["people"])) {
+    if (person.moved && person.x != null && person.y != null) {
+      annotations.positions[person_id] = { x: person.x, y: person.y };
+    }
+  }
+}
+
+// Scrolls (padding the drawing if scrolling alone can't) so content that moved by dx/dy appears not to move.
+function keep_point_on_screen(dx, dy) {
+  const svg_elem = document.getElementById("svg");
+  const want_left = main_elem.scrollLeft + dx;
+  const want_top = main_elem.scrollTop + dy;
+  if (want_left < 0) svg_elem.style.marginLeft = `${-want_left}px`;
+  if (want_top < 0) svg_elem.style.marginTop = `${-want_top}px`;
+  const max_left = main_elem.scrollWidth - main_elem.clientWidth;
+  const max_top = main_elem.scrollHeight - main_elem.clientHeight;
+  if (want_left > max_left) main_elem.style.paddingRight = `${want_left - max_left}px`;
+  if (want_top > max_top) main_elem.style.paddingBottom = `${want_top - max_top}px`;
+  main_elem.scrollLeft = Math.max(0, want_left);
+  main_elem.scrollTop = Math.max(0, want_top);
+}
+
+function reset_collapsed() {
+  collapsed_couples = new Set();
+  set_hidden_people([]);
 }
 
 function add_alert_bar() {
   let active_alerts = false;
   const alert_elem = document.getElementById("alert");
-  alert_elem.innerHTML = "";
+  clearTimeout(alert_dismiss_timer);
+  alert_dismiss_timer = null;
+  alert_is_pinned = false;
+  alert_elem.replaceChildren(clear_alert_elem);
 
   active_alerts |= add_overlap_alerts(alert_elem);
   active_alerts |= add_unplaced_people_alerts(alert_elem);
+  active_alerts |= add_crossing_alerts(alert_elem);
   active_alerts |= add_other_alerts(alert_elem);
+  active_alerts |= add_multiple_birth_adjacency_alerts(alert_elem);
+  alert_elem.style.display = active_alerts ? "grid" : "none";
 
   if (!active_alerts) {
     alert_elem.style.backgroundColor = "white";
     alert_elem.style.border = "";
+    return;
   }
+
+  // Auto-dismiss of warnings is paused for now; they stay until fixed or closed with ×.
+}
+
+function show_save_export_status(message, succeeded) {
+  const alert_elem = document.getElementById("alert");
+  clearTimeout(alert_dismiss_timer);
+  alert_dismiss_timer = null;
+  alert_is_pinned = false;
+  alert_elem.replaceChildren(clear_alert_elem);
+
+  const status_elem = document.createElement("div");
+  status_elem.className = "alert-status";
+  status_elem.textContent = message;
+  alert_elem.append(status_elem);
+  alert_elem.style.backgroundColor = succeeded ? ALERT_TONES.success.background : ALERT_TONES.error.background;
+  alert_elem.style.border = succeeded ? ALERT_TONES.success.border : ALERT_TONES.error.border;
+  alert_elem.style.display = "grid";
+
+  alert_dismiss_timer = setTimeout(function () {
+    if (!alert_is_pinned) alert_elem.style.display = "none";
+    alert_dismiss_timer = null;
+  }, alert_auto_dismiss_delay);
 }
 
 function add_overlap_alerts(alert_elem) {
   const overlaps = check_for_overlaps(family_tree);
 
   if (overlaps && Object.keys(overlaps).length > 0) {
-    alert_elem.style.backgroundColor = "#FDD";
-    alert_elem.style.border = "1px dashed #F00";
+    alert_elem.style.backgroundColor = ALERT_TONES.error.background;
+    alert_elem.style.border = ALERT_TONES.error.border;
     const p = document.createElement("p");
     p.classList.add("alert-line");
     alert_elem.append(p);
-    p.append("Overlaps: ");
+    add_alert_heading(p, "Overlaps:");
     for (const person_name in overlaps) {
       const button = create_button(person_name);
       p.append(button);
@@ -435,22 +1321,529 @@ function add_unplaced_people_alerts(alert_elem) {
   const missing_people = check_for_unplaced_people(data);
 
   if (missing_people && Object.keys(missing_people).length > 0) {
-    alert_elem.style.backgroundColor = "#FDD";
-    alert_elem.style.border = "1px dashed #F00";
+    alert_elem.style.backgroundColor = ALERT_TONES.error.background;
+    alert_elem.style.border = ALERT_TONES.error.border;
     const p = document.createElement("p");
     p.classList.add("alert-line");
     alert_elem.append(p);
-    p.append("Missing People: ");
+    add_alert_heading(p, "Missing People:");
     for (const index in missing_people) {
       const person_id = missing_people[index];
       const children = find_all_children(person_id);
       const text = person_id + " [" + children.length + "]";
       const button = create_button(text);
+      button.title = "Show this person's details";
+      button.addEventListener("click", () => {
+        set_study_summary();
+        set_details_of_person(person_id);
+      });
       p.append(button);
     }
     return true;
   } else {
     return false;
+  }
+}
+
+let layout_problems = { crossings: [], hits: [], multi_partner: [] };
+let selected_problem_key = null;
+const automatic_x_offsets = new Map();
+const automatic_y_offsets = new Map();
+const ALERT_TONES = {
+  error: { background: "#FFF5F5", border: "1px solid #F1B0B0" },
+  warning: { background: "#FFFBEA", border: "1px solid #EBCB72" },
+  success: { background: "#F0F9F1", border: "1px solid #9BD3A6" },
+};
+let reported_problem_keys = new Set();
+const MAX_PROBLEM_BUTTONS = 20;
+
+function current_layout_positions() {
+  const drawn_people = Object.fromEntries(
+    family_tree
+      .map((id) => [id, data["people"][id]])
+      .filter(([, person]) => person && person.gen != null && person.loc != null)
+  );
+  for (const person of Object.values(drawn_people)) {
+    const center = get_center(person);
+    person.x = center.x;
+    person.y = center.y;
+  }
+  return drawn_people;
+}
+
+function has_symbol_overlap(people) {
+  const placed = Object.values(people).filter(
+    (person) => Number.isFinite(person.x) && Number.isFinite(person.y)
+  );
+  for (let i = 0; i < placed.length; i++) {
+    for (let j = i + 1; j < placed.length; j++) {
+      if (
+        Math.abs(placed[i].x - placed[j].x) < config.size &&
+        Math.abs(placed[i].y - placed[j].y) < config.size
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function apply_post_layout_adjustments() {
+  const saved_positions = Object.values(annotations?.positions || {});
+  if (
+    saved_positions.some(
+      (position) => Number.isFinite(position?.x) && Number.isFinite(position?.y)
+    ) ||
+    !Number.isFinite(config?.h_spacing) ||
+    config.h_spacing <= 0 ||
+    !Number.isFinite(config?.v_spacing) ||
+    config.v_spacing <= 0
+  ) {
+    return;
+  }
+
+  const problem_count = (result) => result.crossings.length + result.hits.length;
+  let people = current_layout_positions();
+  let problems = find_layout_problems(people, config.size, sibship_bar_y);
+  if (problems.crossings.length === 0 && problems.hits.length === 0) {
+    return;
+  }
+
+  const original_count = problems.crossings.length + problems.hits.length;
+  const original_multi_partners = new Set(
+    problems.multi_partner.map((item) => item.person_id)
+  );
+  const proband_id = data.general?.proband;
+  const proband = people[proband_id];
+  if (!proband) return;
+
+  const same_parents = (first_id, second_id) => {
+    const first = data.people[first_id];
+    const second = data.people[second_id];
+    return Boolean(
+      first?.mother &&
+        first?.father &&
+        first.mother === second?.mother &&
+        first.father === second?.father
+    );
+  };
+  const descendant_branch = (seed_ids) => {
+    const branch = new Set(seed_ids.filter((id) => people[id]));
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const id of branch) {
+        for (const relative_id of multiple_birth_by_person.get(id)?.members || []) {
+          if (people[relative_id] && !branch.has(relative_id)) {
+            branch.add(relative_id);
+            changed = true;
+          }
+        }
+      }
+      for (const [id, person] of Object.entries(people)) {
+        if (
+          !branch.has(id) &&
+          ((person.mother && branch.has(person.mother)) ||
+            (person.father && branch.has(person.father)))
+        ) {
+          branch.add(id);
+          changed = true;
+        }
+      }
+    }
+    return branch;
+  };
+  const shift_branch_x = (branch, offset) => {
+    for (const id of branch) {
+      automatic_x_offsets.set(id, (automatic_x_offsets.get(id) || 0) + offset);
+    }
+  };
+  const ancestor_distances = (start_id) => {
+    const distances = new Map([[start_id, 0]]);
+    const queue = [start_id];
+    for (let index = 0; index < queue.length; index++) {
+      const person = data.people[queue[index]] || {};
+      for (const parent_id of [person.mother, person.father]) {
+        if (parent_id && !distances.has(parent_id)) {
+          distances.set(parent_id, distances.get(queue[index]) + 1);
+          queue.push(parent_id);
+        }
+      }
+    }
+    return distances;
+  };
+
+  const direct_siblings = new Set();
+  for (const [first, second] of problems.crossings) {
+    const segments = [first, second];
+    if (
+      !segments.some(
+        (segment) => segment.kind === "marriage" && segment.members.includes(proband_id)
+      )
+    ) {
+      continue;
+    }
+    for (const segment of segments) {
+      if (segment.kind === "stub" && same_parents(segment.child, proband_id)) {
+        direct_siblings.add(segment.child);
+      }
+    }
+  }
+  for (const hit of problems.hits) {
+    if (same_parents(hit.person_id, proband_id)) direct_siblings.add(hit.person_id);
+  }
+
+  for (const sibling_id of direct_siblings) {
+    const partner_ids = (data.people[sibling_id]?.partners || [])
+      .map((partner) => partner.spouse_id)
+      .filter((id) => id && people[id]);
+    if (partner_ids.length === 0) continue;
+    const branch = descendant_branch([sibling_id, ...partner_ids]);
+    if (multiple_birth_by_person.get(sibling_id)?.members.includes(proband_id)) continue;
+    const right_edge = Math.max(...[...branch].map((id) => people[id].x));
+    const target_right_edge = proband.x - config.size;
+    if (right_edge > target_right_edge) {
+      const steps = Math.ceil((right_edge - target_right_edge) / config.h_spacing);
+      shift_branch_x(branch, -steps * config.h_spacing);
+      people = current_layout_positions();
+    }
+  }
+
+  for (const spouse_id of (data.people[proband_id].partners || []).map(
+    (partner) => partner.spouse_id
+  )) {
+    if (!people[spouse_id]) continue;
+    const other_partners = Object.entries(data.people)
+      .filter(
+        ([id, person]) =>
+          id !== proband_id &&
+          id !== spouse_id &&
+          people[id] &&
+          (person.partners || []).some((partner) => partner.spouse_id === spouse_id)
+      )
+      .map(([id]) => id);
+    for (const other_partner of other_partners) {
+      const related_crossing = problems.crossings.some(([first, second]) =>
+        [first, second].some(
+          (segment) =>
+            (segment.kind === "marriage" || segment.kind === "drop") &&
+            segment.members.includes(spouse_id) &&
+            segment.members.includes(other_partner)
+        )
+      );
+      if (!related_crossing) continue;
+      const branch = descendant_branch([other_partner]);
+      const branch_xs = [...branch].map((id) => people[id].x);
+      const spouse_x = people[spouse_id].x;
+      if (spouse_x > proband.x) {
+        const left_edge = Math.min(...branch_xs);
+        const target_left_edge = spouse_x + config.size;
+        if (left_edge <= target_left_edge) {
+          const steps = Math.ceil((target_left_edge - left_edge) / config.h_spacing);
+          shift_branch_x(branch, steps * config.h_spacing);
+          people = current_layout_positions();
+        }
+      } else {
+        const right_edge = Math.max(...branch_xs);
+        const target_right_edge = spouse_x - config.size;
+        if (right_edge >= target_right_edge) {
+          const steps = Math.ceil((right_edge - target_right_edge) / config.h_spacing);
+          shift_branch_x(branch, -steps * config.h_spacing);
+          people = current_layout_positions();
+        }
+      }
+    }
+  }
+
+  const proband_ancestors = ancestor_distances(proband_id);
+  const is_cousin = (person_id) => {
+    const relative_ancestors = ancestor_distances(person_id);
+    const common = [...proband_ancestors.keys()]
+      .filter((id) => relative_ancestors.has(id))
+      .sort(
+        (left, right) =>
+          proband_ancestors.get(left) + relative_ancestors.get(left) -
+          (proband_ancestors.get(right) + relative_ancestors.get(right))
+      );
+    if (common.length === 0) return false;
+    const nearest = common[0];
+    return proband_ancestors.get(nearest) >= 2 && relative_ancestors.get(nearest) >= 2;
+  };
+  const is_half_aunt_or_uncle = (person_id) => {
+    const relative_ancestors = ancestor_distances(person_id);
+    const common = [...proband_ancestors.keys()]
+      .filter((id) => relative_ancestors.has(id))
+      .map((id) => ({
+        id,
+        proband_distance: proband_ancestors.get(id),
+        relative_distance: relative_ancestors.get(id),
+      }))
+      .sort(
+        (left, right) =>
+          left.proband_distance + left.relative_distance -
+          (right.proband_distance + right.relative_distance)
+      );
+    if (common.length === 0) return false;
+    const nearest = common[0];
+    const equally_near = common.filter(
+      (item) =>
+        item.proband_distance === nearest.proband_distance &&
+        item.relative_distance === nearest.relative_distance
+    );
+    return (
+      nearest.proband_distance === 2 &&
+      nearest.relative_distance === 1 &&
+      equally_near.length === 1
+    );
+  };
+  const has_children = (person_id) =>
+    Object.values(data.people).some(
+      (person) => person.mother === person_id || person.father === person_id
+    );
+
+  people = current_layout_positions();
+  problems = find_layout_problems(people, config.size, sibship_bar_y);
+  const proband_marriage_crossings = problems.crossings.filter(([first, second]) =>
+    [first, second].some(
+      (segment) => segment.kind === "marriage" && segment.members.includes(proband_id)
+    )
+  );
+  const nudged_cousins = new Set();
+  for (const [first, second] of proband_marriage_crossings) {
+    const cousin_stem = [first, second].find(
+      (segment) => segment.kind === "stub" && is_cousin(segment.child)
+    );
+    if (!cousin_stem) continue;
+    const group = multiple_birth_by_person.get(cousin_stem.child);
+    const members = group?.members || [cousin_stem.child];
+    if (group && members.some((id) => nudged_cousins.has(id))) continue;
+    for (const id of members) {
+      automatic_y_offsets.set(id, (automatic_y_offsets.get(id) || 0) - config.v_spacing / 2);
+      if (group) nudged_cousins.add(id);
+    }
+    people = current_layout_positions();
+    problems = find_layout_problems(people, config.size, sibship_bar_y);
+  }
+
+  const involved_people = new Set();
+  for (const [first, second] of problems.crossings) {
+    for (const segment of [first, second]) {
+      if ((segment.kind === "stub" || segment.kind === "bar") && segment.child) {
+        involved_people.add(segment.child);
+      } else if (segment.kind === "marriage" || segment.kind === "drop") {
+        segment.members.forEach((person_id) => involved_people.add(person_id));
+      }
+    }
+  }
+  for (const hit of problems.hits) involved_people.add(hit.person_id);
+  const nudged_half_aunts = new Set();
+  for (const person_id of involved_people) {
+    const members = multiple_birth_by_person.get(person_id)?.members || [person_id];
+    if (!is_half_aunt_or_uncle(person_id) || members.some(has_children) ||
+        members.some((id) => nudged_half_aunts.has(id))) continue;
+    for (const id of members) {
+      automatic_y_offsets.set(id, (automatic_y_offsets.get(id) || 0) - config.v_spacing / 2);
+      nudged_half_aunts.add(id);
+    }
+    people = current_layout_positions();
+    problems = find_layout_problems(people, config.size, sibship_bar_y);
+  }
+
+  const final_problems = find_layout_problems(people, config.size, sibship_bar_y);
+  const new_multi_partner = final_problems.multi_partner.some(
+    (item) => !original_multi_partners.has(item.person_id)
+  );
+  if (
+    problem_count(final_problems) >= original_count ||
+    new_multi_partner ||
+    has_symbol_overlap(people) ||
+    [...new Set(multiple_birth_by_person.values())].some(
+      (group) => !multiple_births_are_adjacent(group, people)
+    )
+  ) {
+    automatic_x_offsets.clear();
+    automatic_y_offsets.clear();
+    current_layout_positions();
+  }
+}
+
+// Recomputes crossings from current positions and redraws their highlights. With
+// only_reported, problems that weren't reported at the last redraw are ignored.
+function update_layout_problems(only_reported = false) {
+  const svg_elem = document.getElementById("svg");
+  if (!svg_elem || !data) return;
+  const drawn_people = Object.fromEntries(family_tree.map((id) => [id, data["people"][id]]).filter(([, person]) => person));
+  layout_problems = find_layout_problems(drawn_people, config.size, sibship_bar_y);
+  if (only_reported) {
+    const keep = (key) => reported_problem_keys.has(key);
+    layout_problems = {
+      multi_partner: layout_problems.multi_partner.filter((item) => keep(`multi|${item.person_id}`)),
+      hits: layout_problems.hits.filter((hit) => keep(`hit|${segment_key(hit.segment)}|${hit.person_id}`)),
+      crossings: layout_problems.crossings.filter(([s, t]) => keep(`cross|${[segment_key(s), segment_key(t)].sort().join("|")}`)),
+    };
+  } else {
+    reported_problem_keys = current_problem_keys();
+  }
+  if (selected_problem_key && !current_problem_keys().has(selected_problem_key)) {
+    selected_problem_key = null;
+  }
+
+  svg_elem.querySelector("#problem-highlights")?.remove();
+  const { crossings, hits, multi_partner } = layout_problems;
+  if (!selected_problem_key || (crossings.length === 0 && hits.length === 0 && multi_partner.length === 0)) return;
+
+  const group = document.createElementNS(svgns, "g");
+  group.setAttribute("id", "problem-highlights");
+  group.setAttribute("pointer-events", "none");
+  const highlight_segment = (segment, css_class = "problem-highlight") => {
+    const line = document.createElementNS(svgns, "line");
+    line.setAttribute("x1", segment.a[0]);
+    line.setAttribute("y1", segment.a[1]);
+    line.setAttribute("x2", segment.b[0]);
+    line.setAttribute("y2", segment.b[1]);
+    line.setAttribute("class", css_class);
+    group.appendChild(line);
+  };
+  for (const item of multi_partner) {
+    if (selected_problem_key === `multi|${item.person_id}`) {
+      item.segments.forEach((segment) => highlight_segment(segment, "problem-highlight-soft"));
+    }
+  }
+  for (const [s, t] of crossings) {
+    const key = `cross|${[segment_key(s), segment_key(t)].sort().join("|")}`;
+    if (selected_problem_key === key) {
+      highlight_segment(s);
+      highlight_segment(t);
+    }
+  }
+  for (const hit of hits) {
+    const key = `hit|${segment_key(hit.segment)}|${hit.person_id}`;
+    if (selected_problem_key !== key) continue;
+    highlight_segment(hit.segment);
+    const person = data["people"][hit.person_id];
+    const ring = document.createElementNS(svgns, "circle");
+    ring.setAttribute("cx", person.x);
+    ring.setAttribute("cy", person.y);
+    ring.setAttribute("r", config.size * 0.75);
+    ring.setAttribute("class", "problem-highlight");
+    group.appendChild(ring);
+  }
+  svg_elem.appendChild(group);
+}
+
+// Drops the family number prefix (e.g. "05648-") that every ID in the family shares.
+function short_id(person_id) {
+  const prefix = (family_select.value || "").trim() + "-";
+  return prefix.length > 1 && person_id.startsWith(prefix) ? person_id.slice(prefix.length) : person_id;
+}
+
+function describe_segment(segment) {
+  if (segment.kind === "marriage" || segment.kind === "drop") return segment.members.map(short_id).join("+");
+  return short_id(segment.child);
+}
+
+function set_alert_colors(alert_elem) {
+  const lines = alert_elem.querySelectorAll(".alert-line");
+  if (lines.length === 0) return;
+  const only_soft = Array.from(lines).every((line) =>
+    line.classList.contains("layout-problem-line")
+      ? !line.querySelector(".alert-button:not(.alert-button-soft)")
+      : false
+  );
+  const tone = only_soft ? ALERT_TONES.warning : ALERT_TONES.error;
+  alert_elem.style.backgroundColor = tone.background;
+  alert_elem.style.border = tone.border;
+}
+
+function segment_key(segment) {
+  return `${segment.key}|${segment.kind}|${segment.child || ""}`;
+}
+
+function current_problem_keys() {
+  const { crossings, hits, multi_partner } = layout_problems;
+  return new Set([
+    ...multi_partner.map((item) => `multi|${item.person_id}`),
+    ...hits.map((hit) => `hit|${segment_key(hit.segment)}|${hit.person_id}`),
+    ...crossings.map(([s, t]) => `cross|${[segment_key(s), segment_key(t)].sort().join("|")}`),
+  ]);
+}
+
+// Each problem is its own self-describing button, so fixing one removes just that button.
+function add_crossing_alerts(alert_elem) {
+  const { crossings, hits, multi_partner } = layout_problems;
+  const items = [
+    ...multi_partner.map((item) => ({
+      key: `multi|${item.person_id}`,
+      text: `Multiple partners: ${short_id(item.person_id)}`,
+      target: item.person_id,
+      title: "Lines between this person's partners overlap; drag a partner aside to fix",
+      soft: true,
+    })),
+    ...hits.map((hit) => ({
+      key: `hit|${segment_key(hit.segment)}|${hit.person_id}`,
+      text: `Line over ${short_id(hit.person_id)}: ${describe_segment(hit.segment)}`,
+      target: hit.person_id,
+    })),
+    ...crossings.map(([s, t]) => ({
+      key: `cross|${[segment_key(s), segment_key(t)].sort().join("|")}`,
+      text: `Lines cross: ${describe_segment(s)} \u00d7 ${describe_segment(t)}`,
+      target: s.child || s.members[0],
+    })),
+  ];
+  if (items.length === 0) return false;
+
+  const p = document.createElement("p");
+  p.classList.add("alert-line", "layout-problem-line");
+  p.problem_keys = items.map((item) => item.key);
+  alert_elem.append(p);
+  for (const item of items.slice(0, MAX_PROBLEM_BUTTONS)) {
+    const button = create_button(item.text);
+    button.dataset.problemKey = item.key;
+    if (item.title) button.title = item.title;
+    if (item.soft) button.classList.add("alert-button-soft");
+    button.addEventListener("click", () => {
+      selected_problem_key = item.key;
+      update_layout_problems(true);
+      center_person_in_view(item.target);
+    });
+    p.append(button);
+  }
+  update_more_note(p);
+  set_alert_colors(alert_elem);
+  return true;
+}
+
+function update_more_note(line) {
+  line.querySelector(".alert-more")?.remove();
+  const hidden = line.problem_keys.length - line.querySelectorAll("[data-problem-key]").length;
+  if (hidden <= 0) return;
+  const more = document.createElement("span");
+  more.className = "alert-heading alert-more";
+  more.textContent = `…and ${hidden} more (highlighted in red)`;
+  line.append(more);
+}
+
+// After a hand edit, drop the warnings that are now fixed (new problems are not added until the next redraw).
+function refresh_layout_problem_alerts() {
+  const alert_elem = document.getElementById("alert");
+  if (!alert_elem) return;
+  const still_present = current_problem_keys();
+
+  for (const line of alert_elem.querySelectorAll(".layout-problem-line")) {
+    line.problem_keys = (line.problem_keys || []).filter((key) => still_present.has(key));
+    line.querySelectorAll("[data-problem-key]").forEach((button) => {
+      if (!still_present.has(button.dataset.problemKey)) button.remove();
+    });
+    if (line.problem_keys.length === 0) line.remove();
+    else update_more_note(line);
+  }
+
+  if (!alert_elem.querySelector(".alert-line, .alert-status")) {
+    alert_elem.style.display = "none";
+    alert_elem.style.backgroundColor = "white";
+    alert_elem.style.border = "";
+  } else {
+    set_alert_colors(alert_elem);
   }
 }
 
@@ -460,12 +1853,12 @@ function add_other_alerts(alert_elem) {
   const person_ids = Object.keys(other_alerts);
 
   if (person_ids.length > 0) {
-    alert_elem.style.backgroundColor = "#FDD";
-    alert_elem.style.border = "1px dashed #F00";
+    alert_elem.style.backgroundColor = ALERT_TONES.error.background;
+    alert_elem.style.border = ALERT_TONES.error.border;
     const p = document.createElement("p");
     p.classList.add("alert-line");
     alert_elem.append(p);
-    p.append("Other Alerts: ");
+    add_alert_heading(p, "Other Alerts:");
     for (const person_id of person_ids) {
       const text = person_id + ": " + other_alerts[person_id];
       const button = create_button(text);
@@ -477,59 +1870,53 @@ function add_other_alerts(alert_elem) {
   }    
 } 
 
-// Debug helper: compares each person's in-memory x/y (what gets saved) against
-// their live SVG shape's actual rendered position, to catch drag/save desync bugs.
-function log_data_vs_dom_positions() {
-  const mismatches = [];
-  const rows = [];
+function add_multiple_birth_adjacency_alerts(alert_elem) {
+  const people = Object.fromEntries(family_tree.map((id) => [id, data["people"][id]]));
+  const separated = [...new Set(multiple_birth_by_person.values())]
+    .filter((group) => !multiple_births_are_adjacent(group, people));
+  if (separated.length === 0) return false;
 
-  for (const person_id in data["people"]) {
-    const person = data["people"][person_id];
-    const el =
-      document.querySelector(`rect[id="${person_id}"]`) ||
-      document.querySelector(`circle[id="${person_id}"]`) ||
-      document.querySelector(`polygon[id="${person_id}"]`);
-
-    if (!el) continue;
-
-    let dom_x, dom_y;
-    if (el.tagName === "polygon") {
-      const points = el.getAttribute("points").trim().split(/\s+/).map((p) => p.split(",").map(Number));
-      const xs = points.map((p) => p[0]);
-      const ys = points.map((p) => p[1]);
-      dom_x = (Math.min(...xs) + Math.max(...xs)) / 2;
-      dom_y = (Math.min(...ys) + Math.max(...ys)) / 2;
-    } else if (el.hasAttribute("cx")) {
-      dom_x = Number(el.getAttribute("cx"));
-      dom_y = Number(el.getAttribute("cy"));
-    } else {
-      dom_x = Number(el.getAttribute("x")) + config.size / 2;
-      dom_y = Number(el.getAttribute("y")) + config.size / 2;
-    }
-
-    const data_x = person.x;
-    const data_y = person.y;
-    const mismatch = Math.abs(dom_x - data_x) > 0.5 || Math.abs(dom_y - data_y) > 0.5;
-
-    rows.push({ person_id, data_x, data_y, dom_x, dom_y, mismatch });
-    if (mismatch) mismatches.push(person_id);
+  const had_alerts = Boolean(alert_elem.querySelector(".alert-line, .alert-status"));
+  const line = document.createElement("p");
+  line.classList.add("alert-line", "multiple-birth-separation-line");
+  add_alert_heading(line, "Multiple-birth siblings are not adjacent:");
+  for (const group of separated) {
+    const button = create_button(group.members.map(short_id).join(" + "));
+    button.addEventListener("click", () => center_person_in_view(group.members[0]));
+    line.append(button);
   }
-
-  console.table(rows);
-  if (mismatches.length > 0) {
-    console.warn("DATA/DOM MISMATCH for:", mismatches);
-  } else {
-    console.log("No data/DOM position mismatches found.");
+  alert_elem.append(line);
+  if (!had_alerts) {
+    alert_elem.style.backgroundColor = ALERT_TONES.warning.background;
+    alert_elem.style.border = ALERT_TONES.warning.border;
   }
+  return true;
 }
 
-
+function refresh_multiple_birth_adjacency_alerts() {
+  const alert_elem = document.getElementById("alert");
+  alert_elem.querySelector(".multiple-birth-separation-line")?.remove();
+  if (add_multiple_birth_adjacency_alerts(alert_elem)) {
+    alert_elem.style.display = "grid";
+  } else if (!alert_elem.querySelector(".alert-line, .alert-status")) {
+    alert_elem.style.display = "none";
+    alert_elem.style.backgroundColor = "white";
+    alert_elem.style.border = "";
+  }
+}
 
 function create_button(text) {
   let button = document.createElement("button");
   button.textContent = text;
   button.className = "alert-button";
   return button;
+}
+
+function add_alert_heading(alert_line, text) {
+  const heading = document.createElement("span");
+  heading.classList.add("alert-heading");
+  heading.textContent = text;
+  alert_line.append(heading);
 }
 
 function draw_frame() {
@@ -547,16 +1934,12 @@ function draw_frame() {
 
   const svgElem = create_svg(width_of_svg, height_of_svg);
 
-  // Saved annotation positions can fall outside the default grid-based frame
-  // (e.g. after manual dragging); grow the canvas before drawing the header so
-  // the header text can be anchored to the true (possibly expanded) left edge.
-  if (annotations?.positions) {
-    for (const person_id in data["people"]) {
-      const person = data["people"][person_id];
-      if (person.gen != null && person.loc != null) {
-        const center = get_center(person);
-        expand_canvas_to_fit(center.x, center.y);
-      }
+  apply_post_layout_adjustments();
+  for (const person_id in data["people"]) {
+    const person = data["people"][person_id];
+    if (person.gen != null && person.loc != null) {
+      const center = get_center(person);
+      expand_canvas_to_fit(center.x, center.y);
     }
   }
 
@@ -595,8 +1978,8 @@ function expand_canvas_to_fit(x, y) {
   const new_height = new_max_y - new_min_y;
 
   svgElem.setAttributeNS(null, "viewBox", new_min_x + " " + new_min_y + " " + new_width + " " + new_height);
-  svgElem.setAttributeNS(null, "width", new_width);
-  svgElem.setAttributeNS(null, "height", new_height);
+  svgElem.setAttributeNS(null, "width", new_width * zoom);
+  svgElem.setAttributeNS(null, "height", new_height * zoom);
 }
 
 // Called from fhh_move.js while the user drags a person outside the current canvas.
@@ -608,21 +1991,615 @@ export function create_svg(width, height) {
   const default_color = config.default_color || "lightblue";
   let svgElem = document.createElementNS(svgns, "svg");
   svgElem.setAttributeNS(null, "viewBox", "0 0 " + width + " " + height);
-  svgElem.setAttributeNS(null, "width", width);
-  svgElem.setAttributeNS(null, "height", height);
+  svgElem.setAttributeNS(null, "width", width * zoom);
+  svgElem.setAttributeNS(null, "height", height * zoom);
   svgElem.setAttributeNS(null, "fill", default_color);
   svgElem.setAttributeNS(null, "stroke", "black");
   svgElem.setAttributeNS(null, "stroke-width", "5");
 
   svgElem.style.display = "block";
   svgElem.id = "svg";
+  add_annotation_arrow_marker(svgElem);
 
   var svgContainer = document.getElementById("main");
   svgContainer.innerHTML = "";
+  svgContainer.style.paddingRight = "";
+  svgContainer.style.paddingBottom = "";
   svgContainer.appendChild(svgElem);
 
   addSvgListeners(svgElem);
+  svgElem.addEventListener("click", handle_line_annotation_click);
+  svgElem.addEventListener("dblclick", handle_text_annotation_double_click);
+  svgElem.addEventListener("mousemove", update_line_annotation_preview);
+  svgElem.addEventListener("mousemove", update_annotation_hover);
+  svgElem.addEventListener("mousedown", handle_person_mode_shortcut, true);
+  svgElem.addEventListener("contextmenu", suppress_person_context_menu, true);
+  svgElem.addEventListener("mousedown", select_annotation_on_mousedown);
+  svgElem.addEventListener("mousedown", start_annotation_move);
+  svgElem.addEventListener("mousemove", move_selected_annotation);
+  svgElem.addEventListener("mouseup", finish_annotation_move);
+  svgElem.addEventListener("mouseleave", finish_annotation_move);
+  update_line_cursor();
   return svgElem;
+}
+
+function update_line_cursor() {
+  const svg_elem = document.getElementById("svg");
+  if (!svg_elem) return;
+  if (dragging_annotation) {
+    svg_elem.style.cursor = "grabbing";
+  } else if (current_action_mode === "annotation-select" && selected_annotation) {
+    svg_elem.style.cursor = "grab";
+  } else if (current_action_mode !== "annotation-line" && current_action_mode !== "annotation-arrow") {
+    svg_elem.style.cursor = "";
+  } else {
+    svg_elem.style.cursor = pending_line_start ? "crosshair" : pencil_cursor;
+  }
+}
+
+function get_svg_point(svg_elem, event) {
+  const screen_matrix = svg_elem.getScreenCTM();
+  if (!screen_matrix) return null;
+
+  const screen_point = svg_elem.createSVGPoint();
+  screen_point.x = event.clientX;
+  screen_point.y = event.clientY;
+  return screen_point.matrixTransform(screen_matrix.inverse());
+}
+
+function find_person_symbol_at_event(svg_elem, event) {
+  const screen_point = svg_elem.createSVGPoint();
+  screen_point.x = event.clientX;
+  screen_point.y = event.clientY;
+
+  for (const element of svg_elem.querySelectorAll("rect[name], circle[name], polygon[name]")) {
+    const person_id = element.getAttribute("name");
+    if (!data?.people?.[person_id]) continue;
+
+    const transform = element.getScreenCTM();
+    if (!transform) continue;
+    const local_point = screen_point.matrixTransform(transform.inverse());
+    const in_fill = typeof element.isPointInFill === "function" && element.isPointInFill(local_point);
+    const in_stroke = typeof element.isPointInStroke === "function" && element.isPointInStroke(local_point);
+    if (in_fill || in_stroke) return { person_id, element };
+  }
+  return null;
+}
+
+function handle_person_mode_shortcut(event) {
+  const annotation_mode = current_action_mode.startsWith("annotation-");
+  const has_modifier = event.shiftKey || event.ctrlKey;
+  if (!annotation_mode && !(current_action_mode === "details" && has_modifier)) return;
+
+  const person = find_person_symbol_at_event(event.currentTarget, event);
+  if (!person) return;
+
+  event.stopPropagation();
+  if (has_modifier) event.preventDefault();
+  if (annotation_mode) {
+    finish_pending_text_annotation();
+    clear_pending_line();
+  }
+
+  const action = event.ctrlKey ? "free" : event.shiftKey ? "slide" : "details";
+  if (action === "details") {
+    set_study_summary();
+    set_details_of_person(person.person_id);
+  } else if (action === "free") {
+    start_free_move(event, person.element);
+  } else {
+    start_slide_move(event, person.element);
+  }
+}
+
+function suppress_person_context_menu(event) {
+  if (!event.ctrlKey) return;
+  if (current_action_mode !== "details" && !current_action_mode.startsWith("annotation-")) return;
+  if (find_person_symbol_at_event(event.currentTarget, event)) event.preventDefault();
+}
+
+function update_annotation_hover(event) {
+  if (dragging_annotation) return;
+
+  if ((current_action_mode === "annotation-line" || current_action_mode === "annotation-arrow") && find_person_symbol_at_event(event.currentTarget, event)) {
+    event.currentTarget.style.cursor = "default";
+    return;
+  }
+
+  if (pending_line_start && (current_action_mode === "annotation-line" || current_action_mode === "annotation-arrow")) {
+    update_line_cursor();
+    return;
+  }
+
+  const point = get_svg_point(event.currentTarget, event);
+  if (point && find_annotation_at_point(point)) {
+    event.currentTarget.style.cursor = "grab";
+  } else {
+    update_line_cursor();
+  }
+}
+
+function select_annotation_on_mousedown(event) {
+  if (pending_line_start && (current_action_mode === "annotation-line" || current_action_mode === "annotation-arrow")) return;
+
+  const point = get_svg_point(event.currentTarget, event);
+  const hit_annotation = point ? find_annotation_at_point(point) : null;
+  if (hit_annotation) activate_annotation_selection(event.currentTarget, hit_annotation);
+}
+
+function activate_annotation_selection(svg_elem, annotation) {
+  clear_pending_line();
+  const select_radio = document.getElementById("annotation-select");
+  if (select_radio && !select_radio.checked) {
+    select_radio.checked = true;
+    select_radio.dispatchEvent(new Event("change"));
+  }
+  set_selected_annotation(annotation);
+  svg_elem.style.cursor = "grab";
+}
+
+function handle_line_annotation_click(event) {
+  const svg_elem = event.currentTarget;
+  if (find_person_symbol_at_event(svg_elem, event)) return;
+
+  const point = get_svg_point(svg_elem, event);
+  if (!point) return;
+
+  const completing_line = pending_line_start &&
+    (current_action_mode === "annotation-line" || current_action_mode === "annotation-arrow");
+  const hit_annotation = completing_line ? null : find_annotation_at_point(point);
+  if (hit_annotation) {
+    activate_annotation_selection(svg_elem, hit_annotation);
+    return;
+  }
+
+  if (current_action_mode === "annotation-text") {
+    start_text_annotation(event, point);
+    return;
+  }
+
+  if (current_action_mode === "annotation-select") {
+    set_selected_annotation(null);
+    return;
+  }
+
+  if (current_action_mode !== "annotation-line" && current_action_mode !== "annotation-arrow") return;
+
+  if (!pending_line_start) {
+    pending_line_start = { x: point.x, y: point.y };
+    const collection = current_action_mode === "annotation-arrow" ? "arrows" : "lines";
+    pending_line_element = current_action_mode === "annotation-arrow"
+      ? draw_arrow(point.x, point.y, point.x, point.y, annotation_colors.arrows)
+      : draw_line(point.x, point.y, point.x, point.y);
+    pending_line_element.setAttribute("stroke", annotation_colors[collection]);
+    pending_line_element.setAttribute("stroke-width", "2");
+    pending_line_element.setAttribute("pointer-events", "none");
+    update_line_cursor();
+    return;
+  }
+
+  pending_line_element.setAttribute("x2", point.x);
+  pending_line_element.setAttribute("y2", point.y);
+  annotations = annotations || {};
+  const collection = current_action_mode === "annotation-arrow" ? "arrows" : "lines";
+  annotations[collection] = Array.isArray(annotations[collection]) ? annotations[collection] : [];
+  const annotation_index = annotations[collection].length;
+  annotations[collection].push({
+    x1: pending_line_start.x,
+    y1: pending_line_start.y,
+    x2: point.x,
+    y2: point.y,
+    color: annotation_colors[collection],
+  });
+  pending_line_element.setAttribute("data-annotation-collection", collection);
+  pending_line_element.setAttribute("data-annotation-index", annotation_index);
+  pending_line_start = null;
+  pending_line_element = null;
+  update_line_cursor();
+  record_change();
+}
+
+function handle_text_annotation_double_click(event) {
+  const point = get_svg_point(event.currentTarget, event);
+  if (!point) return;
+
+  const hit_annotation = find_annotation_at_point(point);
+  if (!hit_annotation || hit_annotation.collection !== "texts") return;
+
+  event.preventDefault();
+  const select_radio = document.getElementById("annotation-select");
+  if (select_radio && !select_radio.checked) {
+    select_radio.checked = true;
+    select_radio.dispatchEvent(new Event("change"));
+  }
+  set_selected_annotation(hit_annotation);
+  start_text_annotation_edit(event, hit_annotation);
+}
+
+function update_line_annotation_preview(event) {
+  if ((current_action_mode !== "annotation-line" && current_action_mode !== "annotation-arrow") || !pending_line_element) return;
+
+  const point = get_svg_point(event.currentTarget, event);
+  if (!point) return;
+  pending_line_element.setAttribute("x2", point.x);
+  pending_line_element.setAttribute("y2", point.y);
+}
+
+function clear_pending_line() {
+  pending_line_start = null;
+  pending_line_element?.remove();
+  pending_line_element = null;
+  update_line_cursor();
+}
+
+function draw_annotation_lines() {
+  if (!Array.isArray(annotations?.lines)) return;
+
+  annotations.lines.forEach((line, index) => {
+    const line_elem = draw_line(line.x1, line.y1, line.x2, line.y2);
+    line_elem.setAttribute("stroke", line.color || "#000000");
+    line_elem.setAttribute("stroke-width", "2");
+    line_elem.setAttribute("pointer-events", "none");
+    line_elem.setAttribute("data-annotation-collection", "lines");
+    line_elem.setAttribute("data-annotation-index", index);
+  });
+}
+
+function draw_annotation_arrows() {
+  if (!Array.isArray(annotations?.arrows)) return;
+
+  annotations.arrows.forEach((arrow, index) => {
+    const arrow_elem = draw_arrow(arrow.x1, arrow.y1, arrow.x2, arrow.y2, arrow.color || "#000000");
+    arrow_elem.setAttribute("stroke-width", "2");
+    arrow_elem.setAttribute("pointer-events", "none");
+    arrow_elem.setAttribute("data-annotation-collection", "arrows");
+    arrow_elem.setAttribute("data-annotation-index", index);
+  });
+}
+
+function draw_annotation_texts() {
+  if (!Array.isArray(annotations?.texts)) return;
+
+  annotations.texts.forEach((text, index) => {
+    create_annotation_text_element(text, index);
+  });
+}
+
+function create_annotation_text_element(text, index) {
+  const text_elem = document.createElementNS(svgns, "text");
+  text_elem.setAttribute("x", text.x);
+  text_elem.setAttribute("y", text.y);
+  text_elem.setAttribute("dominant-baseline", "hanging");
+  text_elem.setAttribute("font-family", "Arial, sans-serif");
+  text_elem.setAttribute("font-size", Math.max(16, (config?.size || 40) * 0.5));
+  text_elem.setAttribute("fill", text.color || "#000000");
+  text_elem.setAttribute("stroke", "none");
+  text_elem.setAttribute("pointer-events", "none");
+  text_elem.setAttribute("data-annotation-collection", "texts");
+  text_elem.setAttribute("data-annotation-index", index);
+  text_elem.textContent = text.text || "";
+  document.getElementById("svg").appendChild(text_elem);
+  return text_elem;
+}
+
+function start_text_annotation(event, point) {
+  finish_pending_text_annotation();
+  annotations = annotations || {};
+  annotations.texts = Array.isArray(annotations.texts) ? annotations.texts : [];
+
+  const text_annotation = { x: point.x, y: point.y, text: "", color: annotation_colors.texts };
+  const text_index = annotations.texts.length;
+  annotations.texts.push(text_annotation);
+  const text_element = create_annotation_text_element(text_annotation, text_index);
+  open_text_annotation_editor(event, text_annotation, text_element, text_index, true);
+}
+
+function start_text_annotation_edit(event, annotation) {
+  finish_pending_text_annotation();
+  const text_annotation = annotations.texts[annotation.index];
+  open_text_annotation_editor(event, text_annotation, annotation.element, annotation.index, false);
+}
+
+function open_text_annotation_editor(event, text_annotation, text_element, text_index, is_new) {
+  const editor = document.createElement("textarea");
+  editor.className = "annotation-text-editor";
+  editor.setAttribute("aria-label", "Annotation text");
+  editor.rows = 1;
+  editor.style.left = `${event.clientX}px`;
+  editor.style.top = `${event.clientY}px`;
+  editor.value = text_annotation.text || "";
+  document.body.appendChild(editor);
+
+  pending_text_annotation = {
+    collection: "texts",
+    index: text_index,
+    item: text_annotation,
+    element: text_element,
+    editor,
+    is_new,
+    original_text: text_annotation.text || "",
+  };
+  editor.addEventListener("input", function () {
+    text_annotation.text = editor.value;
+    text_element.textContent = editor.value;
+  });
+  editor.addEventListener("keydown", function (key_event) {
+    if (key_event.key === "Enter") {
+      key_event.preventDefault();
+      finish_pending_text_annotation();
+    } else if (key_event.key === "Escape") {
+      key_event.preventDefault();
+      cancel_pending_text_annotation();
+    }
+  });
+  editor.focus();
+}
+
+function finish_pending_text_annotation() {
+  if (!pending_text_annotation) return;
+
+  const pending = pending_text_annotation;
+  pending.item.text = pending.editor.value;
+  pending.element.textContent = pending.editor.value;
+  pending.editor.remove();
+  pending_text_annotation = null;
+
+  if (!pending.item.text.trim()) {
+    remove_annotation_at(pending.collection, pending.index);
+  }
+  record_change();
+}
+
+function cancel_pending_text_annotation() {
+  if (!pending_text_annotation) return;
+
+  const pending = pending_text_annotation;
+  pending.editor.remove();
+  pending_text_annotation = null;
+  if (pending.is_new) {
+    remove_annotation_at(pending.collection, pending.index);
+  } else {
+    pending.item.text = pending.original_text;
+    pending.element.textContent = pending.original_text;
+  }
+}
+
+function find_annotation_at_point(point) {
+  let nearest_annotation = null;
+  let nearest_distance = annotation_endpoint_tolerance;
+
+  ["lines", "arrows", "texts"].forEach((collection) => {
+    const items = annotations?.[collection];
+    if (!Array.isArray(items)) return;
+
+    items.forEach((item, index) => {
+      const element = document.querySelector(
+        `#svg [data-annotation-collection="${collection}"][data-annotation-index="${index}"]`
+      );
+      if (!element) return;
+
+      const distance = collection === "texts"
+        ? distance_to_text(point, element)
+        : distance_to_segment(point, item);
+      if (distance <= nearest_distance) {
+        nearest_distance = distance;
+        nearest_annotation = { collection, index, element };
+      }
+    });
+  });
+
+  return nearest_annotation;
+}
+
+function distance_to_segment(point, segment) {
+  const delta_x = segment.x2 - segment.x1;
+  const delta_y = segment.y2 - segment.y1;
+  const length_squared = delta_x * delta_x + delta_y * delta_y;
+  const projection = length_squared === 0
+    ? 0
+    : Math.max(0, Math.min(1, ((point.x - segment.x1) * delta_x + (point.y - segment.y1) * delta_y) / length_squared));
+  const nearest_x = segment.x1 + projection * delta_x;
+  const nearest_y = segment.y1 + projection * delta_y;
+  return Math.hypot(point.x - nearest_x, point.y - nearest_y);
+}
+
+function distance_to_text(point, element) {
+  const bounds = element.getBBox();
+  const distance_x = Math.max(bounds.x - point.x, 0, point.x - bounds.x - bounds.width);
+  const distance_y = Math.max(bounds.y - point.y, 0, point.y - bounds.y - bounds.height);
+  return Math.hypot(distance_x, distance_y);
+}
+
+function get_annotation_move_target(point, annotation) {
+  if (annotation.collection === "texts") {
+    return distance_to_text(point, annotation.element) <= annotation_selection_tolerance ? "whole" : null;
+  }
+
+  const item = annotations[annotation.collection][annotation.index];
+  const start_distance = Math.hypot(point.x - item.x1, point.y - item.y1);
+  const end_distance = Math.hypot(point.x - item.x2, point.y - item.y2);
+  if (Math.min(start_distance, end_distance) <= annotation_endpoint_tolerance) {
+    return start_distance <= end_distance ? "start" : "end";
+  }
+  return distance_to_segment(point, item) <= annotation_selection_tolerance ? "whole" : null;
+}
+
+function start_annotation_move(event) {
+  if (current_action_mode !== "annotation-select") return;
+
+  const point = get_svg_point(event.currentTarget, event);
+  if (!point) return;
+  const hit_annotation = find_annotation_at_point(point);
+  if (!hit_annotation) return;
+
+  set_selected_annotation(hit_annotation);
+  const move_target = get_annotation_move_target(point, hit_annotation);
+  if (!move_target) return;
+
+  const item = annotations[hit_annotation.collection][hit_annotation.index];
+  annotation_move_origin = {
+    target: move_target,
+    point,
+    x: item.x,
+    y: item.y,
+    x1: item.x1,
+    y1: item.y1,
+    x2: item.x2,
+    y2: item.y2,
+  };
+  dragging_annotation = true;
+  event.preventDefault();
+  update_line_cursor();
+}
+
+function move_selected_annotation(event) {
+  if (!dragging_annotation || !selected_annotation || !annotation_move_origin) return;
+
+  const point = get_svg_point(event.currentTarget, event);
+  if (!point) return;
+
+  const delta_x = point.x - annotation_move_origin.point.x;
+  const delta_y = point.y - annotation_move_origin.point.y;
+  const item = annotations[selected_annotation.collection][selected_annotation.index];
+  if (selected_annotation.collection === "texts") {
+    item.x = annotation_move_origin.x + delta_x;
+    item.y = annotation_move_origin.y + delta_y;
+    selected_annotation.element.setAttribute("x", item.x);
+    selected_annotation.element.setAttribute("y", item.y);
+  } else if (annotation_move_origin.target === "start") {
+    item.x1 = annotation_move_origin.x1 + delta_x;
+    item.y1 = annotation_move_origin.y1 + delta_y;
+    selected_annotation.element.setAttribute("x1", item.x1);
+    selected_annotation.element.setAttribute("y1", item.y1);
+  } else if (annotation_move_origin.target === "end") {
+    item.x2 = annotation_move_origin.x2 + delta_x;
+    item.y2 = annotation_move_origin.y2 + delta_y;
+    selected_annotation.element.setAttribute("x2", item.x2);
+    selected_annotation.element.setAttribute("y2", item.y2);
+  } else {
+    item.x1 = annotation_move_origin.x1 + delta_x;
+    item.y1 = annotation_move_origin.y1 + delta_y;
+    item.x2 = annotation_move_origin.x2 + delta_x;
+    item.y2 = annotation_move_origin.y2 + delta_y;
+    selected_annotation.element.setAttribute("x1", item.x1);
+    selected_annotation.element.setAttribute("y1", item.y1);
+    selected_annotation.element.setAttribute("x2", item.x2);
+    selected_annotation.element.setAttribute("y2", item.y2);
+  }
+  event.preventDefault();
+}
+
+function finish_annotation_move() {
+  if (!dragging_annotation) return;
+  dragging_annotation = false;
+  annotation_move_origin = null;
+  update_line_cursor();
+  record_change();
+}
+
+function set_selected_annotation(annotation) {
+  if (selected_annotation?.element) {
+    const previous_item = annotations?.[selected_annotation.collection]?.[selected_annotation.index];
+    const previous_color = previous_item?.color || "#000000";
+    if (selected_annotation.collection === "texts") {
+      selected_annotation.element.setAttribute("fill", previous_color);
+    } else {
+      selected_annotation.element.setAttribute("stroke", previous_color);
+      selected_annotation.element.setAttribute("stroke-width", "2");
+    }
+  }
+
+  selected_annotation = annotation;
+  if (selected_annotation?.element) {
+    const item = annotations?.[selected_annotation.collection]?.[selected_annotation.index];
+    const color = item?.color || "#000000";
+    Object.keys(annotation_colors).forEach((collection) => {
+      annotation_colors[collection] = color;
+    });
+    annotation_color_input.value = color;
+    if (selected_annotation.collection === "texts") {
+      selected_annotation.element.setAttribute("fill", "#d34b35");
+    } else {
+      selected_annotation.element.setAttribute("stroke", "#d34b35");
+      selected_annotation.element.setAttribute("stroke-width", "5");
+    }
+  }
+  delete_annotation_elem.disabled = !selected_annotation;
+  update_line_cursor();
+}
+
+function update_annotation_color(annotation, color) {
+  const item = annotations?.[annotation.collection]?.[annotation.index];
+  if (!item) return;
+  item.color = color;
+
+  const is_selected = selected_annotation?.collection === annotation.collection && selected_annotation.index === annotation.index;
+  if (annotation.collection === "texts") {
+    annotation.element.setAttribute("fill", is_selected ? "#d34b35" : color);
+  } else {
+    annotation.element.setAttribute("stroke", is_selected ? "#d34b35" : color);
+    if (annotation.collection === "arrows") {
+      const marker_id = add_annotation_arrow_marker(document.getElementById("svg"), color);
+      annotation.element.setAttribute("marker-end", `url(#${marker_id})`);
+    }
+  }
+}
+
+function clear_selected_annotation() {
+  set_selected_annotation(null);
+}
+
+function delete_selected_annotation() {
+  finish_pending_text_annotation();
+  if (!selected_annotation) return;
+
+  const { collection, index, element } = selected_annotation;
+  element.remove();
+  remove_annotation_at(collection, index);
+  record_change();
+}
+
+function remove_annotation_at(collection, index) {
+  if (!Array.isArray(annotations?.[collection])) return;
+  annotations[collection].splice(index, 1);
+  if (selected_annotation?.collection === collection) {
+    if (selected_annotation.index === index) {
+      clear_selected_annotation();
+    } else if (selected_annotation.index > index) {
+      selected_annotation.index -= 1;
+    }
+  }
+  document
+    .querySelectorAll(`#svg [data-annotation-collection="${collection}"]`)
+    .forEach((annotation_element, remaining_index) => {
+      annotation_element.setAttribute("data-annotation-index", remaining_index);
+    });
+}
+
+function add_annotation_arrow_marker(svg_elem, color = "#000000") {
+  const defs = document.createElementNS(svgns, "defs");
+  const marker = document.createElementNS(svgns, "marker");
+  const color_id = color.toLowerCase().replace(/[^a-z0-9]/g, "") || "000000";
+  const marker_id = `annotation-arrowhead-${color_id}`;
+  const existing_marker = svg_elem.querySelector(`#${marker_id}`);
+  if (existing_marker) return marker_id;
+
+  marker.setAttribute("id", marker_id);
+  marker.setAttribute("markerWidth", "8");
+  marker.setAttribute("markerHeight", "8");
+  marker.setAttribute("markerUnits", "userSpaceOnUse");
+  marker.setAttribute("refX", "8");
+  marker.setAttribute("refY", "4");
+  marker.setAttribute("orient", "auto");
+
+  const arrowhead = document.createElementNS(svgns, "path");
+  arrowhead.setAttribute("d", "M 0 0 L 8 4 L 0 8 z");
+  arrowhead.setAttribute("fill", color);
+  arrowhead.setAttribute("stroke", "none");
+  marker.appendChild(arrowhead);
+  defs.appendChild(marker);
+  svg_elem.appendChild(defs);
+  return marker_id;
 }
 ///////////////////////////////////////////////
 
@@ -635,6 +2612,8 @@ function draw_family_tree(family_tree) {
       draw_person_connectors(person_id);
     }
   }
+
+  draw_childless_partner_lines();
 
   for (const person_id in data["people"]) {
     const person = data["people"][person_id];
@@ -655,42 +2634,54 @@ function draw_proband_arrow() {
   }
 
   let proband = data["people"][proband_id];
+  const adoption_bracket = adoption_notation(proband.adoption).bracket;
+  const bracket_padding = adoption_bracket_padding(config.size);
 
   if (proband.demographics.gender == "Male") {
+    const arrow_x = adoption_bracket
+      ? proband.x + config.size / 2 + bracket_padding + 4
+      : proband.x + config.size / 2 + 3;
+    const arrow_y = adoption_bracket ? proband.y + config.size / 4 : proband.y + 17;
     let arrow_line = draw_line(
-      proband.x + config.size / 2 + 3,
-      proband.y + 17,
-      proband.x + config.size / 2 + 32,
-      proband.y + 32
+      arrow_x,
+      arrow_y,
+      arrow_x + 29,
+      arrow_y + 15
     );
     arrow_line.setAttributeNS(null, "id", proband_id);
     arrow_line.setAttributeNS(null, "stroke-width", "2");
     let arrow_triange = draw_triangle(
-      proband.x + config.size / 2 + 3,
-      proband.y + 17,
-      proband.x + config.size / 2 + 21,
-      proband.y + 18,
-      proband.x + config.size / 2 + 14,
-      proband.y + 30
+      arrow_x,
+      arrow_y,
+      arrow_x + 18,
+      arrow_y + 1,
+      arrow_x + 11,
+      arrow_y + 13
     );
     arrow_triange.setAttributeNS(null, "id", proband_id);
     arrow_triange.setAttributeNS(null, "is_decoration", "true");
   } else {
+    const arrow_x = adoption_bracket
+      ? proband.x - config.size / 2 - bracket_padding - 4
+      : proband.x - (config.size / 2) * 0.7071 - 7;
+    const arrow_y = adoption_bracket
+      ? proband.y + config.size / 4
+      : proband.y + (config.size / 2) * 0.7071 - 5;
     let arrow_line = draw_line(
-      proband.x - (config.size / 2) * 0.7071 - 7,
-      proband.y + (config.size / 2) * 0.7071 - 5,
-      proband.x - (config.size / 2) * 0.7071 - 37,
-      proband.y + (config.size / 2) * 0.7071 + 15
+      arrow_x,
+      arrow_y,
+      arrow_x - 30,
+      arrow_y + 20
     );
     arrow_line.setAttributeNS(null, "id", proband_id);
     arrow_line.setAttributeNS(null, "stroke-width", "2");
     let arrow_triange = draw_triangle(
-      proband.x - (config.size / 2) * 0.7071 - 7,
-      proband.y + (config.size / 2) * 0.7071 - 5,
-      proband.x - (config.size / 2) * 0.7071 - 24,
-      proband.y + ((config.size / 2) * 0.7071 - 3),
-      proband.x - (config.size / 2) * 0.7071 - 16,
-      proband.y + (config.size / 2) * 0.7071 + 10
+      arrow_x,
+      arrow_y,
+      arrow_x - 17,
+      arrow_y + 2,
+      arrow_x - 9,
+      arrow_y + (adoption_bracket ? 13 : 15)
     );
 
     arrow_triange.setAttributeNS(null, "id", proband_id);
@@ -721,6 +2712,50 @@ function draw_person(person_id) {
   if (deceased_state.isDeceased) {
     draw_slash(person_id);
   }
+
+  draw_adoption_notation(person_id);
+}
+
+function draw_adoption_notation(person_id) {
+  const person = data.people[person_id];
+  const notation = adoption_notation(person?.adoption);
+  if (!notation.bracket && !notation.question) return;
+
+  const center = get_center(person);
+  if (notation.bracket) {
+    for (const segment of adoption_bracket_segments(center, config.size)) {
+      const bracket = draw_line(...segment);
+      bracket.setAttribute("id", person_id);
+      bracket.setAttribute("stroke-width", "1.5");
+      bracket.setAttribute("pointer-events", "none");
+      bracket.setAttribute("data-adoption-decoration", "bracket");
+    }
+  }
+
+  if (!notation.question) return;
+  const stub = [...document.querySelectorAll("[stub_id]")]
+    .find((element) => element.getAttribute("stub_id") === person_id);
+  const connector = stub && Object.fromEntries(
+    ["x1", "y1", "x2", "y2"].map((key) => [key, Number(stub.getAttribute(key))])
+  );
+  const question_position = adoption_question_position(
+    center, config.size, notation.bracket, connector
+  );
+  draw_adoption_question(person_id, question_position);
+}
+
+function draw_adoption_question(person_id, position) {
+  const question = draw_label("?", position.x, position.y);
+  question.setAttribute("id", person_id);
+  question.setAttribute("font-size", Math.max(10, Math.min(14, config.size * 0.28)));
+  question.setAttribute("font-weight", "bold");
+  question.setAttribute("dominant-baseline", "central");
+  question.setAttribute("paint-order", "stroke");
+  question.setAttribute("stroke", "white");
+  question.setAttribute("stroke-width", "3");
+  question.setAttribute("pointer-events", "none");
+  question.setAttribute("data-adoption-decoration", "question");
+  question.setAttribute("data-adoption-question-for", person_id);
 }
 
 function draw_person_connectors(person_id) {
@@ -730,23 +2765,54 @@ function draw_person_connectors(person_id) {
   if (person) draw_connector(person_id, person.mother, person.father);
 }
 
+// Couples with children get their line from draw_connector; this covers couples known only from `partners`.
+function draw_childless_partner_lines() {
+  const people = data["people"];
+  const has_child = new Set();
+  for (const id in people) {
+    if (people[id].mother && people[id].father) {
+      has_child.add(people[id].mother + "|" + people[id].father);
+      has_child.add(people[id].father + "|" + people[id].mother);
+    }
+  }
+  const drawn = new Set();
+  for (const id in people) {
+    const person = people[id];
+    if (person.gen == null || person.loc == null) continue;
+    for (const partner of person.partners || []) {
+      const spouse = people[partner?.spouse_id];
+      if (!spouse || spouse.gen == null || spouse.loc == null) continue;
+      const key = [id, partner.spouse_id].sort().join("|");
+      if (drawn.has(key) || has_child.has(id + "|" + partner.spouse_id)) continue;
+      drawn.add(key);
+      const female_first = person.demographics?.gender == "Female";
+      const [mother_id, father_id] = female_first ? [id, partner.spouse_id] : [partner.spouse_id, id];
+      draw_line_between_parents(get_center(people[mother_id]), get_center(people[father_id]), mother_id, father_id);
+    }
+  }
+}
+
 function get_center(person) {
   let center = {};
 
-  if (annotations) {
-    if (annotations["positions"][person.id]) {
-      const saved_position = annotations["positions"][person.id];
-      center.x = saved_position.x;
-      center.y = saved_position.y;
-    } else {
-      center.x =
-        center_offset.x + config.margin + person.loc * config.h_spacing;
-      center.y =
-        center_offset.y + config.margin + person.gen * config.v_spacing;
-    }
+  const saved_position = annotations?.positions?.[person.id];
+  if (
+    Number.isFinite(saved_position?.x) &&
+    Number.isFinite(saved_position?.y)
+  ) {
+    center.x = saved_position.x;
+    center.y = saved_position.y;
   } else {
-    center.x = center_offset.x + config.margin + person.loc * config.h_spacing;
-    center.y = center_offset.y + config.margin + person.gen * config.v_spacing;
+    center.x =
+      center_offset.x +
+      config.margin +
+      person.loc * config.h_spacing +
+      (automatic_x_offsets.get(person.id) || 0);
+    center.y =
+      center_offset.y +
+      config.margin +
+      person.gen * config.v_spacing +
+      (automatic_y_offsets.get(person.id) || 0);
   }
 
   return center;
@@ -793,10 +2859,10 @@ function set_study_summary() {
   const tbody = document.createElement("tbody");
 
   if (config.quadrants && Object.keys(config.quadrants).length > 0) {
-    add_quadrant_row_to_table(tbody, "Top Right", config.quadrants?.top_right);
-    add_quadrant_row_to_table(tbody, "Bottom Right", config.quadrants?.bottom_right);
-    add_quadrant_row_to_table(tbody, "Bottom Left", config.quadrants?.bottom_left);
-    add_quadrant_row_to_table(tbody, "Top Left", config.quadrants?.top_left);
+    add_quadrant_row_to_table(tbody, "Top Right", "top_right", config.quadrants?.top_right);
+    add_quadrant_row_to_table(tbody, "Top Left", "top_left", config.quadrants?.top_left);
+    add_quadrant_row_to_table(tbody, "Bottom Left", "bottom_left", config.quadrants?.bottom_left);
+    add_quadrant_row_to_table(tbody, "Bottom Right", "bottom_right", config.quadrants?.bottom_right);
   } else {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
@@ -1130,7 +3196,7 @@ async function edit_diagnosis_of_person(person_id, diagnosis_index) {
   const updated_diagnosis = await show_edit_diagnosis_dialog(existing_diagnosis);
   if (!updated_diagnosis) return;
 
-  person.diseases[diagnosis_index] = updated_diagnosis;
+  person.diseases[diagnosis_index] = { ...existing_diagnosis, ...updated_diagnosis };
 
   set_diagnoses_of_person(person_id);
   set_raw_data_of_person(person_id);
@@ -1310,7 +3376,7 @@ async function edit_procedure_of_person(person_id, procedure_index) {
   const updated_procedure = await show_edit_procedure_dialog(existing_procedure);
   if (!updated_procedure) return;
 
-  person.procedures[procedure_index] = updated_procedure;
+  person.procedures[procedure_index] = { ...existing_procedure, ...updated_procedure };
 
   set_procedures_of_person(person_id);
   set_raw_data_of_person(person_id);
@@ -1327,6 +3393,7 @@ function remove_procedure_from_person(person_id, procedure_index) {
   if (!confirmation) return;
 
   person.procedures.splice(procedure_index, 1);
+  remove_procedure_quadrant_flags(person, procedure);
 
   set_procedures_of_person(person_id);
   set_raw_data_of_person(person_id);
@@ -1973,7 +4040,7 @@ function add_row_to_table(tbody, label, value) {
   tbody.appendChild(row);
 }
 
-function add_quadrant_row_to_table(tbody, label, quadrant_config) {
+function add_quadrant_row_to_table(tbody, label, quadrant_key, quadrant_config) {
   const name = quadrant_config?.name;
   if (!name) return;
 
@@ -1987,8 +4054,24 @@ function add_quadrant_row_to_table(tbody, label, quadrant_config) {
   value_content.style.alignItems = "center";
   value_content.style.gap = "6px";
 
-  const swatch = create_color_swatch_container([quadrant_config.color]);
-  if (swatch) value_content.appendChild(swatch);
+  const color_picker = document.createElement("input");
+  color_picker.type = "color";
+  color_picker.className = "annotation-color-swatch quadrant-color-picker";
+  color_picker.value = normalize_color_for_picker(quadrant_config.color);
+  color_picker.title = `Change ${name} color`;
+  color_picker.setAttribute("aria-label", `Color for ${name}`);
+  color_picker.addEventListener("change", () => {
+    quadrant_config.color = color_picker.value;
+    annotations = annotations || {};
+    annotations.quadrant_colors = {
+      ...(annotations.quadrant_colors || {}),
+      [quadrant_key]: color_picker.value,
+    };
+    display_pedigree();
+    set_study_summary();
+    record_change();
+  });
+  value_content.appendChild(color_picker);
 
   const name_span = document.createElement("span");
   name_span.textContent = name;
@@ -2000,19 +4083,24 @@ function add_quadrant_row_to_table(tbody, label, quadrant_config) {
   tbody.appendChild(row);
 }
 
+function normalize_color_for_picker(color) {
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  if (!context) return "#000000";
+  context.fillStyle = "#000000";
+  context.fillStyle = color || "#000000";
+  const normalized = context.fillStyle;
+  if (/^#[0-9a-f]{6}$/i.test(normalized)) return normalized;
+  const components = normalized.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+  if (!components) return "#000000";
+  return `#${components.slice(1, 4).map((value) => Number(value).toString(16).padStart(2, "0")).join("")}`;
+}
+
 function format_last_updated(raw_value) {
   if (!raw_value) return null;
   const parsed_date = new Date(raw_value);
   if (isNaN(parsed_date)) return raw_value;
   return parsed_date.toLocaleDateString();
-}
-
-function get_standardized_diagnosis_label(diagnosis) {
-  return diagnosis.abbr || null;
-}
-
-function get_diagnosis_display_name(diagnosis) {
-  return get_standardized_diagnosis_label(diagnosis) || "NOTITLE";
 }
 
 function create_color_swatch_container(colors) {
@@ -2038,6 +4126,25 @@ function create_color_swatch_container(colors) {
   });
 
   return swatch_container;
+}
+
+function create_clinical_heading(label, matching_quadrants) {
+  const title = document.createElement("span");
+  title.style.display = "inline-flex";
+  title.style.alignItems = "center";
+  title.style.gap = "6px";
+
+  const swatches = create_color_swatch_container(
+    matching_quadrants.map((quadrant) => quadrant.color)
+  );
+  if (swatches) title.appendChild(swatches);
+
+  const names = matching_quadrants.map((quadrant) => quadrant.name);
+  const suffix = names.length > 0 ? " (" + names.join(", ") + ")" : "";
+  const text = document.createElement("span");
+  text.textContent = label + suffix;
+  title.appendChild(text);
+  return title;
 }
 
 function set_diagnoses_of_person(person_id) {
@@ -2076,18 +4183,12 @@ function set_diagnoses_of_person(person_id) {
       const topography = disease.topography;
       const morphology = disease.morphology;
       const cancer_identifier = [topography, morphology].filter(Boolean).join(":");
-      const coding_identifier = disease.coding;
       const is_cancer_diagnosis = Boolean(cancer_identifier)
         || (disease.d_num && String(disease.d_num).startsWith("C"))
         || (code && code[0] === "C");
-      const diagnosis_identifier = is_cancer_diagnosis ? (cancer_identifier || code) : code;
-      const matching_quadrants = get_matching_quadrants_for_disease(disease, person_id);
-      const matching_quadrant_names = matching_quadrants.map((quadrant) => quadrant.name);
-      const matching_quadrant_colors = matching_quadrants.map((quadrant) => quadrant.color).filter(Boolean);
-      const quadrant_suffix = matching_quadrant_names.length > 0
-        ? " (" + matching_quadrant_names.join(", ") + ")"
-        : "";
-      const header_text = (disease.abbr || diagnosis_identifier) + quadrant_suffix;
+      const matching_quadrants = get_matching_quadrants(
+        get_quadrant_abbreviations(disease), config?.quadrants
+      );
 
      
       const table = document.createElement("table");
@@ -2101,20 +4202,9 @@ function set_diagnoses_of_person(person_id) {
       const header_content = document.createElement("div");
       header_content.classList.add("section-header-content");
 
-      const header_title = document.createElement("span");
-      header_title.style.display = "inline-flex";
-      header_title.style.alignItems = "center";
-      header_title.style.gap = "6px";
-
-      const swatches = create_color_swatch_container(matching_quadrant_colors);
-      if (swatches) {
-        header_title.appendChild(swatches);
-      }
-
-      const header_label = document.createElement("span");
-      header_label.textContent = header_text;
-      header_title.appendChild(header_label);
-      header_content.appendChild(header_title);
+      header_content.appendChild(create_clinical_heading(
+        get_diagnosis_display_name(disease, is_cancer_diagnosis), matching_quadrants
+      ));
 
       if (is_pedigree_build_mode()) {
         const header_actions = document.createElement("div");
@@ -2148,12 +4238,12 @@ function set_diagnoses_of_person(person_id) {
       thead.appendChild(headerRow);
       table.appendChild(thead);
       const tbody = document.createElement("tbody");
+      for (const [label, value] of get_diagnosis_code_rows(disease, is_cancer_diagnosis)) {
+        add_row_to_table(tbody, label, value);
+      }
       if (is_cancer_diagnosis) {
-        add_row_to_table(tbody, "Coding", coding_identifier);
         add_row_to_table(tbody, "Topography", topography);
         add_row_to_table(tbody, "Morphology", morphology);
-      } else {
-        add_row_to_table(tbody, "Code", code);
       }
       add_row_to_table(tbody, "Age of Diagnosis", disease.age_of_diagnosis);
       add_row_to_table(tbody, "Date of Diagnosis", disease.date_of_diagnosis);
@@ -2210,9 +4300,12 @@ function set_procedures_of_person(person_id) {
       const header_content = document.createElement("div");
       header_content.classList.add("section-header-content");
 
-      const header_label = document.createElement("span");
-      header_label.textContent = procedure.abbr || procedure.description || code;
-      header_content.appendChild(header_label);
+      const matching_quadrants = get_matching_quadrants(
+        get_procedure_quadrant_abbreviations(procedure), config?.quadrants
+      );
+      header_content.appendChild(create_clinical_heading(
+        get_procedure_display_name(procedure), matching_quadrants
+      ));
 
       if (is_pedigree_build_mode()) {
         const header_actions = document.createElement("div");
@@ -2280,19 +4373,36 @@ function set_details_of_person(person_id) {
 }
 
 function add_clicking_to_element(el, person_id) {
+  let suppress_next_context_menu = false;
+
   el.addEventListener("mousedown", (e) => {
-    const selectedValue = current_action_mode;
+    let selectedValue = current_action_mode;
+    suppress_next_context_menu = false;
+    const is_annotation_mode = selectedValue.startsWith("annotation-");
+    const has_modifier = e.shiftKey || e.ctrlKey;
+    if (is_annotation_mode || (selectedValue === "details" && has_modifier)) {
+      suppress_next_context_menu = e.ctrlKey;
+      selectedValue = e.ctrlKey ? "free" : e.shiftKey ? "slide" : "details";
+      e.stopPropagation();
+      if (has_modifier) e.preventDefault();
+      if (is_annotation_mode) clear_pending_line();
+    }
 
     if (selectedValue == "details") {
-      // Log the person data to the console
       set_study_summary();
       set_details_of_person(person_id);
 
     } else if (selectedValue == "free") {
-      start_free_move(e);
+      start_free_move(e, el);
     } else if (selectedValue == "slide") {
-      start_slide_move(e);
+      start_slide_move(e, el);
     }
+  });
+
+  el.addEventListener("contextmenu", (e) => {
+    if (!suppress_next_context_menu) return;
+    e.preventDefault();
+    suppress_next_context_menu = false;
   });
 }
 
@@ -2480,24 +4590,45 @@ function draw_connector(person_id, mother_id, father_id) {
     }
 
 
-    draw_line_top_of_child(child_loc, person_id);
+    const child_ys = Object.values(data["people"])
+      .filter((p) => p.mother == mother_id && p.father == father_id && p.gen != null && p.loc != null)
+      .map((p) => get_center(p).y);
+    const bar_y = sibship_bar_y((mother_loc.y + father_loc.y) / 2, child_ys);
+    const group = multiple_birth_by_person.get(person_id);
+    const group_people = group && Object.fromEntries(
+      group.members.map((id) => [id, get_center(data["people"][id])])
+    );
+    const geometry = group && multiple_birth_geometry(group, group_people, config.size, bar_y);
+
+    draw_line_top_of_child(child_loc, person_id, bar_y, geometry?.junction);
     draw_line_between_parents(mother_loc, father_loc, mother_id, father_id);
     draw_line_connecting_parents_down(
       mother_loc,
       father_loc,
       mother_id,
-      father_id
+      father_id,
+      bar_y
     );
+    if (geometry && group.members[0] === person_id) draw_multiple_birth_markers(group, geometry);
     draw_line_child_to_parents(
       child_loc,
       mother_loc,
       father_loc,
       person_id,
       mother_id,
-      father_id
+      father_id,
+      bar_y,
+      geometry?.anchor[0]
     );
     //    console.log(person_id + ":" + mother_id + "," +    father_id);
   }
+}
+
+// Half a row below the parents, but raised to stay above any child dragged higher than that.
+export function sibship_bar_y(parents_y, child_ys) {
+  let bar_y = parents_y + config.v_spacing / 2;
+  for (const y of child_ys) bar_y = Math.min(bar_y, y - config.size);
+  return Math.max(bar_y, parents_y + config.size / 4);
 }
 
 function draw_line_child_to_parents(
@@ -2506,14 +4637,16 @@ function draw_line_child_to_parents(
   father_loc,
   person_id,
   mother_id,
-  father_id
+  father_id,
+  bar_y,
+  group_x
 ) {
   //  const x1 = mother_loc.x + config.h_spacing;
   const x1 = (mother_loc.x + father_loc.x) / 2;
-  const y1 = (mother_loc.y + father_loc.y) / 2 + config.v_spacing / 2;
+  const y1 = bar_y;
 
-  const x2 = child_loc.x;
-  const y2 = child_loc.y - config.v_spacing / 2;
+  const x2 = group_x ?? child_loc.x;
+  const y2 = y1;
 
   let elem = draw_line(x1, y1, x2, y2);
   elem.setAttributeNS(null, "stroke-width", "2");
@@ -2522,16 +4655,35 @@ function draw_line_child_to_parents(
   elem.setAttributeNS(null, "c_father_id", father_id);
 }
 
-function draw_line_top_of_child(child_loc, person_id) {
-  //  let elem = draw_line(child_loc.x, child_loc.y - config.size/2, child_loc.x, child_loc.y - config.size - config.v_spacing/2);
-  let elem = draw_line(
-    child_loc.x,
-    child_loc.y,
-    child_loc.x,
-    child_loc.y - config.v_spacing / 2
-  );
+// Vertical line from the child up (or down) to its parents' horizontal sibship line at bar_y.
+function draw_line_top_of_child(child_loc, person_id, bar_y, junction) {
+  let elem = draw_line(child_loc.x, child_loc.y, junction?.[0] ?? child_loc.x, junction?.[1] ?? bar_y);
   elem.setAttributeNS(null, "id", person_id);
+  elem.setAttributeNS(null, "stub_id", person_id);
   elem.setAttributeNS(null, "stroke-width", "2");
+  if (adoption_notation(data.people[person_id]?.adoption).connector === "dotted") {
+    elem.setAttribute("stroke-dasharray", "4 3");
+  }
+}
+
+function draw_multiple_birth_markers(group, geometry) {
+  const mark = (elem, part) => {
+    elem.setAttribute("data-multiple-birth-group", group.key);
+    elem.setAttribute("data-multiple-birth-part", part);
+    elem.setAttribute("data-multiple-birth-type", group.kind);
+  };
+  const stem = draw_line(...geometry.anchor, ...geometry.junction);
+  stem.setAttribute("stroke-width", "2");
+  mark(stem, "stem");
+  if (group.kind === "identical") {
+    const crossbar = draw_line(...geometry.crossbar[0], ...geometry.crossbar[1]);
+    crossbar.setAttribute("stroke-width", "2");
+    mark(crossbar, "crossbar");
+  } else if (group.kind === "unknown") {
+    const question = draw_label("?", ...geometry.question);
+    question.setAttribute("font-size", Math.max(12, config.size * 0.4));
+    mark(question, "question");
+  }
 }
 
 function draw_line_between_parents(
@@ -2550,21 +4702,28 @@ function draw_line_connecting_parents_down(
   mother_loc,
   father_loc,
   mother_id,
-  father_id
+  father_id,
+  bar_y
 ) {
   const x = (mother_loc.x + father_loc.x) / 2;
   //  const x = mother_loc.x + config.h_spacing;
   const y1 = (mother_loc.y + father_loc.y) / 2;
-  const y2 = y1 + config.v_spacing / 2;
+  const y2 = bar_y;
   let elem = draw_line(x, y1, x, y2);
   elem.setAttributeNS(null, "stroke-width", "2");
   elem.setAttributeNS(null, "p_mother_id", mother_id);
   elem.setAttributeNS(null, "p_father_id", father_id);
 }
 
+// Baseline of the first label line under a person's symbol.
+function label_top(center, person_id) {
+  const bracket_spacing = adoption_notation(data.people[person_id]?.adoption).bracket ? 4 : 0;
+  return center.y + config.size / 2 + config.v_padding / 2 + bracket_spacing;
+}
+
 function draw_name(center, person_id) {
   const loc_x = center.x;
-  const loc_y = center.y + config.size / 2 + config.v_padding;
+  const loc_y = label_top(center, person_id);
 
   //  if (data["people"][person_id] && data["people"][person_id].name) {
   //    text = data["people"][person_id].name;
@@ -2596,7 +4755,7 @@ function draw_born_and_deceased(center, person_id) {
 
   if (born_deceased) {
     const loc_x = center.x;
-    const loc_y = center.y + config.size / 2 + 2 * config.v_padding;
+    const loc_y = label_top(center, person_id) + config.v_padding;
     const elem = draw_label(born_deceased, loc_x , loc_y );
     if (born_deceased.length > 15) {
       elem.setAttribute("font-size", 10);
@@ -2618,7 +4777,7 @@ function draw_highlighted_diseases(center, person_id) {
   if (matches.length === 0) return;
 
   const loc_x = center.x;
-  const loc_y = center.y + config.size / 2 + 2 * config.v_padding + 14;
+  const loc_y = label_top(center, person_id) + config.v_padding + 14;
   const elem = draw_label(matches.join(", "), loc_x, loc_y);
   elem.setAttribute("id", person_id);
 }
@@ -2782,6 +4941,14 @@ function draw_line(x1, y1, x2, y2) {
   return lineElem;
 }
 
+function draw_arrow(x1, y1, x2, y2, color = "#000000") {
+  const arrow_elem = draw_line(x1, y1, x2, y2);
+  arrow_elem.setAttribute("stroke", color);
+  const marker_id = add_annotation_arrow_marker(document.getElementById("svg"), color);
+  arrow_elem.setAttribute("marker-end", `url(#${marker_id})`);
+  return arrow_elem;
+}
+
 /////. Helper functions /////
 
 export function set_other_alert(person_id, message) {
@@ -2791,75 +4958,35 @@ export function set_other_alert(person_id, message) {
 ///
 // Quadrants
 
-// person.quad_flags and disease.quad_abbrs (formerly quad_abbr) are indexed [top_right, bottom_right, bottom_left, top_left].
-function check_quadrant_tr(person_id) {
-  return !!data["people"][person_id]?.quad_flags?.[0];
-}
-
-function check_quadrant_br(person_id) {
-  return !!data["people"][person_id]?.quad_flags?.[1];
-}
-
-function check_quadrant_bl(person_id) {
-  return !!data["people"][person_id]?.quad_flags?.[2];
-}
-
-function check_quadrant_tl(person_id) {
-  return !!data["people"][person_id]?.quad_flags?.[3];
-}
-
-function get_matching_quadrants_for_disease(disease) {
-  const quadrants = config?.quadrants;
-  const quad_abbrs = disease?.quad_abbrs || disease?.quad_abbr;
-  if (!quadrants || !Array.isArray(quad_abbrs)) return [];
-
-  const ordered_quadrants = [
-    quadrants.top_right,
-    quadrants.bottom_right,
-    quadrants.bottom_left,
-    quadrants.top_left,
-  ];
-
-  const matches = [];
-  ordered_quadrants.forEach((quadrant, index) => {
-    if (!quadrant?.name) return;
-    if (quad_abbrs[index]) {
-      matches.push({ name: quadrant.name, color: quadrant.color || "" });
-    }
-  });
-
-  return matches;
-}
-
 function draw_quadrants_male(person_id) {
 
   const size = config.size / 2;
   const center_x = data["people"][person_id].x;
   const center_y = data["people"][person_id].y;
-  let code = false;
+  const flags = get_person_quadrant_flags(data["people"][person_id]);
 
-  if (code = check_quadrant_tr(person_id)) {
+  if (flags[0]) {
     const el = draw_square(size, center_x, center_y - size, config.quadrants?.top_right?.color || "grey");
     el.setAttributeNS(null, "id", person_id);
     el.setAttributeNS(null, "pointer-events", "none");
     el.setAttributeNS(null, "stroke-width", "2");
     el.setAttributeNS(null, "is_decoration", "true");
   }
-  if (code = check_quadrant_tl(person_id)) {
+  if (flags[1]) {
     const el = draw_square(size, center_x - size, center_y -size, config.quadrants?.top_left?.color || "grey");
     el.setAttributeNS(null, "id", person_id);
     el.setAttributeNS(null, "pointer-events", "none");
     el.setAttributeNS(null, "stroke-width", "2");
     el.setAttributeNS(null, "is_decoration", "true");
   }
-  if (code = check_quadrant_br(person_id)) {
+  if (flags[3]) {
     const el = draw_square(size, center_x, center_y, config.quadrants?.bottom_right?.color || "grey");
     el.setAttributeNS(null, "id", person_id);
     el.setAttributeNS(null, "pointer-events", "none");
     el.setAttributeNS(null, "stroke-width", "2");
     el.setAttributeNS(null, "is_decoration", "true");
   }
-  if (code = check_quadrant_bl(person_id)) {
+  if (flags[2]) {
     const el = draw_square(size, center_x - size, center_y, config.quadrants?.bottom_left?.color || "grey");
     el.setAttributeNS(null, "id", person_id);
     el.setAttributeNS(null, "pointer-events", "none");
@@ -2873,13 +5000,12 @@ function draw_quadrants_female(person_id) {
   const size = config.size / 2;
   const center_x = data["people"][person_id].x;
   const center_y = data["people"][person_id].y;
-  let color = "grey";
-  let code = false;
+  const flags = get_person_quadrant_flags(data["people"][person_id]);
 
-  if (code = check_quadrant_tr(person_id)) { el = draw_arc_90(person_id, center_x, center_y, size, "tr", config.quadrants?.top_right?.color || "grey"); }
-  if (code = check_quadrant_tl(person_id)) { el = draw_arc_90(person_id, center_x, center_y, size, "tl", config.quadrants?.top_left?.color || "grey"); }
-  if (code = check_quadrant_bl(person_id)) { el = draw_arc_90(person_id, center_x, center_y, size, "bl", config.quadrants?.bottom_left?.color || "grey"); }
-  if (code = check_quadrant_br(person_id)) { el = draw_arc_90(person_id, center_x, center_y, size, "br", config.quadrants?.bottom_right?.color || "grey"); }
+  if (flags[0]) { el = draw_arc_90(person_id, center_x, center_y, size, "tr", config.quadrants?.top_right?.color || "grey"); }
+  if (flags[1]) { el = draw_arc_90(person_id, center_x, center_y, size, "tl", config.quadrants?.top_left?.color || "grey"); }
+  if (flags[2]) { el = draw_arc_90(person_id, center_x, center_y, size, "bl", config.quadrants?.bottom_left?.color || "grey"); }
+  if (flags[3]) { el = draw_arc_90(person_id, center_x, center_y, size, "br", config.quadrants?.bottom_right?.color || "grey"); }
   if (el) {
 
   }

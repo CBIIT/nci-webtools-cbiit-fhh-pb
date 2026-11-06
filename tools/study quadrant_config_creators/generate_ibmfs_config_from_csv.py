@@ -45,7 +45,7 @@ QUADRANT_TO_POSITION = {
     "TOP_LEFT": "top_left",
 }
 
-QUADRANT_ORDER = ["top_right", "bottom_right", "bottom_left", "top_left"]
+QUADRANT_ORDER = ["top_right", "top_left", "bottom_left", "bottom_right"]
 
 BASE_CONFIG = OrderedDict([
     ("api", {"baseUrl": "/api"}),

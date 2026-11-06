@@ -25,13 +25,30 @@
   <DIV class="grid-container">
     <DIV class='navbar grid-item'>
       <div class='debug-block'>
-        Special Actions:<br/>
-        <BUTTON id='log-button'>LOG</BUTTON>
-        <BUTTON id='clear-alert-button'>Clear Alerts</BUTTON>
-        <br/><button id="save-family-button" style="display:none;"> Save Family </button>
-        <button id="save-button"> Save Locations </button>
-        <button id="save-svg-button"> Save to SVG </button>
-
+        <div class="special-actions-buttons">
+          <button id="save-button" type="button" disabled>Save</button>
+          <button id="save-svg-button" type="button" disabled>Export</button>
+          <select id="pdf-layout-select" aria-label="PDF page layout" title="Export PDF" disabled>
+            <option value="" selected>PDF</option>
+            <option value="one-page">Fit to one page</option>
+            <option value="multiple-pages">Multiple pages</option>
+          </select>
+          <button id="reset-layout-button" type="button" title="Discard hand-placed positions and re-run the automatic layout" disabled>Reset</button>
+        </div>
+        <div class="spacing-controls" role="group" aria-label="Pedigree spacing">
+          <div class="spacing-stepper" role="group" aria-label="Horizontal spacing">
+            <span class="spacing-axis-label">H</span>
+            <button id="horizontal-spacing-decrease" type="button" aria-label="Decrease horizontal spacing" title="Decrease horizontal spacing by 20">&minus;</button>
+            <output id="horizontal-spacing-value">120px</output>
+            <button id="horizontal-spacing-increase" type="button" aria-label="Increase horizontal spacing" title="Increase horizontal spacing by 20">+</button>
+          </div>
+          <div class="spacing-stepper" role="group" aria-label="Vertical spacing">
+            <span class="spacing-axis-label">V</span>
+            <button id="vertical-spacing-decrease" type="button" aria-label="Decrease vertical spacing" title="Decrease vertical spacing by 20">&minus;</button>
+            <output id="vertical-spacing-value">200px</output>
+            <button id="vertical-spacing-increase" type="button" aria-label="Increase vertical spacing" title="Increase vertical spacing by 20">+</button>
+          </div>
+        </div>
       </div>
       <div class="file-block">
         <div id="selection-loading-overlay" class="selection-loading-overlay" aria-hidden="true" style="display:none;">
@@ -51,20 +68,81 @@
         <div id="build-mode-actions" class="build-mode-actions" style="display:none;">
           <button id="new-study-button" type="button">New Study</button>
           <button id="new-family-button" type="button">New Family</button>
+          <button id="save-family-button" type="button" style="display:none;">Save Family</button>
         </div>
       </div>
-      <div class="radio-block"> Action Mode: <br />
-        <input type="radio" id="details" name="action_choice" value="details" checked="checked">
-        <label for="details">Details</label>
+      <div class="view-block">
+        <div class="view-column">
+          <button id="undo-button" type="button" title="Undo (Cmd/Ctrl+Z)" aria-label="Undo" disabled>&#8630; Undo</button>
+          <button id="redo-button" type="button" title="Redo (Cmd/Ctrl+Shift+Z)" aria-label="Redo" disabled>&#8631; Redo</button>
+        </div>
+        <div class="view-column">
+          <div class="zoom-controls">
+            <button id="zoom-out-button" type="button" title="Zoom out (Cmd/Ctrl+-)" aria-label="Zoom out">&minus;</button>
+            <button id="zoom-level-button" type="button" title="Reset zoom to 100%" aria-label="Reset zoom">100%</button>
+            <button id="zoom-in-button" type="button" title="Zoom in (Cmd/Ctrl+=)" aria-label="Zoom in">+</button>
+          </div>
+          <div class="zoom-controls">
+            <button id="zoom-fit-button" type="button" title="Fit the family on screen (Cmd/Ctrl+0)">Fit</button>
+            <button id="find-button" type="button" title="Find a person (Cmd/Ctrl+F)">Find</button>
+          </div>
+        </div>
+      </div>
+      <dialog id="find-dialog" class="find-dialog" aria-label="Find a person">
+        <form method="dialog" class="find-dialog-form">
+          <label for="find-input">Find a person</label>
+          <input id="find-input" type="search" list="find-list" placeholder="ID or name" autocomplete="off">
+          <datalist id="find-list"></datalist>
+          <div class="find-dialog-buttons">
+            <button id="find-go-button" type="button">Go</button>
+            <button id="find-proband-button" type="button">Proband</button>
+            <button value="cancel">Close</button>
+          </div>
+        </form>
+      </dialog>
+      <div class="radio-block">
+        <div class="mode-group mode-group-actions">
+          <div class="mode-group-heading">Action Mode</div>
+          <div class="mode-options">
+            <input type="radio" id="details" name="action_choice" value="details" checked="checked">
+            <label for="details">Details</label>
 
-        <input type="radio" id="slide" name="action_choice" value="slide">
-        <label for="slide">Slide</label>
+            <input type="radio" id="slide" name="action_choice" value="slide">
+            <label for="slide" title="You can just hold down the shift key to slide">Slide</label>
 
-        <input type="radio" id="free" name="action_choice" value="free">
-        <label for="free">Free</label>
+            <input type="radio" id="free" name="action_choice" value="free">
+            <label for="free" title="You can hold down the control key for free movement">Free</label>
+          </div>
+        </div>
+        <div class="mode-group mode-group-annotations">
+          <div class="mode-group-heading">Annotations</div>
+          <div class="annotation-tools">
+            <input type="color" id="annotation-color" class="annotation-color-swatch" value="#000000" aria-label="Annotation color" title="Annotation color">
+            <div class="mode-options annotation-mode-options">
+            <div class="annotation-tool">
+              <input type="radio" id="annotation-line" name="action_choice" value="annotation-line">
+              <label for="annotation-line">Line</label>
+            </div>
+            <div class="annotation-tool">
+              <input type="radio" id="annotation-arrow" name="action_choice" value="annotation-arrow">
+              <label for="annotation-arrow">Arrow</label>
+            </div>
+            <div class="annotation-tool">
+              <input type="radio" id="annotation-text" name="action_choice" value="annotation-text">
+              <label for="annotation-text">Text</label>
+            </div>
+            <div class="annotation-tool">
+              <input type="radio" id="annotation-select" name="action_choice" value="annotation-select">
+              <label for="annotation-select">Select</label>
+            </div>
+            </div>
+            <button id="delete-annotation-button" class="annotation-delete-button" type="button" disabled>Delete</button>
+          </div>
+        </div>
       </DIV>
-    </DIV>
-    <DIV class='alertbar grid-item' id='alert'>
+      <div class="alertbar" id="alert">
+        <button id="clear-alert-button" class="alert-clear-button" type="button" aria-label="Clear alerts" title="Clear alerts">&times;</button>
+      </div>
     </DIV>
     <DIV class="textblock grid-item" id="details_textbox">  
         <div id="study_text" class="study-display-section"> <button> Close </button> </div>

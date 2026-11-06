@@ -14,6 +14,58 @@ python web.py
 
 This serves the application with local API routes for development and testing.
 
+## Quadrant assignments
+
+The four positions of `quad_abbrs` represent top right, top left, bottom left,
+and bottom right. Both diagnoses and procedures can contribute to the same
+person's quadrant colors and show matching color swatches in the details panel.
+For older procedures, a semicolon-delimited `abbr` supplies the positions;
+plain-text procedure abbreviations remain labels only.
+
+Procedure headings use the abbreviation when present, otherwise the
+description. Older records and manually added procedures may store that
+description as `shorthand`. If neither is available, the heading says
+`Procedure`; the code remains in the details.
+
+Diagnosis headings follow the same rule: the abbreviation when present,
+otherwise the cancer topography and morphology names, otherwise the
+description (or legacy `shorthand`). If none is available, the heading says
+`Diagnosis`; codes remain in the details. Cancer records show a separate code
+alongside the coding value when both are present and differ. The processor's
+`NOTITLE` placeholder is treated as blank for both diagnoses and procedures.
+
+Across study configurations, the default colors are blue for top right, red
+for top left, yellow for bottom left, and purple for bottom right. Saved
+family-specific color choices continue to override these defaults.
+
+Fanconi Anemia (FA) uses Transplant in the top right, Solid Tumors in the top
+left, Hematological Malignancy in the bottom left, and FANS in the bottom right.
+
+## Multiple-birth notation
+
+The pedigree uses each person's `multiple_birth_type` together with recorded
+parentage and birth date to associate multiple-birth siblings. Identical twins
+have a bar between their branches; fraternal twins have no bar; twins of unknown
+type have a `?`. Triplets share a junction with three branches. A shared
+birthday alone does not mark a multiple birth. Incomplete or ambiguous groups
+are reported in the alerts instead of being paired automatically.
+
+Multiple-birth siblings are kept together when laid out or dragged. If an
+existing saved layout separates them, the app displays an unsaved adjustment
+and enables Undo and Save; the stored annotation is unchanged until Save is clicked.
+
+## Adoption notation
+
+The pedigree uses each person's recorded `adoption` value. Adopted-in and
+adopted-out people are shown with brackets around their symbol; the adopted-in
+child connector is dotted, while adopted-out connectors remain solid. A
+confirmed adoption with an unspecified direction (`Yes` or `Yes (QC)`) is
+bracketed with a `?`. An unknown adoption status (`Don't Know`) also has
+brackets and a `?`; the question mark indicates that adoption itself is
+uncertain. The `?` appears on the child connector, or beside the symbol when no
+parent connector is available. Adoption by a relative is not inferred because
+the data has no separate adoptive-parent relationship.
+
 ## Building for Deployment
 
 ### Basic Build

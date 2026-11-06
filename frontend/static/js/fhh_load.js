@@ -297,7 +297,7 @@ export async function load_config_and_data(study_id, family_id, config_id) {
  * Extracts and saves position data for all people in the family
  * @param {Object} data - Family pedigree data containing people and their positions
  */
-export function save_positions_and_annotations(data) {
+export function save_positions_and_annotations(data, annotations = {}) {
   const proband_id = data.general?.proband;
   const family_id = loaded_family_id;
   const study_id = loaded_study_id || "lfss";
@@ -309,7 +309,14 @@ export function save_positions_and_annotations(data) {
     ])
   );
 
-  save_file(study_id, family_id, { positions: people_positions });
+  const annotation_data = annotations || {};
+  return save_file(study_id, family_id, {
+    ...annotation_data,
+    positions: people_positions,
+    lines: annotation_data.lines ?? [],
+    arrows: annotation_data.arrows ?? [],
+    texts: annotation_data.texts ?? [],
+  });
 }
 
 export async function save_family_json(data) {
@@ -356,6 +363,11 @@ async function save_file(study_id, family_id, annotations) {
       },
       body: JSON.stringify(annotations),
     });
+
+    if (!response.ok) {
+      const error_text = await response.text();
+      throw new Error(error_text || `Failed to save annotations (${response.status})`);
+    }
 
     const responseData = await response.json();
     return responseData;
