@@ -129,8 +129,8 @@ def test_lambda_function(s3_bucket):
     )
     assert output["general"]["proband"] == "00101"
     assert output["people"]["00101"]["individual_genetic_status"] == "Variant Negative"
-    assert output["people"]["00101"]["result_vus"] is False
-    assert output["people"]["00101"]["pre_donar"] == "Donor sperm"
+    assert output["people"]["00101"]["vus_result"] is False
+    assert output["people"]["00101"]["donor_sperm"] == "Donor sperm"
     assert output["people"]["00101"]["procedures"][0]["quad_abbrs"] is None
     assert output["people"]["00101"]["procedures"][0]["abbr"] == "Mastectomy"
     assert output["people"]["00101"]["quad_flags"] == [True, False, False, True]
@@ -171,8 +171,8 @@ def test_person_includes_individual_genetic_status():
 
     person = processor.people["00101"]
     assert person["individual_genetic_status"] == "Variant Negative"
-    assert person["result_vus"] is False
-    assert person["pre_donar"] == "Donor sperm"
+    assert person["vus_result"] is False
+    assert person["donor_sperm"] == "Donor sperm"
 
 
 def test_person_includes_multiple_birth_adoption_and_marital_status():
