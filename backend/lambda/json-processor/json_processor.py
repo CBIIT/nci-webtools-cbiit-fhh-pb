@@ -169,6 +169,7 @@ class JSONProcessor:
             "mother": record.get("CORE[MPT_ID3]", ""),
             "adoption": record.get("CORE_ADD[PT_ADPT_IND]", ""),
             "multiple_birth_type": record.get("CORE_ADD[PT_IDENTICAL_SIBS]", ""),
+            "donor_sperm": record.get("CORE_ADD[PRE_DONAR]", ""),
             # Relationships: marital status sits directly before partners
             "marital_status": record.get("CORE[PRSN_MARST_CAT]", ""),
             "partners": [],
@@ -176,6 +177,7 @@ class JSONProcessor:
             "individual_genetic_status": record.get(
                 "Merge2[individual_genetic_status]", ""
             ),
+            "vus_result": record.get("Merge2[result.vus]", ""),  # VUS, Variant of Uncertain Significance
             "pedigree_symbol": record.get("Merge2[Pedigree_Symbol]", ""),
             # Clinical history (quad_flags is appended last in process_records,
             # since it is derived from diseases)

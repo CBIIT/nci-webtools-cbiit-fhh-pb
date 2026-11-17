@@ -44,7 +44,9 @@ def create_test_data() -> list:
             "CORE[FPT_ID3]": "00102",
             "CORE[MPT_ID3]": "00103",
             "Merge2[Pedigree_Symbol]": "%",
-            "Merge2[individual_genetic_status]": "Positive",
+            "Merge2[individual_genetic_status]": "Variant Negative",
+            "Merge2[result.vus]": False,
+            "CORE_ADD[PRE_DONAR]": "Donor sperm",
             "CORE_ADD[PT_IDENTICAL_SIBS]": "Twin, Identical",
             "CORE_ADD[PT_ADPT_IND]": "Yes-Adopted in",
             "CORE[PRSN_MARST_CAT]": "Divorced",
@@ -126,7 +128,9 @@ def test_lambda_function(s3_bucket):
         s3_bucket.get_object(Bucket=TEST_BUCKET, Key=keys[0])["Body"].read()
     )
     assert output["general"]["proband"] == "00101"
-    assert output["people"]["00101"]["individual_genetic_status"] == "Positive"
+    assert output["people"]["00101"]["individual_genetic_status"] == "Variant Negative"
+    assert output["people"]["00101"]["result_vus"] is False
+    assert output["people"]["00101"]["pre_donar"] == "Donor sperm"
     assert output["people"]["00101"]["procedures"][0]["quad_abbrs"] is None
     assert output["people"]["00101"]["procedures"][0]["abbr"] == "Mastectomy"
     assert output["people"]["00101"]["quad_flags"] == [True, False, False, True]
@@ -165,7 +169,10 @@ def test_person_includes_individual_genetic_status():
     processor = JSONProcessor()
     processor.process_records(create_test_data())
 
-    assert processor.people["00101"]["individual_genetic_status"] == "Positive"
+    person = processor.people["00101"]
+    assert person["individual_genetic_status"] == "Variant Negative"
+    assert person["result_vus"] is False
+    assert person["pre_donar"] == "Donor sperm"
 
 
 def test_person_includes_multiple_birth_adoption_and_marital_status():
