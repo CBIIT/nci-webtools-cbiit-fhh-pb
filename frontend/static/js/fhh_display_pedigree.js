@@ -4020,6 +4020,8 @@ function set_demographics_of_person(person_id) {
   const deceased_state = get_deceased_state(data["people"][person_id]);
   add_row_to_table(tbody, "Deceased", deceased_state.isDeceased ? "true" : "false");
   if (deceased_state.isDeceased) add_row_to_table(tbody, "Deathdate", deceased_state.deathDate);
+  add_row_to_table(tbody, "Individual Genetic Status", data["people"][person_id]["individual_genetic_status"]);
+  add_row_to_table(tbody, "VUS Result", data["people"][person_id]["vus_result"]);
   add_row_to_table(tbody, "Pedigree Symbol", data["people"][person_id]["pedigree_symbol"]);
   add_row_to_table(tbody, "Mother", data["people"][person_id]["mother"]);
   add_row_to_table(tbody, "Father", data["people"][person_id]["father"]);
@@ -4028,7 +4030,7 @@ function set_demographics_of_person(person_id) {
 }
 
 function add_row_to_table(tbody, label, value) {
-  if (!value) return;
+  if (value === null || value === undefined || value === "") return;
 
   const row = document.createElement("tr");
   const label_cell = document.createElement("td");
